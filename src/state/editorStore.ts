@@ -66,6 +66,11 @@ export interface EditorState {
   drawStartWrapMember: string | null;
   /** the committed points of the in-progress formed (heat-bent) pipe */
   formedPoints: Vec3[];
+  /** while drawing, the length typed into the length pill (empty = not typing) */
+  drawLength: string;
+  /** the current draw direction (unit, from the path cursor toward the preview) —
+   * so a typed length can be committed along it */
+  drawDirection: Vec3 | null;
   /** running the CrashCat rigid-body simulation (Play mode) */
   simulating: boolean;
   /** the in-progress rubber-band selection rectangle (screen/client px), or null */
@@ -86,6 +91,8 @@ export interface EditorState {
   setDrawStartWrap(memberId: string | null): void;
   pushFormedPoint(p: Vec3): void;
   clearFormedPoints(): void;
+  setDrawLength(s: string): void;
+  setDrawDirection(v: Vec3 | null): void;
   setSimulating(on: boolean): void;
   setMarquee(m: { x0: number; y0: number; x1: number; y1: number } | null): void;
   openJoinMenu(menu: { nodeId: string; moverId: string; x: number; y: number }): void;
@@ -106,6 +113,8 @@ const INITIAL = {
   drawingFromNodeId: null as string | null,
   drawStartWrapMember: null as string | null,
   formedPoints: [] as Vec3[],
+  drawLength: '',
+  drawDirection: null as Vec3 | null,
   simulating: false,
   marquee: null as { x0: number; y0: number; x1: number; y1: number } | null,
   joinMenu: null as { nodeId: string; moverId: string; x: number; y: number } | null,
@@ -122,6 +131,8 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
       drawingFromNodeId: tool === 'draw' ? get().drawingFromNodeId : null,
       drawStartWrapMember: tool === 'draw' ? get().drawStartWrapMember : null,
       formedPoints: tool === 'formed' ? get().formedPoints : [],
+      drawLength: '',
+      drawDirection: null,
     });
   },
   setProjection(projection) {
@@ -150,6 +161,12 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   },
   clearFormedPoints() {
     set({ formedPoints: [] });
+  },
+  setDrawLength(s) {
+    set({ drawLength: s });
+  },
+  setDrawDirection(v) {
+    set({ drawDirection: v });
   },
   setSimulating(on) {
     // leaving a drawing tool / selection isn't needed; just toggle the sim

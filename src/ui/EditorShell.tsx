@@ -34,6 +34,7 @@ import {
   finishPath,
   jointOrientationsOf,
   pivotAnglesOf,
+  placeDrawAtDistance,
   placeDrawPoint,
   placeFormedPoint,
   resetPivots,
@@ -61,6 +62,7 @@ import { SizeMenu } from './SizeMenu';
 import { SnapPill } from './SnapPill';
 import { Viewport } from './scene/Viewport';
 import { UnitsPill } from './UnitsPill';
+import { parseLength } from './units';
 import { ViewMenu } from './ViewMenu';
 
 /** The rubber-band selection rectangle (screen overlay). Blue solid when
@@ -189,6 +191,32 @@ export function EditorShell() {
         return;
       }
       if (typing) return;
+
+      // typed-length entry: while a draw path is open, digits/units type into the
+      // length pill; Enter commits the segment at that distance (must run BEFORE
+      // the tool hotkeys so e.g. "10cm" doesn't trigger the Curve tool on 'c')
+      if (editor.tool === 'draw' && editor.drawingFromNodeId) {
+        if (e.key === 'Enter' && editor.drawLength) {
+          const doc = useAppStore.getState().current;
+          const m = doc ? parseLength(editor.drawLength, doc.lengthDisplay) : null;
+          if (m && m > 0 && placeDrawAtDistance(m)) {
+            e.preventDefault();
+            return;
+          }
+        } else if (e.key === 'Backspace' && editor.drawLength) {
+          editor.setDrawLength(editor.drawLength.slice(0, -1));
+          e.preventDefault();
+          return;
+        } else if (e.key === 'Escape' && editor.drawLength) {
+          editor.setDrawLength('');
+          e.preventDefault();
+          return;
+        } else if (e.key.length === 1 && /[0-9./'" a-z]/i.test(e.key)) {
+          editor.setDrawLength(editor.drawLength + e.key);
+          e.preventDefault();
+          return;
+        }
+      }
 
       if (e.key === 'Escape' || e.key === 'Enter') {
         if (editor.drawingFromNodeId) finishPath();

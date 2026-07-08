@@ -38,7 +38,7 @@ import {
   type SnapResult,
   snapPoint,
 } from '../design/snapping';
-import { dot, length, normalize, scale, sub } from '../geometry/math3';
+import { add, dot, length, normalize, scale, sub } from '../geometry/math3';
 import type { Design, JointMode, LengthDisplay, NominalSize, Quaternion, Vec3 } from '../schema';
 import { pipeSpec } from '../schema';
 import { solve } from '../solver';
@@ -215,6 +215,38 @@ export function finishPath(): void {
   const editor = useEditorStore.getState();
   editor.setDrawingFrom(null);
   editor.setDrawStartWrap(null);
+  editor.setDrawLength('');
+  editor.setDrawDirection(null);
+}
+
+/** Complete the current draw segment at an EXACT distance (typed into the length
+ * pill), along the current draw direction from the path cursor. Returns true if
+ * a segment was placed. Used by the Enter-to-commit typed-length flow. */
+export function placeDrawAtDistance(distanceM: number): boolean {
+  const app = useAppStore.getState();
+  const editor = useEditorStore.getState();
+  const design = app.current;
+  const fromId = editor.drawingFromNodeId;
+  const dir = editor.drawDirection;
+  if (!design || !fromId || !dir || distanceM <= 0) return false;
+  const from = nodeById(design, fromId)?.position;
+  const u = normalize(dir);
+  if (!from || length(u) < 1e-9) return false;
+  const target = clampGround(add(from, scale(u, distanceM)));
+  const size = editor.drawSize;
+  const startWrap = editor.drawStartWrapMember;
+  let nextId = '';
+  app.updateCurrent((d) => {
+    const r = appendPipe(d, fromId, target, size);
+    nextId = r.nodeId;
+    let nd = r.design;
+    if (startWrap) nd = addBodyJoint(nd, startWrap, fromId).design;
+    return reconcileBodyJoints(nd);
+  });
+  editor.setDrawingFrom(nextId);
+  editor.setDrawStartWrap(null);
+  editor.setDrawLength('');
+  return true;
 }
 
 /** Snap a formed-tool point: like drawing, with axis inference anchored at the

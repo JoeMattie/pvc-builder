@@ -3,7 +3,7 @@ import type { ThreeEvent } from '@react-three/fiber';
 import { useThree } from '@react-three/fiber';
 import { useMemo, useState } from 'react';
 import { CatmullRomCurve3, type Ray, Raycaster, Vector2, Vector3 } from 'three';
-import { nodeById } from '../../design/docOps';
+import { memberById, nodeById } from '../../design/docOps';
 import { marqueeFromDrag, memberSelectedBy, type Pt } from '../../design/marquee';
 import type { SnapResult } from '../../design/snapping';
 import { length, sub } from '../../geometry/math3';
@@ -29,6 +29,72 @@ import { dominantAxisNormal, rayToGround, rayToPlane } from './ground';
 const CLICK_SLOP_PX = 6;
 
 const AXIS_COLOR = { x: '#d64545', y: '#3d9950', z: '#2a78d6' } as const;
+const SNAP_GREEN = '#12b886'; // snap indicator (dot / pill / pipe outline)
+
+/** A translucent bright outline sleeve over a pipe the cursor is snapping to. */
+function OutlineCyl({ a, b, r }: { a: Vec3; b: Vec3; r: number }) {
+  const placed = placeAxis(a, b);
+  if (!placed) return null;
+  return (
+    <mesh position={placed.mid} quaternion={placed.quat}>
+      <cylinderGeometry args={[r, r, placed.len, 16]} />
+      <meshBasicMaterial color={SNAP_GREEN} transparent opacity={0.28} />
+    </mesh>
+  );
+}
+
+/** Snap feedback: a dot at the snap point, a small "End" / "On Pipe" pill, and
+ * an outline around the pipe(s) being snapped TO (planfile draw-mode snapping). */
+function SnapHint({ preview, night }: { preview: SnapResult; night: boolean }) {
+  const design = useAppStore.getState().current;
+  const label = preview.kind === 'node' ? 'End' : preview.kind === 'on-pipe' ? 'On Pipe' : null;
+  if (!design || !label) return null;
+  const at = (id: string): Vec3 | undefined => easedPos(id) ?? nodeById(design, id)?.position;
+  const outlines: { a: Vec3; b: Vec3; r: number }[] = [];
+  const addMember = (memberId: string) => {
+    const m = memberById(design, memberId);
+    if (m?.kind !== 'straight') return;
+    const a = at(m.nodeA);
+    const b = at(m.nodeB);
+    if (a && b) outlines.push({ a, b, r: (pipeSpec(m.size).odM / 2) * 1.6 });
+  };
+  if (preview.kind === 'on-pipe' && preview.onPipeMemberId) addMember(preview.onPipeMemberId);
+  else if (preview.kind === 'node' && preview.nodeId) {
+    for (const m of design.members) {
+      if (m.nodeA === preview.nodeId || m.nodeB === preview.nodeId) addMember(m.id);
+    }
+  }
+  const pos = preview.position;
+  return (
+    <>
+      <mesh position={[pos.x, pos.y, pos.z]}>
+        <sphereGeometry args={[0.013, 12, 10]} />
+        <meshBasicMaterial color={SNAP_GREEN} />
+      </mesh>
+      {outlines.map((o, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: positional per snap frame
+        <OutlineCyl key={i} a={o.a} b={o.b} r={o.r} />
+      ))}
+      <Html position={[pos.x, pos.y, pos.z]} center zIndexRange={[100, 0]}>
+        <div
+          style={{
+            padding: '1px 6px',
+            borderRadius: 6,
+            font: "600 11px 'IBM Plex Sans', sans-serif",
+            background: SNAP_GREEN,
+            color: '#fff',
+            border: `1px solid ${night ? '#0c8a63' : '#0ea371'}`,
+            whiteSpace: 'nowrap',
+            pointerEvents: 'none',
+            transform: 'translate(14px, 12px)',
+          }}
+        >
+          {label}
+        </div>
+      </Html>
+    </>
+  );
+}
 
 export function DrawController() {
   const tool = useEditorStore((s) => s.tool);
@@ -43,6 +109,7 @@ export function DrawController() {
   );
   const lengthDisplay = useAppStore((s) => s.current?.lengthDisplay);
   const formedPoints = useEditorStore((s) => s.formedPoints);
+  const drawLength = useEditorStore((s) => s.drawLength);
   const [preview, setPreview] = useState<SnapResult | null>(null);
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
@@ -108,8 +175,15 @@ export function DrawController() {
     if (e.nativeEvent.buttons !== 0) return; // a press drives its own window move
     const g = targetOf(e.ray);
     if (!g) return;
-    if (tool === 'draw') setPreview(snapDrawPoint(g, e.nativeEvent.shiftKey));
-    else if (tool === 'formed') setPreview(snapFormedPoint(g));
+    if (tool === 'draw') {
+      const snap = snapDrawPoint(g, e.nativeEvent.shiftKey);
+      setPreview(snap);
+      // record the aim direction so a typed length can be committed along it
+      if (fromPos) {
+        const d = sub(snap.position, fromPos);
+        useEditorStore.getState().setDrawDirection(length(d) > 1e-6 ? d : null);
+      }
+    } else if (tool === 'formed') setPreview(snapFormedPoint(g));
   };
 
   // The press+release is driven by WINDOW listeners, not the mesh's own
@@ -218,6 +292,11 @@ export function DrawController() {
         <shadowMaterial transparent opacity={night ? 0.35 : 0.2} />
       </mesh>
 
+      {/* snap indicator (dot + End/On Pipe pill + outline) for draw + formed */}
+      {(tool === 'draw' || tool === 'formed') && preview && (
+        <SnapHint preview={preview} night={night} />
+      )}
+
       {showPreview && p && (
         <>
           {/* pen marker — small + partially transparent */}
@@ -248,13 +327,15 @@ export function DrawController() {
                     font: "500 12px 'IBM Plex Mono', monospace",
                     background: night ? '#1e2128' : '#fff',
                     color: night ? '#e8eaf0' : '#1a1d24',
-                    border: `1px solid ${night ? '#33363f' : '#e4e4e7'}`,
+                    // active typed-length input gets a blue ring
+                    border: `1px solid ${drawLength ? '#2a78d6' : night ? '#33363f' : '#e4e4e7'}`,
+                    boxShadow: drawLength ? '0 0 0 2px rgba(42,120,214,0.35)' : 'none',
                     whiteSpace: 'nowrap',
                     pointerEvents: 'none',
                     transform: 'translateY(-14px)',
                   }}
                 >
-                  {formatLengthDisplay(segLen, lengthDisplay)}
+                  {drawLength ? `${drawLength}▏` : formatLengthDisplay(segLen, lengthDisplay)}
                 </div>
               </Html>
             </>
