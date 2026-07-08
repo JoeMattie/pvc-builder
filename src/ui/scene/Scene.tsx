@@ -37,7 +37,7 @@ import {
 import { jointOrientationsOf, pivotAnglesOf } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
-import { scenePalette } from '../theme';
+import { GROUND_SIZE_M, scenePalette } from '../theme';
 import { DrawController } from './DrawController';
 import { FittingLayer } from './FittingLayer';
 import { FormedLayer } from './FormedLayer';
@@ -58,8 +58,8 @@ function GroundGrid({ pal }: { pal: ReturnType<typeof scenePalette> }) {
   return (
     <group position={[0, groundY, 0]}>
       <Grid
-        args={[40, 40]}
-        infiniteGrid
+        // finite ground (40 ft), not an infinite grid
+        args={[GROUND_SIZE_M, GROUND_SIZE_M]}
         cellSize={0.1}
         cellThickness={0.6}
         cellColor={pal.gridCell}

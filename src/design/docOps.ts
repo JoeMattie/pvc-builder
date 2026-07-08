@@ -192,6 +192,26 @@ export function detachMemberEnd(
   };
 }
 
+/** Weld node `fromId` into `intoId`: rewire every member/joint that referenced
+ * `fromId` to `intoId`, drop `fromId`, discard any member that collapsed to
+ * zero length, prune joints whose members/nodes no longer exist, and de-dupe the
+ * joints now sharing the node. This is what dropping one pipe end exactly onto
+ * another does — the two ends become ONE junction (so you never get two
+ * overlapping joints at coincident-but-separate nodes). */
+export function weldNodes(design: Design, fromId: string, intoId: string): Design {
+  if (fromId === intoId) return design;
+  const remap = (id: string) => (id === fromId ? intoId : id);
+  const members = design.members
+    .map((m) => ({ ...m, nodeA: remap(m.nodeA), nodeB: remap(m.nodeB) }))
+    .filter((m) => m.nodeA !== m.nodeB); // a member spanning the welded pair collapses
+  const memberIds = new Set(members.map((m) => m.id));
+  const nodes = design.nodes.filter((n) => n.id !== fromId);
+  const joints = design.joints
+    .map((j) => ({ ...j, nodeId: remap(j.nodeId) }))
+    .filter((j) => memberIds.has(j.receiver) && memberIds.has(j.mover));
+  return dedupeJoints({ ...design, nodes, members, joints });
+}
+
 /** Translate a whole member by `delta` (the move tool): both endpoint nodes —
  * and, for a formed pipe, its control points — shift together, so lengths and
  * bends are preserved. Shared endpoints move any incident members with them. */

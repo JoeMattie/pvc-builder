@@ -25,6 +25,7 @@ import {
   startPath,
   swapReceiver,
   translateMember,
+  weldNodes,
 } from './docOps';
 
 const V = (x: number, y: number, z: number): Vec3 => ({ x, y, z });
@@ -552,5 +553,63 @@ describe('detachMemberEnd', () => {
     const r = detachMemberEnd(design, memberIds[0]!, loneEnd);
     expect(r.nodeId).toBe(loneEnd);
     expect(r.design).toEqual(design);
+  });
+});
+
+describe('weldNodes', () => {
+  it('merges two coincident pipe ends into one junction', () => {
+    // two separate pipes whose near ends coincide (as after dragging one onto
+    // the other): weld collapses the two end nodes into one
+    const d = createEmptyDesign('d', 'Weld');
+    d.nodes.push(
+      { id: 'a0', position: V(0, 0, 0) },
+      { id: 'a1', position: V(1, 0, 0) },
+      { id: 'b0', position: V(1, 0, 0) }, // coincident with a1
+      { id: 'b1', position: V(1, 0, 1) },
+    );
+    d.members.push(
+      { id: 'ma', kind: 'straight', nodeA: 'a0', nodeB: 'a1', size: '3/4"' },
+      { id: 'mb', kind: 'straight', nodeA: 'b0', nodeB: 'b1', size: '3/4"' },
+    );
+    const out = weldNodes(d, 'b0', 'a1');
+    expect(out.nodes.find((n) => n.id === 'b0')).toBeUndefined();
+    expect(out.nodes).toHaveLength(3);
+    // both pipes now share node a1
+    expect(out.members.find((m) => m.id === 'mb')?.nodeA).toBe('a1');
+    expect(out.members.find((m) => m.id === 'ma')?.nodeB).toBe('a1');
+  });
+
+  it('collapses overlapping joints when welding (no double pivot)', () => {
+    // each pipe carries a wrapped joint at its near end; after welding the two
+    // ends the joints share a node with the same member pair → deduped to one
+    const d = createEmptyDesign('d', 'WeldJoints');
+    d.nodes.push(
+      { id: 'a0', position: V(0, 0, 0) },
+      { id: 'a1', position: V(1, 0, 0) },
+      { id: 'b0', position: V(1, 0, 0) },
+      { id: 'b1', position: V(1, 0, 1) },
+    );
+    d.members.push(
+      { id: 'ma', kind: 'straight', nodeA: 'a0', nodeB: 'a1', size: '3/4"' },
+      { id: 'mb', kind: 'straight', nodeA: 'b0', nodeB: 'b1', size: '3/4"' },
+    );
+    d.joints.push(
+      { id: 'j1', nodeId: 'a1', receiver: 'mb', mover: 'ma', onBody: false, mode: 'wrapped' },
+      { id: 'j2', nodeId: 'b0', receiver: 'ma', mover: 'mb', onBody: false, mode: 'wrapped' },
+    );
+    const out = weldNodes(d, 'b0', 'a1');
+    // both joints now at a1 for the same {ma, mb} pair → collapsed to one
+    expect(out.joints).toHaveLength(1);
+  });
+
+  it('drops a member that collapses to zero length', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0)]);
+    const [a, b] = [
+      design.members.find((m) => m.id === memberIds[0])!.nodeA,
+      design.members.find((m) => m.id === memberIds[0])!.nodeB,
+    ];
+    // welding a member's own two ends removes it
+    const out = weldNodes(design, b, a);
+    expect(out.members).toHaveLength(0);
   });
 });

@@ -49,6 +49,7 @@ import {
   snapDrawPoint,
   swapJointReceiver,
   translateMemberBy,
+  weldDroppedNode,
 } from '../state/editorActions';
 import { useEditorStore } from '../state/editorStore';
 import { useThemeStore } from '../state/themeStore';
@@ -325,6 +326,7 @@ export function EditorShell() {
     hook.setMembersSize = (ids: string[], size: '1/2"' | '3/4"') => setMembersSize(ids, size);
     hook.setLengthDisplay = (d: 'mm' | 'cm' | 'in' | 'in-frac') => setLengthDisplay(d);
     hook.detachMemberEnd = (memberId: string, nodeId: string) => detachMemberEnd(memberId, nodeId);
+    hook.weldDroppedNode = (nodeId: string) => weldDroppedNode(nodeId);
     hook.dragNode = (id: string, raw: Vec3) => dragNodeTo(id, raw);
     hook.moveMember = (id: string, delta: Vec3) => translateMemberBy(id, delta);
     hook.rotateMember = (id: string, axis: Vec3, angleRad: number, pivot: Vec3) =>

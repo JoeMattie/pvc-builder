@@ -16,6 +16,7 @@ import {
   dragNodeTo,
   rotateMembersBy,
   translateMembersBy,
+  weldDroppedNode,
 } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
@@ -44,6 +45,9 @@ function useGroundDrag(
     // to the ray, which the vertical axis needs — a ground raycast can't give
     // it). Takes precedence over viewPlaneOrigin / ground.
     project?: (ray: Ray) => Vec3 | null;
+    // called once when the drag settles (pointerup), INSIDE the gesture, before
+    // it is committed — e.g. to weld a dropped endpoint onto a coincident node
+    onEnd?: () => void;
   },
 ) {
   const gl = useThree((s) => s.gl);
@@ -89,6 +93,7 @@ function useGroundDrag(
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
       if (controls) controls.enabled = true;
+      opts?.onEnd?.(); // still inside the gesture, so the weld is one undo step
       useAppStore.getState().endGesture();
       setDragging(false);
     };
@@ -171,7 +176,11 @@ function MoveHandle({
     },
     // free move rides a view-facing plane through the node so a floating node
     // keeps its height; locked-mode IK stays on the ground plane
-    { viewPlaneOrigin: () => (locked ? null : pos) },
+    {
+      viewPlaneOrigin: () => (locked ? null : pos),
+      // on drop, weld the endpoint onto a coincident node (join two pipe ends)
+      onEnd: locked ? undefined : () => weldDroppedNode(dragId.current),
+    },
   );
   return (
     <>

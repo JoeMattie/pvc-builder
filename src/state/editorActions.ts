@@ -23,6 +23,7 @@ import {
   startPath,
   swapReceiver as swapReceiverOp,
   translateMember,
+  weldNodes,
 } from '../design/docOps';
 import {
   lengthFromGrabDrag,
@@ -431,6 +432,22 @@ export function detachMemberEnd(memberId: string, nodeId: string): string | null
 /** Set the display-only length format (the units pill). Never changes stored SI. */
 export function setLengthDisplay(display: LengthDisplay): void {
   useAppStore.getState().updateCurrent((d) => ({ ...d, lengthDisplay: display }));
+}
+
+/** After an endpoint drag settles: if `nodeId` landed exactly on another node,
+ * weld the two into one junction (so dropping one pipe end onto another joins
+ * them instead of leaving two coincident nodes with overlapping joints). */
+const WELD_TOL_M = 1e-4;
+export function weldDroppedNode(nodeId: string): void {
+  const design = useAppStore.getState().current;
+  if (!design) return;
+  const dragged = nodeById(design, nodeId);
+  if (!dragged) return;
+  const other = design.nodes.find(
+    (n) => n.id !== nodeId && length(sub(n.position, dragged.position)) < WELD_TOL_M,
+  );
+  if (!other) return;
+  useAppStore.getState().updateCurrent((d) => weldNodes(d, nodeId, other.id));
 }
 
 // ── joints (right-click a pipe join → wrapped / free / anchor) ──────────────

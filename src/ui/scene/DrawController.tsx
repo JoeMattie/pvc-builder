@@ -19,7 +19,7 @@ import {
 } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
-import { scenePalette } from '../theme';
+import { GROUND_SIZE_M, scenePalette } from '../theme';
 import { formatLengthDisplay } from '../units';
 import { placeAxis } from './axis';
 import { dominantAxisNormal, rayToGround, rayToPlane } from './ground';
@@ -275,13 +275,15 @@ export function DrawController() {
 
   return (
     <>
-      {/* subtle ground fill so the horizon reads as distinct from the sky; sits a
-          hair below y=0 to avoid z-fighting the grid + shadow catcher */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.002, 0]}>
-        <planeGeometry args={[400, 400]} />
+      {/* subtle FINITE ground fill (40 ft) so the horizon reads distinct from the
+          sky. Sits well below y=0 (past the deepest pipe radius) so a pipe lying
+          on the ground isn't clipped in half by an opaque plane at the centreline. */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.03, 0]}>
+        <planeGeometry args={[GROUND_SIZE_M, GROUND_SIZE_M]} />
         <meshBasicMaterial color={scenePalette(night).ground} />
       </mesh>
-      {/* full-bleed ground plane: catches shadows and is the pointer target */}
+      {/* invisible pointer target + shadow catcher at y=0 — larger than the visible
+          ground so drawing/orbiting past the ground edge still works */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
         receiveShadow
