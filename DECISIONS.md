@@ -4,6 +4,18 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Smooth heat-wrapped tee — helical strip (2026-07-07)
+
+- **The wrap is now a smooth strip swept once around the through pipe** instead
+  of the faceted band. `buildWrapMesh` returns a triangle mesh (positions +
+  indices): a rectangular cross-section (flattened width π·OD/2 × a double-wall
+  thickness) swept along a **single-turn helix** around the run — a solid ribbon
+  (inner + outer surfaces + edges + end caps). `WrapLayer` builds one reusable
+  `<bufferGeometry>` per wrap and refills it (position + `computeVertexNormals`)
+  each eased frame, so it glides without leaking geometry. Rigid wraps keep the
+  two steel screw discs at the branch-side seam; a pivot wrap stays accent-tinted
+  (no screws). Verified in-browser — a clean smooth collar at the tee.
+
 ## Closed-loop kinematics — squares now articulate (2026-07-07)
 
 - **Locked-length mechanisms with closed loops now close correctly.** The tree

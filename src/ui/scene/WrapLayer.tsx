@@ -1,13 +1,15 @@
-// Renders heat-wrapped tees (planfile §4): the branch's flattened, rectangular
-// PVC strip wrapped around the intact through pipe — a faceted band of flat
-// boxes bent around the run — with screw discs for rigid wraps or the hinge
-// axis exposed for a natural pivot. Geometry comes from the pure `buildWrapMesh`
-// placed at eased render positions so it glides with the pipe; clicking the
-// strap selects the branch (its inspector carries the rigid/pivot toggle).
+// Renders heat-wrapped tees (planfile §4): the branch's flattened PVC strip
+// wrapped ONCE, smoothly, around the intact through pipe — a rectangular
+// cross-section swept along a single-turn helix (a triangle mesh from the pure
+// `buildWrapMesh`). Rigid wraps get steel screw discs at the seam; a pivot wrap
+// is tinted the accent (the hinge barrel about the run). Placed at eased render
+// positions so it glides with the pipe; clicking it selects the branch (its
+// inspector carries the rigid/pivot toggle).
 import type { ThreeEvent } from '@react-three/fiber';
-import { Quaternion as ThreeQuat } from 'three';
+import { useLayoutEffect, useRef } from 'react';
+import { type BufferGeometry, Float32BufferAttribute } from 'three';
 import { memberById, nodeById } from '../../design/docOps';
-import { normalize, quatFromBasis, sub } from '../../geometry/math3';
+import { normalize, sub } from '../../geometry/math3';
 import { pipeSpec, type Vec3, type Wrap } from '../../schema';
 import { easedPos, useAnim } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
@@ -22,11 +24,6 @@ import { buildWrapMesh } from './wrapMesh';
 const MAX_WRAP_MEMBERS = 200;
 const SCREW_COLOR = '#4b5563'; // steel screw head
 
-function quat(x: Vec3, y: Vec3, z: Vec3): ThreeQuat {
-  const q = quatFromBasis(x, y, z);
-  return new ThreeQuat(q.x, q.y, q.z, q.w);
-}
-
 function WrapMesh({
   wrap,
   selectable,
@@ -36,68 +33,75 @@ function WrapMesh({
   selectable: boolean;
   selected: boolean;
 }) {
+  const geoRef = useRef<BufferGeometry>(null);
   const design = useAppStore.getState().current;
-  if (!design) return null;
-  const eased = (id: string): Vec3 =>
-    easedPos(id) ?? nodeById(design, id)?.position ?? { x: 0, y: 0, z: 0 };
+  const eased = (id: string): Vec3 => {
+    if (!design) return { x: 0, y: 0, z: 0 };
+    return easedPos(id) ?? nodeById(design, id)?.position ?? { x: 0, y: 0, z: 0 };
+  };
 
-  const through = memberById(design, wrap.throughMember);
-  if (through?.kind !== 'straight') return null;
-  // the branch member is whatever else meets the wrap's branch node
-  const branch = design.members.find(
+  const through = design ? memberById(design, wrap.throughMember) : undefined;
+  const branch = design?.members.find(
     (m) => m.nodeA === wrap.branchNode || m.nodeB === wrap.branchNode,
   );
-  if (!branch) return null; // lone wrap node (branch not drawn yet) — nothing to show
-  const far = branch.nodeA === wrap.branchNode ? branch.nodeB : branch.nodeA;
 
-  const wrapPoint = eased(wrap.branchNode);
-  const branchDir = normalize(sub(eased(far), wrapPoint));
+  const mesh =
+    design && through?.kind === 'straight' && branch
+      ? buildWrapMesh({
+          through: {
+            a: eased(through.nodeA),
+            b: eased(through.nodeB),
+            odM: pipeSpec(through.size).odM,
+          },
+          wrapPoint: eased(wrap.branchNode),
+          branchDir: normalize(
+            sub(
+              eased(branch.nodeA === wrap.branchNode ? branch.nodeB : branch.nodeA),
+              eased(wrap.branchNode),
+            ),
+          ),
+          branchODM: pipeSpec(branch.size).odM,
+          rigid: wrap.rigid,
+        })
+      : null;
+
+  // rebuild the strip geometry each render (it eases with the pipe); the
+  // <bufferGeometry> object is created once by r3f and reused (no per-frame leak)
+  useLayoutEffect(() => {
+    const g = geoRef.current;
+    if (!g || !mesh) return;
+    g.setAttribute('position', new Float32BufferAttribute(mesh.positions, 3));
+    g.setIndex(mesh.indices);
+    g.computeVertexNormals();
+    g.computeBoundingSphere();
+  });
+
+  if (!design || !mesh || !branch) return null;
   const night = useThemeStore.getState().night;
   const pal = scenePalette(night);
-
-  const mesh = buildWrapMesh({
-    through: { a: eased(through.nodeA), b: eased(through.nodeB), odM: pipeSpec(through.size).odM },
-    wrapPoint,
-    branchDir,
-    branchODM: pipeSpec(branch.size).odM,
-    rigid: wrap.rigid,
-  });
-  if (!mesh) return null;
-
-  // in the select tool, clicking the strap selects the branch (whose inspector
-  // carries the rigid/pivot toggle); other tools let the click fall through
   const onSelect = selectable
     ? (e: ThreeEvent<MouseEvent>) => {
         e.stopPropagation();
         selectMember(branch.id);
       }
     : undefined;
-  // rigid wraps are white PVC + steel screws; a pivot wrap tints the strap
-  // toward the accent (the hinge barrel around the run) and drops the screws
+  // rigid = white PVC + screws; pivot = accent-tinted hinge barrel, no screws
   const strapColor = wrap.rigid ? pal.pvc : pal.accent;
 
   return (
     <group>
-      {mesh.facets.map((f, i) => (
-        // biome-ignore lint/a11y/noStaticElementInteractions: r3f <mesh> is a scene node, not a DOM element
-        <mesh
-          // biome-ignore lint/suspicious/noArrayIndexKey: facets are positional per wrap
-          key={i}
-          position={[f.center.x, f.center.y, f.center.z]}
-          quaternion={quat(f.lengthDir, f.widthDir, f.thickDir)}
-          castShadow
-          onClick={onSelect}
-        >
-          <boxGeometry args={f.size} />
-          <meshPhysicalMaterial
-            color={strapColor}
-            roughness={0.42}
-            clearcoat={0.35}
-            emissive={selected ? '#2a78d6' : '#000000'}
-            emissiveIntensity={selected ? 0.3 : 0}
-          />
-        </mesh>
-      ))}
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: r3f <mesh> is a scene node, not a DOM element */}
+      <mesh castShadow onClick={onSelect}>
+        <bufferGeometry ref={geoRef} />
+        <meshPhysicalMaterial
+          color={strapColor}
+          roughness={0.42}
+          clearcoat={0.35}
+          side={2}
+          emissive={selected ? '#2a78d6' : '#000000'}
+          emissiveIntensity={selected ? 0.3 : 0}
+        />
+      </mesh>
 
       {mesh.screws.map((s, i) => (
         <mesh

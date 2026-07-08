@@ -3,24 +3,13 @@
 //
 // A branch pipe's end is heated, flattened into a rectangular strip (a round
 // tube of circumference π·OD flattens to a strip ≈ π·OD/2 wide), and wrapped
-// around the intact through pipe. We model that strip as a faceted band of flat
-// rectangular boxes bent around the through cylinder — flattened PVC genuinely
-// facets as it bends, so this both reads as "a wrapped rectangle" and is cheap.
-// Rigid wraps are screwed (little discs); a natural pivot instead exposes the
-// hinge axis (the through pipe's own direction).
+// once, smoothly, around the intact through pipe. We model that as a rectangular
+// cross-section swept along a single-turn HELIX around the through cylinder — a
+// solid ribbon (inner + outer + edges + caps) built as a triangle mesh. Rigid
+// wraps get screw discs at the overlapping seam; a pivot wrap is rendered by the
+// layer in the accent tint (the hinge barrel about the run).
 import { add, cross, dot, length, normalize, scale, sub } from '../../geometry/math3';
 import type { Vec3 } from '../../schema';
-
-/** One flat rectangular facet of the wrapped strip, as a box: local +x =
- * `lengthDir` (the chord tangent), +y = `widthDir` (the through axis), +z =
- * `thickDir` (radial outward). `size` is [length, width, thickness]. */
-export interface WrapFacet {
-  center: Vec3;
-  lengthDir: Vec3;
-  widthDir: Vec3;
-  thickDir: Vec3;
-  size: [number, number, number];
-}
 
 /** A screw head on a rigid wrap, drawn as a little disc facing `normal`. */
 export interface WrapScrew {
@@ -30,12 +19,13 @@ export interface WrapScrew {
 }
 
 export interface WrapMesh {
-  facets: WrapFacet[];
+  /** flat triangle-mesh vertex positions [x,y,z, …] for the wrapped strip */
+  positions: number[];
+  /** triangle indices into `positions` */
+  indices: number[];
   /** empty for a pivot wrap */
   screws: WrapScrew[];
-  /** the hinge axis rod for a pivot wrap (the through-pipe direction); null when
-   * rigid */
-  axis: { a: Vec3; b: Vec3; radiusM: number } | null;
+  rigid: boolean;
 }
 
 export interface WrapInput {
@@ -49,9 +39,8 @@ export interface WrapInput {
   rigid: boolean;
 }
 
-/** How far the strip wraps around the through pipe (centred on the branch). */
-const WRAP_ANGLE = (240 * Math.PI) / 180;
-const N_FACETS = 14;
+/** Segments around the single turn (smoothness of the helix). */
+const N_SEG = 80;
 
 /** Any unit vector perpendicular to `u`. */
 function anyPerp(u: Vec3): Vec3 {
@@ -66,52 +55,66 @@ export function buildWrapMesh(inp: WrapInput): WrapMesh | null {
   const rt = inp.through.odM / 2;
 
   // radial toward the branch = component of the branch direction perpendicular
-  // to the through axis; the strip wraps symmetrically about it
+  // to the through axis; the wrap seam sits on this (the branch) side
   let er = sub(inp.branchDir, scale(u, dot(inp.branchDir, u)));
   er = length(er) < 1e-6 ? anyPerp(u) : normalize(er);
   const es = normalize(cross(u, er)); // circumferential
 
-  const th = Math.max(inp.branchODM * 0.2, 0.003); // flattened double-wall thickness
-  const w = (Math.PI * inp.branchODM) / 2; // flattened strip width
-  const rc = rt + 0.0006 + th / 2; // facet-centre radius (hug the pipe + tiny gap)
-  const alpha = WRAP_ANGLE / 2;
-  const dPhi = WRAP_ANGLE / N_FACETS;
-  const chord = 2 * rc * Math.sin(dPhi / 2) * 1.03; // slight overlap so facets meet
+  const th = Math.max(inp.branchODM * 0.16, 0.0022); // flattened double-wall thickness
+  const w = (Math.PI * inp.branchODM) / 2; // flattened strip width (along the run)
+  const rin = rt + 0.0004; // inner surface hugs the pipe
+  const rout = rin + th;
+  const pitch = w * 0.8; // how far the helix advances along the run over one turn
 
-  const facets: WrapFacet[] = [];
-  for (let i = 0; i < N_FACETS; i++) {
-    const phi = -alpha + (i + 0.5) * dPhi;
+  // Each ring = the rectangular cross-section [innerL, outerL, outerR, innerR],
+  // swept once around (φ: 0 → 2π) while advancing `pitch` along the run.
+  const positions: number[] = [];
+  const push = (p: Vec3): void => {
+    positions.push(p.x, p.y, p.z);
+  };
+  for (let i = 0; i <= N_SEG; i++) {
+    const t = i / N_SEG;
+    const phi = t * Math.PI * 2;
+    const adv = (t - 0.5) * pitch;
     const radial = add(scale(er, Math.cos(phi)), scale(es, Math.sin(phi)));
-    facets.push({
-      center: add(inp.wrapPoint, scale(radial, rc)),
-      lengthDir: normalize(cross(u, radial)), // chord tangent
-      widthDir: u,
-      thickDir: radial,
-      size: [chord, w, th],
-    });
+    const uL = adv - w / 2;
+    const uR = adv + w / 2;
+    const base = (uOff: number, r: number): Vec3 =>
+      add(add(inp.wrapPoint, scale(u, uOff)), scale(radial, r));
+    push(base(uL, rin));
+    push(base(uL, rout));
+    push(base(uR, rout));
+    push(base(uR, rin));
   }
+
+  const indices: number[] = [];
+  const quad = (a: number, b: number, c: number, d: number): void => {
+    indices.push(a, b, c, a, c, d);
+  };
+  for (let i = 0; i < N_SEG; i++) {
+    const r0 = i * 4;
+    const r1 = (i + 1) * 4;
+    quad(r0 + 0, r1 + 0, r1 + 1, r0 + 1); // left edge
+    quad(r0 + 1, r1 + 1, r1 + 2, r0 + 2); // outer face
+    quad(r0 + 2, r1 + 2, r1 + 3, r0 + 3); // right edge
+    quad(r0 + 3, r1 + 3, r1 + 0, r0 + 0); // inner face
+  }
+  // end caps (the two rectangle cross-sections)
+  const last = N_SEG * 4;
+  indices.push(0, 2, 1, 0, 3, 2);
+  indices.push(last + 0, last + 1, last + 2, last + 0, last + 2, last + 3);
 
   const screws: WrapScrew[] = [];
   if (inp.rigid) {
-    // one screw near each end of the strip, where the wrapped tabs are fastened
+    // two screws at the branch-side seam where the wrap overlaps + is fastened
     for (const s of [-1, 1]) {
-      const phi = s * alpha * 0.85;
-      const radial = add(scale(er, Math.cos(phi)), scale(es, Math.sin(phi)));
       screws.push({
-        center: add(inp.wrapPoint, scale(radial, rt + th)),
-        normal: radial,
-        radiusM: Math.max(inp.branchODM * 0.16, 0.004),
+        center: add(add(inp.wrapPoint, scale(u, s * w * 0.22)), scale(er, rout + 0.001)),
+        normal: er,
+        radiusM: Math.max(inp.branchODM * 0.14, 0.0035),
       });
     }
   }
 
-  const axis = inp.rigid
-    ? null
-    : {
-        a: add(inp.wrapPoint, scale(u, -w * 0.65)),
-        b: add(inp.wrapPoint, scale(u, w * 0.65)),
-        radiusM: Math.max(inp.branchODM * 0.12, 0.003),
-      };
-
-  return { facets, screws, axis };
+  return { positions, indices, screws, rigid: inp.rigid };
 }
