@@ -1,5 +1,6 @@
 import {
   CornerUpRight,
+  Frame,
   MousePointer2,
   Move3d,
   Pencil,
@@ -21,6 +22,7 @@ const TOOLS: { id: Tool; icon: ComponentType<{ size?: number }>; label: string; 
   { id: 'rotate', icon: RotateCw, label: 'Rotate' },
   { id: 'formed', icon: Spline, label: 'Curve', key: 'C' },
   { id: 'bend', icon: CornerUpRight, label: 'Bend', key: 'B' },
+  { id: 'plane', icon: Frame, label: 'Plane', key: 'F' },
   { id: 'measure', icon: Ruler, label: 'Measure', key: 'T' },
 ];
 

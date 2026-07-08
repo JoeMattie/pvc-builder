@@ -31,21 +31,17 @@ rationale live in the plan file: **`/home/joe/.claude/plans/read-the-todo-txt-sc
 | **Wave 2 · 2A** — Curve rename (C), snap indicators, typed-length pill | ✅ done |
 | **Wave 2 · 2B** — tape-measure tool (T) | ✅ done |
 | **Wave 2 · 2D** — new Bend tool (B) + draggable control points | ✅ done (length-lock toggle = follow-up; only "grow" mode) |
-| **Wave 2 · 2C** — draw-on-plane tool (F) | ⬜ **NOT started** (next) |
-| **Wave 3** — BOM wrap-allowance/end-cap-ghost/manufactured-split; manufactured joints; T-rex decimation | ⬜ **NOT started** |
+| **Wave 2 · 2C** — draw-on-plane tool (F) | ✅ done (angle snaps to world cardinals ±X/±Z; **pipe-relative cardinals = follow-up**) |
+| **Wave 3** — BOM wrap-allowance/end-cap-ghost/manufactured-split; manufactured joints; T-rex decimation | ⬜ **NOT started** (next) |
 | User-reported fixes (weld-on-drop, finite ground + dark-mode dark-gray, curve auto-junction parity, units pill next to snap pill, bend control points) | ✅ all done + verified |
 
 ## Remaining work — specifics
 
-**2C draw-on-plane (hotkey F)** — see plan §Wave 2. Temp semi-transparent square plane
-under cursor snapping to endpoints; click sets the plane point; mouse-move sets the
-plane angle (snap to cardinals + pipe-relative cardinals of the clicked point's
-member[s]); 2nd click enters mode → flip camera to iso facing the plane
-(`cameraStore.requestPose`/a face-view). Drawing constrained to that plane. Esc / other
-tool exits + restores prior camera. Transient state in `editorStore`; reuse
-`rayToPlane`/`dominantAxisNormal` (`ui/scene/ground.ts`). The camera-restore machinery
-already exists: `cameraStore.requestPose` + `Scene.ViewController` apply poses; save the
-current pose before flipping and `requestPose` it back on exit.
+**2C follow-up (optional):** the plane angle currently snaps only to world cardinals
+(`planeNormalFromCursor` in `editorActions.ts`). Add **pipe-relative** cardinals (align the
+plane to a member incident at the clicked origin). Plane lifecycle: `placePlanePoint` →
+`enterDrawPlane` (`stashPose`+`faceView`, switch to draw) → `exitDrawPlane` (`unstashPose`);
+the draw constraint is `constrainDraw()` in `snapDrawPoint` + `DrawController.targetOf`.
 
 **Wave 3** — see plan §Wave 3.
 - **BOM** (`src/design/bom.ts`, pure, tested): wrapped-union material allowance (squish +

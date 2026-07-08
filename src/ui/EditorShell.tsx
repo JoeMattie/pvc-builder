@@ -32,6 +32,7 @@ import {
   deleteMembers,
   detachMemberEnd,
   dragNodeTo,
+  exitDrawPlane,
   finishFormed,
   finishPath,
   jointOrientationsOf,
@@ -41,6 +42,7 @@ import {
   placeDrawPoint,
   placeFormedPoint,
   placeMeasurePoint,
+  placePlanePoint,
   resetPivots,
   rotateMemberBy,
   selectMember,
@@ -165,6 +167,12 @@ export function EditorShell() {
     useAppStore.getState().setViewport({ tool, projection, drawSize });
   }, [tool, projection, drawSize, designId]);
 
+  // leaving the draw/plane tools while a draw plane is active exits plane mode
+  // (drops the plane + restores the camera)
+  useEffect(() => {
+    if (tool !== 'draw' && tool !== 'plane' && useEditorStore.getState().drawPlane) exitDrawPlane();
+  }, [tool]);
+
   const night = useThemeStore((s) => s.night);
   const toggleNight = useThemeStore((s) => s.toggleNight);
 
@@ -225,7 +233,8 @@ export function EditorShell() {
       }
 
       if (e.key === 'Escape' || e.key === 'Enter') {
-        if (editor.drawingFromNodeId) finishPath();
+        if (editor.drawPlane || editor.planeOrigin) exitDrawPlane();
+        else if (editor.drawingFromNodeId) finishPath();
         else if (editor.formedPoints.length) finishFormed();
         else if (editor.measureFrom || editor.measureAdjustId) {
           editor.setMeasureFrom(null);
@@ -246,6 +255,8 @@ export function EditorShell() {
         editor.setTool('formed');
       } else if (e.key === 'b' || e.key === 'B') {
         editor.setTool('bend');
+      } else if (e.key === 'f' || e.key === 'F') {
+        editor.setTool('plane');
       } else if (e.key === 't' || e.key === 'T') {
         editor.setTool('measure');
       } else if (e.key === 'r' || e.key === 'R') {
@@ -315,8 +326,9 @@ export function EditorShell() {
         lengthM: memberLengthM(d, m),
       }));
     };
-    hook.setTool = (tool: 'select' | 'draw' | 'formed' | 'move' | 'rotate' | 'measure' | 'bend') =>
-      useEditorStore.getState().setTool(tool);
+    hook.setTool = (
+      tool: 'select' | 'draw' | 'formed' | 'move' | 'rotate' | 'measure' | 'bend' | 'plane',
+    ) => useEditorStore.getState().setTool(tool);
     hook.setProjection = (p: 'ortho' | 'perspective') => useEditorStore.getState().setProjection(p);
     hook.setView = (name: ViewName) => setView(name);
     hook.setDrawSize = (size: '1/2"' | '3/4"') => useEditorStore.getState().setDrawSize(size);
@@ -336,6 +348,9 @@ export function EditorShell() {
       bendMemberAt(memberId, t, perpOffset);
     hook.moveControlPoint = (memberId: string, index: number, raw: Vec3) =>
       moveFormedControlPoint(memberId, index, raw);
+    hook.plane = (raw: Vec3) => placePlanePoint(raw);
+    hook.getDrawPlane = () => useEditorStore.getState().drawPlane;
+    hook.exitDrawPlane = () => exitDrawPlane();
     hook.selectMember = (id: string) => selectMember(id);
     hook.selectJoint = (id: string | null) => useEditorStore.getState().selectJoint(id);
     hook.clearSelection = () => clearSelection();

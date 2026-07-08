@@ -59,6 +59,7 @@ import type {
 import { pipeSpec } from '../schema';
 import { solve } from '../solver';
 import { useAppStore } from './appStore';
+import { faceView, stashPose, unstashPose } from './cameraStore';
 import { useEditorStore } from './editorStore';
 
 const IDENTITY_Q: Quaternion = { x: 0, y: 0, z: 0, w: 1 };
@@ -84,6 +85,15 @@ const MIN_MEMBER_LEN_M = 0.0254;
 /** Nothing can be drawn, placed, or dragged below the ground plane (y = 0). */
 function clampGround(p: Vec3): Vec3 {
   return p.y < 0 ? { x: p.x, y: 0, z: p.z } : p;
+}
+
+/** When a draw plane is active, constrain a point onto it (so drawing — even a
+ * snap to an off-plane node — stays in the plane), then keep it above ground. */
+function constrainDraw(p: Vec3): Vec3 {
+  const dp = useEditorStore.getState().drawPlane;
+  if (!dp) return clampGround(p);
+  const d = dot(sub(p, dp.origin), dp.normal);
+  return clampGround(sub(p, scale(dp.normal, d)));
 }
 
 /** Snap tolerances derived from the live snap-pill settings. Ends (nodes) and
@@ -158,7 +168,7 @@ export function snapDrawPoint(raw: Vec3, lockAxis = false): SnapResult {
     }
     const { position, dir } = lockToNearestDirection(ctx.fromNode, raw, ctx.gridStepM, extra);
     const axis = nearestAxisKey(dir);
-    const clamped = clampGround(position);
+    const clamped = constrainDraw(position);
     return {
       position: clamped,
       kind: `axis-${axis}` as SnapResult['kind'],
@@ -166,7 +176,7 @@ export function snapDrawPoint(raw: Vec3, lockAxis = false): SnapResult {
     };
   }
   const snap = snapPoint(raw, ctx);
-  return { ...snap, position: clampGround(snap.position) };
+  return { ...snap, position: constrainDraw(snap.position) };
 }
 
 /** Place the next draw point (pen click): start a path, extend it, or join an
@@ -561,6 +571,66 @@ export function deleteMeasurement(id: string): void {
   useAppStore.getState().updateCurrent((d) => removeMeasurement(d, id));
   const editor = useEditorStore.getState();
   if (editor.selectedMeasurementId === id) editor.selectMeasurement(null);
+}
+
+// ── draw-on-plane tool ──────────────────────────────────────────────────────
+
+/** Snap a plane-setup point (to ends + along pipes), clamped to the ground. */
+export function snapPlanePoint(raw: Vec3): SnapResult {
+  const design = useAppStore.getState().current;
+  const snap = snapPoint(raw, {
+    nodes: design ? design.nodes.map((n) => ({ id: n.id, position: n.position })) : [],
+    segments: design ? segmentsOf(design) : [],
+    fromNode: undefined,
+    ...snapTol(),
+  });
+  return { ...snap, position: clampGround(snap.position) };
+}
+
+/** The vertical draw plane's normal, from the cursor direction relative to the
+ * origin snapped to the nearest cardinal (±X / ±Z). The plane contains that
+ * horizontal direction and the Y (up) axis — so you draw "up a wall". */
+export function planeNormalFromCursor(origin: Vec3, cursor: Vec3): Vec3 {
+  const h = { x: cursor.x - origin.x, y: 0, z: cursor.z - origin.z };
+  // snap the in-plane direction to ±X or ±Z, whichever the cursor runs most along
+  const dir =
+    Math.abs(h.x) >= Math.abs(h.z)
+      ? { x: Math.sign(h.x) || 1, y: 0, z: 0 }
+      : { x: 0, y: 0, z: Math.sign(h.z) || 1 };
+  // normal = horizontal, perpendicular to that direction
+  return dir.x !== 0 ? { x: 0, y: 0, z: 1 } : { x: 1, y: 0, z: 0 };
+}
+
+/** Enter draw-on-plane mode: stash the camera, flip it to face the plane, and
+ * switch to the draw tool constrained to the plane. */
+function enterDrawPlane(origin: Vec3, normal: Vec3): void {
+  const editor = useEditorStore.getState();
+  editor.setDrawPlane({ origin, normal });
+  editor.setPlaneOrigin(null);
+  stashPose();
+  faceView([origin.x, origin.y, origin.z], [normal.x, normal.y, normal.z]);
+  editor.setTool('draw');
+}
+
+/** Exit draw-on-plane mode: drop the plane + restore the previous camera. */
+export function exitDrawPlane(): void {
+  const editor = useEditorStore.getState();
+  if (!editor.drawPlane && !editor.planeOrigin) return;
+  editor.setDrawPlane(null);
+  editor.setPlaneOrigin(null);
+  editor.setDrawingFrom(null);
+  unstashPose();
+}
+
+/** A plane-tool click: 1st sets the origin; 2nd sets the angle + enters mode. */
+export function placePlanePoint(raw: Vec3): void {
+  const editor = useEditorStore.getState();
+  const snap = snapPlanePoint(raw);
+  if (!editor.planeOrigin) {
+    editor.setPlaneOrigin(snap.position);
+    return;
+  }
+  enterDrawPlane(editor.planeOrigin, planeNormalFromCursor(editor.planeOrigin, snap.position));
 }
 
 // ── joints (right-click a pipe join → wrapped / free / anchor) ──────────────
