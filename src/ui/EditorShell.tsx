@@ -278,8 +278,7 @@ export function EditorShell() {
       return d ? exportDesignJson(d) : null;
     };
     hook.importJson = (text: string) => useAppStore.getState().importAndOpen(text);
-    hook.setFabricationSolved = (on: boolean) =>
-      useEditorStore.getState().setFabricationSolved(on);
+    hook.setFabricationSolved = (on: boolean) => useEditorStore.getState().setFabricationSolved(on);
     // physics seams
     hook.setSimulating = (on: boolean) => useEditorStore.getState().setSimulating(on);
     hook.getPhysics = () => physicsNodePositions();

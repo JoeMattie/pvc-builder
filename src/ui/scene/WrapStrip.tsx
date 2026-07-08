@@ -1,15 +1,32 @@
-// Renders a heat-wrap strip (the smooth single-turn helix from buildWrapMesh) as
-// a reusable r3f mesh: one <bufferGeometry> object created once by r3f and
-// refilled each eased frame (position + computeVertexNormals) so it glides
-// without leaking geometry. Shared by WrapLayer (tee wraps) and PivotLayer
-// (pivot joints rendered as wrapped swivels).
+// Renders a heat-wrap slip-saddle fitting (the composed primitives from
+// buildWrapMesh) as a molded PVC body: collar sleeve + branch socket boss +
+// blend, plus optional set-screw discs. Shared by WrapLayer (tee wraps) and
+// PivotLayer (pivot joints rendered as wrapped swivels).
 import type { ThreeEvent } from '@react-three/fiber';
-import { useLayoutEffect, useRef } from 'react';
-import { type BufferGeometry, Float32BufferAttribute } from 'three';
-import { orientY } from './axis';
-import type { WrapMesh } from './wrapMesh';
+import { orientY, placeAxis } from './axis';
+import type { WrapCyl, WrapMesh } from './wrapMesh';
 
-const SCREW_COLOR = '#4b5563'; // steel screw head
+const SCREW_COLOR = '#4b5563'; // steel set screw
+
+function Cyl({
+  c,
+  color,
+  onClick,
+}: {
+  c: WrapCyl;
+  color: string;
+  onClick?: (e: ThreeEvent<MouseEvent>) => void;
+}) {
+  const placed = placeAxis(c.a, c.b);
+  if (!placed) return null;
+  return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: r3f <mesh> is a scene node, not a DOM element
+    <mesh position={placed.mid} quaternion={placed.quat} castShadow onClick={onClick}>
+      <cylinderGeometry args={[c.radiusM, c.radiusM, placed.len, 24]} />
+      <meshPhysicalMaterial color={color} roughness={0.4} metalness={0} clearcoat={0.45} />
+    </mesh>
+  );
+}
 
 export function WrapStrip({
   mesh,
@@ -22,29 +39,32 @@ export function WrapStrip({
   selected?: boolean;
   onClick?: (e: ThreeEvent<MouseEvent>) => void;
 }) {
-  const geoRef = useRef<BufferGeometry>(null);
-  useLayoutEffect(() => {
-    const g = geoRef.current;
-    if (!g) return;
-    g.setAttribute('position', new Float32BufferAttribute(mesh.positions, 3));
-    g.setIndex(mesh.indices);
-    g.computeVertexNormals();
-    g.computeBoundingSphere();
-  });
+  const bodyColor = selected ? '#2a78d6' : color;
   return (
     <group>
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: r3f <mesh> is a scene node, not a DOM element */}
-      <mesh castShadow onClick={onClick}>
-        <bufferGeometry ref={geoRef} />
-        <meshPhysicalMaterial
-          color={color}
-          roughness={0.42}
-          clearcoat={0.35}
-          side={2}
-          emissive={selected ? '#2a78d6' : '#000000'}
-          emissiveIntensity={selected ? 0.3 : 0}
-        />
-      </mesh>
+      {mesh.prims.map((p, i) =>
+        p.kind === 'cylinder' ? (
+          // biome-ignore lint/suspicious/noArrayIndexKey: primitives are positional per fitting
+          <Cyl key={i} c={p} color={bodyColor} onClick={onClick} />
+        ) : (
+          // biome-ignore lint/a11y/noStaticElementInteractions: r3f <mesh> is a scene node, not a DOM element
+          <mesh
+            // biome-ignore lint/suspicious/noArrayIndexKey: primitives are positional per fitting
+            key={i}
+            position={[p.center.x, p.center.y, p.center.z]}
+            castShadow
+            onClick={onClick}
+          >
+            <sphereGeometry args={[p.radiusM, 24, 18]} />
+            <meshPhysicalMaterial
+              color={bodyColor}
+              roughness={0.4}
+              metalness={0}
+              clearcoat={0.45}
+            />
+          </mesh>
+        ),
+      )}
       {mesh.screws.map((s, i) => (
         <mesh
           // biome-ignore lint/suspicious/noArrayIndexKey: screws are positional per wrap

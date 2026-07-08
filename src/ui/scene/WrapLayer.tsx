@@ -14,8 +14,8 @@ import { selectMember } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
-import { buildWrapMesh } from './wrapMesh';
 import { WrapStrip } from './WrapStrip';
+import { buildWrapMesh } from './wrapMesh';
 
 /** Skip past this many members (matches the fitting layer). */
 const MAX_WRAP_MEMBERS = 200;

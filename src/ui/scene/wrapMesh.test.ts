@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { length } from '../../geometry/math3';
+import { length, sub } from '../../geometry/math3';
 import type { Vec3 } from '../../schema';
-import { buildWrapMesh, type WrapInput } from './wrapMesh';
+import { buildWrapMesh, type WrapCyl, type WrapInput } from './wrapMesh';
 
 const V = (x: number, y: number, z: number): Vec3 => ({ x, y, z });
 
@@ -14,36 +14,28 @@ const base: WrapInput = {
   rigid: true,
 };
 
-describe('buildWrapMesh', () => {
-  it('sweeps a closed strip mesh that hugs the through pipe', () => {
+const cyls = (m: { prims: Array<{ kind: string }> }): WrapCyl[] =>
+  m.prims.filter((p): p is WrapCyl => p.kind === 'cylinder');
+
+describe('buildWrapMesh (slip saddle fitting)', () => {
+  it('composes a collar + branch socket boss + a blend body', () => {
     const m = buildWrapMesh(base)!;
-    expect(m.positions.length % 3).toBe(0);
-    const verts = m.positions.length / 3;
-    expect(verts).toBeGreaterThan(100); // a smooth helix, not a few facets
-    expect(m.indices.length % 3).toBe(0);
-    // every vertex sits within [rt, rt + branchOD] of the wrap point radially in
-    // the plane ⟂ the run (so the strip hugs the pipe, not floating off)
+    expect(cyls(m).length).toBeGreaterThanOrEqual(3); // collar + boss + bell lips
+    expect(m.prims.some((p) => p.kind === 'sphere')).toBe(true); // blend body
+  });
+
+  it('the collar is coaxial with the run and slips OVER it', () => {
+    const m = buildWrapMesh(base)!;
     const rt = base.through.odM / 2;
-    for (let i = 0; i < m.positions.length; i += 3) {
-      const p = V(m.positions[i]!, m.positions[i + 1]!, m.positions[i + 2]!);
-      const radial = length(V(0, p.y, p.z)); // ⟂ the +X run
-      expect(radial).toBeGreaterThan(rt - 1e-6);
-      expect(radial).toBeLessThan(rt + base.branchODM);
-    }
+    // the longest cylinder is the collar sleeve
+    const collar = cyls(m).sort((a, b) => length(sub(b.b, b.a)) - length(sub(a.b, a.a)))[0]!;
+    const dir = sub(collar.b, collar.a);
+    expect(Math.abs(dir.x)).toBeGreaterThan(0); // along the run (+X)
+    expect(Math.abs(dir.z)).toBeCloseTo(0, 6);
+    expect(collar.radiusM).toBeGreaterThan(rt); // encircles the run pipe
   });
 
-  it('wraps a full turn (vertices appear on both sides of the pipe)', () => {
-    const m = buildWrapMesh(base)!;
-    let front = false;
-    let back = false;
-    for (let i = 0; i < m.positions.length; i += 3) {
-      if (m.positions[i + 2]! > 0.005) front = true; // +Z (branch side)
-      if (m.positions[i + 2]! < -0.005) back = true; // −Z (far side)
-    }
-    expect(front && back).toBe(true);
-  });
-
-  it('rigid wraps get screw discs; pivot wraps drop them', () => {
+  it('rigid gets set screws; pivot drops them', () => {
     expect(buildWrapMesh({ ...base, rigid: true })!.screws.length).toBe(2);
     expect(buildWrapMesh({ ...base, rigid: false })!.screws.length).toBe(0);
   });

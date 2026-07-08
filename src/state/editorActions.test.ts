@@ -140,8 +140,7 @@ describe('snap settings + Shift-draw-lock', () => {
     // cursor runs roughly perpendicular to that segment → Shift locks the turn
     const r = snapDrawPoint(V(0.45, 0, 0.16), true);
     const from = V(0.3, 0, 0.3);
-    const along =
-      (r.position.x - from.x) * Math.SQRT1_2 + (r.position.z - from.z) * Math.SQRT1_2;
+    const along = (r.position.x - from.x) * Math.SQRT1_2 + (r.position.z - from.z) * Math.SQRT1_2;
     expect(Math.abs(along)).toBeLessThan(1e-6); // exactly ⟂ the previous segment
   });
 

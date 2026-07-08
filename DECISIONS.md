@@ -38,7 +38,20 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
   fixed. The physical heat-wrap-swivel axis nuance is a modelling follow-up.
   `WrapLayer`'s renderer was extracted into `WrapStrip` and shared here.
 
-## Smooth heat-wrapped tee — helical strip (2026-07-07)
+## Heat-wrapped tee → molded slip saddle fitting (2026-07-07)
+
+- **The wrap now renders as a molded slip saddle fitting, not a wrapped strip.**
+  Per feedback ("smoothly transition into a slip fitting drawn around the
+  intersecting pipe"), `buildWrapMesh` returns composed primitives in the same
+  style as the socket fittings (`fittingMesh.ts`): a **collar sleeve** that slips
+  over/around the through pipe (radius = OD/2 × 1.3, with bell lips), a **branch
+  socket boss** the branch pipe slides into, and a **blend sphere** at the crotch
+  so the branch flows smoothly into the collar. `WrapStrip` now renders those
+  cylinders + spheres in molded PVC (replacing the swept-helix bufferGeometry);
+  rigid wraps keep two set-screw discs, pivots are accent-tinted. Both the tee
+  wraps (WrapLayer) and the pivot swivels (PivotLayer) get the fitting look.
+
+## Smooth heat-wrapped tee — helical strip (superseded) (2026-07-07)
 
 - **The wrap is now a smooth strip swept once around the through pipe** instead
   of the faceted band. `buildWrapMesh` returns a triangle mesh (positions +

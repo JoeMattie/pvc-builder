@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Vec3 } from '../schema';
 import { dot, normalize, sub } from '../geometry/math3';
+import type { Vec3 } from '../schema';
 import {
   closestAxisPointToRay,
   lengthFromGrabDrag,

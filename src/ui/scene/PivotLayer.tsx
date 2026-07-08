@@ -7,7 +7,7 @@
 import type { ThreeEvent } from '@react-three/fiber';
 import { canPivot, memberById, nodeById } from '../../design/docOps';
 import { add, normalize, scale, sub } from '../../geometry/math3';
-import { pipeSpec, type Pivot, type Vec3 } from '../../schema';
+import { type Pivot, pipeSpec, type Vec3 } from '../../schema';
 import { easedPos, useAnim } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
 import { createPivotAt } from '../../state/editorActions';
@@ -15,8 +15,8 @@ import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
 import { orientY, placeAxis } from './axis';
-import { buildWrapMesh } from './wrapMesh';
 import { WrapStrip } from './WrapStrip';
+import { buildWrapMesh } from './wrapMesh';
 
 const EXTENSION_M = 0.0254; // 1" of receiving pipe past an endpoint pivot
 
@@ -77,7 +77,11 @@ function PivotWrap({
             <meshPhysicalMaterial color={pvc} roughness={0.38} clearcoat={0.5} />
           </mesh>
           {/* PVC endcap retaining ring at the stub end */}
-          <mesh position={[stubEnd.x, stubEnd.y, stubEnd.z]} quaternion={orientY(outward)} castShadow>
+          <mesh
+            position={[stubEnd.x, stubEnd.y, stubEnd.z]}
+            quaternion={orientY(outward)}
+            castShadow
+          >
             <cylinderGeometry args={[odRecv * 0.66, odRecv * 0.66, odRecv * 0.5, 20]} />
             <meshPhysicalMaterial color={pvc} roughness={0.38} clearcoat={0.5} />
           </mesh>

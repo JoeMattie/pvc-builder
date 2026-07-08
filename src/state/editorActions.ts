@@ -27,7 +27,6 @@ import {
   lockToNearestDirection,
   nearestAxisKey,
 } from '../design/dragMath';
-import { dot, length, normalize, scale, sub } from '../geometry/math3';
 import { MIN_BEND_RADIUS_FACTOR } from '../design/formed';
 import {
   AXIS_BAND_M,
@@ -36,6 +35,7 @@ import {
   type SnapResult,
   snapPoint,
 } from '../design/snapping';
+import { dot, length, normalize, scale, sub } from '../geometry/math3';
 import type { Design, Vec3 } from '../schema';
 import { pipeSpec } from '../schema';
 import { solve } from '../solver';
