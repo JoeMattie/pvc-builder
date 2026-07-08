@@ -301,9 +301,13 @@ export function finishFormed(): void {
   const controls = pts.slice(1, -1);
   const fillet = MIN_BEND_RADIUS_FACTOR * pipeSpec(size).odM;
   const filletRadiiM = controls.map(() => fillet);
+  // reconcile so a curve whose ends land on a run auto-form on-body unions and
+  // any coincident nodes de-duplicate — a curve joins pipes just like a pipe does
   useAppStore
     .getState()
-    .updateCurrent((d) => addFormedMember(d, a, b, controls, size, filletRadiiM).design);
+    .updateCurrent((d) =>
+      reconcileBodyJoints(addFormedMember(d, a, b, controls, size, filletRadiiM).design),
+    );
   editor.clearFormedPoints();
 }
 

@@ -82,6 +82,31 @@ describe('healBodyJoints', () => {
     });
   });
 
+  it('unions a FORMED (curve) branch end sitting on a straight run', () => {
+    // a straight run + a formed pipe whose end lands on the run's span
+    const d = createEmptyDesign('d', 'CurveHeal');
+    d.nodes.push(
+      { id: 'r0', position: V(-0.3, 0, 0) },
+      { id: 'r1', position: V(0.3, 0, 0) },
+      { id: 'cf', position: V(0, 0, 0.3) },
+      { id: 'cn', position: V(0, 0, 0) }, // curve end on the run span
+    );
+    d.members.push(
+      { id: 'run', kind: 'straight', nodeA: 'r0', nodeB: 'r1', size: '3/4"' },
+      {
+        id: 'curve',
+        kind: 'formed',
+        nodeA: 'cf',
+        nodeB: 'cn',
+        controlPoints: [V(0.1, 0, 0.15)],
+        size: '3/4"',
+      },
+    );
+    const healed = healBodyJoints(d);
+    expect(healed.joints).toHaveLength(1);
+    expect(healed.joints[0]).toMatchObject({ receiver: 'run', mover: 'curve', onBody: true });
+  });
+
   it('is idempotent (no duplicate union) and leaves a real end alone', () => {
     const once = healBodyJoints(branchOnRun(V(0, 0, 0), V(0, 0, 0.3)));
     const twice = healBodyJoints(once);

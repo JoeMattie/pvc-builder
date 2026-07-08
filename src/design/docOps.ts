@@ -643,8 +643,11 @@ export function dedupeJoints(design: Design): Design {
  * and the import path pass through to collapse swapped/duplicate joint pairs. */
 export function healBodyJoints(design: Design): Design {
   let d = design;
+  // any member's clean end — straight OR formed (curve) — that lands on a straight
+  // run's span gets an on-body union, so curves join runs just like regular pipes.
+  // The RUN (receiver) must be straight (throughMemberAt enforces that); the branch
+  // (mover) may be either.
   for (const m of design.members) {
-    if (m.kind !== 'straight') continue;
     for (const nodeId of [m.nodeA, m.nodeB]) {
       // only a clean branch END (one incident member) with no existing union
       if (incidentMembers(d, nodeId).length !== 1) continue;
