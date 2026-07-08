@@ -98,6 +98,7 @@ export function Scene() {
         key={projection}
         makeDefault
         enableDamping
+        zoomToCursor
         target={[0, 0, 0]}
         mouseButtons={{ MIDDLE: MOUSE.PAN, RIGHT: MOUSE.ROTATE }}
       />
