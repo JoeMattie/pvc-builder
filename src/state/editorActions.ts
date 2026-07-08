@@ -65,6 +65,11 @@ export function jointOrientationsOf(design: Design): Record<string, Quaternion> 
  * collapses to zero. */
 const MIN_MEMBER_LEN_M = 0.0254;
 
+/** Nothing can be drawn, placed, or dragged below the ground plane (y = 0). */
+function clampGround(p: Vec3): Vec3 {
+  return p.y < 0 ? { x: p.x, y: 0, z: p.z } : p;
+}
+
 /** Snap tolerances derived from the live snap-pill settings. Ends (nodes) and
  * along-pipe points toggle independently. */
 function snapTol(): Pick<SnapContext, 'gridStepM' | 'pointRadiusM' | 'pipeRadiusM' | 'axisBandM'> {
@@ -137,13 +142,15 @@ export function snapDrawPoint(raw: Vec3, lockAxis = false): SnapResult {
     }
     const { position, dir } = lockToNearestDirection(ctx.fromNode, raw, ctx.gridStepM, extra);
     const axis = nearestAxisKey(dir);
+    const clamped = clampGround(position);
     return {
-      position,
+      position: clamped,
       kind: `axis-${axis}` as SnapResult['kind'],
-      guide: { axis, from: ctx.fromNode, to: position },
+      guide: { axis, from: ctx.fromNode, to: clamped },
     };
   }
-  return snapPoint(raw, ctx);
+  const snap = snapPoint(raw, ctx);
+  return { ...snap, position: clampGround(snap.position) };
 }
 
 /** Place the next draw point (pen click): start a path, extend it, or join an
@@ -216,12 +223,13 @@ export function snapFormedPoint(raw: Vec3): SnapResult {
   const design = useAppStore.getState().current;
   const pts = useEditorStore.getState().formedPoints;
   const fromNode = pts.length ? pts[pts.length - 1] : undefined;
-  return snapPoint(raw, {
+  const snap = snapPoint(raw, {
     nodes: design ? design.nodes.map((n) => ({ id: n.id, position: n.position })) : [],
     segments: design ? segmentsOf(design) : [],
     fromNode,
     ...snapTol(),
   });
+  return { ...snap, position: clampGround(snap.position) };
 }
 
 /** Commit a point of the in-progress formed pipe. */
@@ -292,7 +300,7 @@ export function dragNodeTo(
       ...snapTol(),
     }).position;
   }
-  updateReconciled((d) => setNodePosition(d, nodeId, position));
+  updateReconciled((d) => setNodePosition(d, nodeId, clampGround(position)));
 }
 
 /** Resize a member by dragging one end's arrow along the pipe's own axis: move
@@ -318,7 +326,7 @@ export function dragMemberEndLength(
     grid,
     MIN_MEMBER_LEN_M,
   );
-  updateReconciled((d) => setNodePosition(d, movingNodeId, position));
+  updateReconciled((d) => setNodePosition(d, movingNodeId, clampGround(position)));
 }
 
 /** Set an exact length on a member (length editor). */

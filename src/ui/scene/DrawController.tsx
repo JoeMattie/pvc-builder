@@ -19,6 +19,7 @@ import {
 } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
+import { scenePalette } from '../theme';
 import { formatLengthDisplay } from '../units';
 import { placeAxis } from './axis';
 import { dominantAxisNormal, rayToGround, rayToPlane } from './ground';
@@ -196,6 +197,12 @@ export function DrawController() {
 
   return (
     <>
+      {/* subtle ground fill so the horizon reads as distinct from the sky; sits a
+          hair below y=0 to avoid z-fighting the grid + shadow catcher */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.002, 0]}>
+        <planeGeometry args={[400, 400]} />
+        <meshBasicMaterial color={scenePalette(night).ground} />
+      </mesh>
       {/* full-bleed ground plane: catches shadows and is the pointer target */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
@@ -209,10 +216,10 @@ export function DrawController() {
 
       {showPreview && p && (
         <>
-          {/* pen marker */}
+          {/* pen marker — small + partially transparent */}
           <mesh position={[p.x, p.y, p.z]}>
-            <sphereGeometry args={[Math.max(odR * 1.2, 0.012), 16, 12]} />
-            <meshBasicMaterial color="#2a78d6" transparent opacity={0.85} />
+            <sphereGeometry args={[Math.max(odR * 0.95, 0.01), 16, 12]} />
+            <meshBasicMaterial color="#2a78d6" transparent opacity={0.55} />
           </mesh>
 
           {/* ghost of the segment about to be drawn + its length label */}
@@ -271,14 +278,14 @@ export function DrawController() {
         <>
           {formedPoints.map((cp) => (
             <mesh key={`${cp.x},${cp.y},${cp.z}`} position={[cp.x, cp.y, cp.z]}>
-              <sphereGeometry args={[Math.max(odR * 1.2, 0.012), 14, 10]} />
-              <meshBasicMaterial color="#2a78d6" />
+              <sphereGeometry args={[Math.max(odR * 0.95, 0.01), 14, 10]} />
+              <meshBasicMaterial color="#2a78d6" transparent opacity={0.75} />
             </mesh>
           ))}
           {p && (
             <mesh position={[p.x, p.y, p.z]}>
-              <sphereGeometry args={[Math.max(odR * 1.2, 0.012), 14, 10]} />
-              <meshBasicMaterial color="#2a78d6" transparent opacity={0.85} />
+              <sphereGeometry args={[Math.max(odR * 0.95, 0.01), 14, 10]} />
+              <meshBasicMaterial color="#2a78d6" transparent opacity={0.55} />
             </mesh>
           )}
           {formedPreview && formedPreview.length >= 2 && (

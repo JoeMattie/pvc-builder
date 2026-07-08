@@ -131,8 +131,9 @@ function MoveHandle({
         start(e);
       }}
     >
-      <sphereGeometry args={[radiusM, 16, 12]} />
-      <meshBasicMaterial color={dragging ? '#1d5fb8' : '#2a78d6'} />
+      {/* slightly smaller than the hit radius + partially transparent */}
+      <sphereGeometry args={[radiusM * 0.82, 16, 12]} />
+      <meshBasicMaterial color={dragging ? '#1d5fb8' : '#2a78d6'} transparent opacity={0.6} />
     </mesh>
   );
 }

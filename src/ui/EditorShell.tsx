@@ -167,7 +167,8 @@ export function EditorShell() {
         editor.setTool('draw');
       } else if (e.key === 'm' || e.key === 'M') {
         editor.setTool('move');
-      } else if (e.key === 'b' || e.key === 'B' || e.key === 'h' || e.key === 'H') {
+      } else if (e.key === 'c' || e.key === 'C') {
+        // the heat-formed spline tool, now labelled "Curve"
         editor.setTool('formed');
       } else if (e.key === 'r' || e.key === 'R') {
         resetPivots();
