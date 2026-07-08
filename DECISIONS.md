@@ -4,6 +4,33 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## CI deploys to Cloudflare Pages at pvc-builder.joemattie.com (2026-07-08)
+
+Mirrors riglab exactly. Hosting is Cloudflare Pages free tier (project
+`pvc-builder`, production URL https://pvc-builder.pages.dev), served at the
+custom domain **https://pvc-builder.joemattie.com** — static assets only, the
+only deployment shape the planfile permits. Deployment is a `deploy` job
+appended to `.github/workflows/ci.yml`: it runs only on pushes to `main`, only
+after the full `ci` job (typecheck + lint + test + build + Playwright e2e)
+passes, and it deploys the exact `dist/` artifact CI built and tested
+(uploaded/downloaded via actions artifacts) rather than rebuilding — so the
+deployed bytes are the verified bytes. Chose direct-upload via wrangler
+(pinned `wrangler@4.107.0`) over Cloudflare's Git integration so CI stays the
+single gate (the Git integration builds on Cloudflare's side and would deploy
+even when tests fail). CI node is 26 (matches local dev per CLAUDE.md; riglab
+used 22). PR preview deployments deliberately not added (scope).
+
+Auth is GitHub Actions secrets `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`.
+The subdomain was created via the Cloudflare API (no repo change; Vite
+`base: '/'` needs no change): a custom domain registered on the Pages project
+plus a proxied CNAME `pvc-builder → pvc-builder.pages.dev` in the joemattie.com
+zone. The Pages project + first deploy were done with a `wrangler login` OAuth
+token, but that token is `zone:read`-only and can't write DNS, so the CNAME +
+the CI secret use a dedicated Cloudflare API token (`Cloudflare Pages:Edit` +
+`Zone:DNS:Edit`, scoped to this account / the joemattie.com zone). Chose a
+subdomain over a joemattie.com path so app deploys stay decoupled from the
+blog's Worker. Both URLs serve the identical production deployment.
+
 ## Fitting choice is automatic — removed "Socket fitting / cut the run" (2026-07-08)
 
 Simplified the connection model to a single rule: **a manufactured rigid fitting
