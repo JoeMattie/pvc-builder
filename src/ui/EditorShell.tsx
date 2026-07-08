@@ -140,6 +140,7 @@ export function EditorShell() {
   // reset transient state — so a document opens exactly as it was saved and does
   // NOT inherit the previous document's camera / tool / size.
   const designId = useAppStore((s) => s.current?.id);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: designId is the intentional re-run trigger; the body reads fresh state via getState()
   useEffect(() => {
     const doc = useAppStore.getState().current;
     if (!doc) return;
