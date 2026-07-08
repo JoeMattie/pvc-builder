@@ -50,6 +50,9 @@ export function SelectionPanel() {
         </label>
         <span className="text-muted-foreground text-xs">{lengthUnit(units)}</span>
       </form>
+      <span className="hidden text-[11px] text-muted-foreground sm:inline">
+        drag arrows to resize · ends to move · Shift locks axis
+      </span>
       <div className="h-5 w-px bg-border" />
       <button
         type="button"

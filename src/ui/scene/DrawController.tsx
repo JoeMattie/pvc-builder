@@ -23,15 +23,18 @@ export function DrawController() {
   const tool = useEditorStore((s) => s.tool);
   const drawSize = useEditorStore((s) => s.drawSize);
   const drawingFromNodeId = useEditorStore((s) => s.drawingFromNodeId);
-  const design = useAppStore((s) => s.current);
   const night = useThemeStore((s) => s.night);
+  // Narrow selectors instead of subscribing to the whole document: while a
+  // node is being dragged in the select tool, `drawingFromNodeId` is null, so
+  // fromPos stays `undefined` and the document churn doesn't re-render this.
+  const fromPos = useAppStore((s) =>
+    s.current && drawingFromNodeId ? nodeById(s.current, drawingFromNodeId)?.position : undefined,
+  );
+  const units = useAppStore((s) => s.current?.unitsPreference ?? 'imperial');
   const [preview, setPreview] = useState<SnapResult | null>(null);
   const down = useRef<{ x: number; y: number } | null>(null);
 
-  const fromPos =
-    design && drawingFromNodeId ? nodeById(design, drawingFromNodeId)?.position : undefined;
   const odR = pipeSpec(drawSize).odM / 2;
-  const units = design?.unitsPreference ?? 'imperial';
 
   const onMove = (e: ThreeEvent<PointerEvent>) => {
     if (tool !== 'draw') return;

@@ -5,6 +5,7 @@ import { createEmptyDesign, type Vec3 } from '../schema';
 import { useAppStore } from './appStore';
 import {
   clearSelection,
+  dragMemberEndLength,
   dragNodeTo,
   finishPath,
   placeDrawPoint,
@@ -102,5 +103,31 @@ describe('select + edit integration', () => {
     expect(useEditorStore.getState().selectedIds).toEqual([id]);
     clearSelection();
     expect(useEditorStore.getState().selectedIds).toEqual([]);
+  });
+});
+
+describe('length arrows + Shift-lock', () => {
+  it('resizes a pipe along its own axis via the end arrow (opposite end fixed)', () => {
+    placeDrawPoint(V(0, 0, 0));
+    placeDrawPoint(V(0.3048, 0, 0)); // pipe A(0,0,0) → B(0.3048,0,0)
+    const m = design().members[0]!;
+    // drag B's arrow: fixed end = A, axis = +X, cursor off-axis at ~0.5 m
+    dragMemberEndLength(m.nodeB, V(0, 0, 0), V(1, 0, 0), V(0.5, 0, 0.2));
+    const b = design().nodes.find((n) => n.id === m.nodeB)!;
+    expect(b.position.x).toBeCloseTo(0.508, 6); // 0.5 → 20" grid
+    expect(b.position.z).toBeCloseTo(0, 9); // stays on the axis
+  });
+
+  it('locks a free move to the Z axis with Shift, anchored at drag start', () => {
+    placeDrawPoint(V(0, 0, 0));
+    placeDrawPoint(V(0.3048, 0, 0));
+    useEditorStore.getState().setTool('select');
+    const nodeB = design().members[0]!.nodeB;
+    const anchor = V(0.3048, 0, 0);
+    // cursor drifts mostly along +Z from the anchor → lock to Z, x unchanged
+    dragNodeTo(nodeB, V(0.42, 0, 0.31), { lockAxis: true, anchor });
+    const moved = design().nodes.find((n) => n.id === nodeB)!;
+    expect(moved.position.x).toBeCloseTo(0.3048, 9);
+    expect(moved.position.z).toBeCloseTo(0.3048, 6); // 0.31 → 12" grid
   });
 });

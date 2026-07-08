@@ -6,8 +6,6 @@ import {
   OrthographicCamera,
   PerspectiveCamera,
 } from '@react-three/drei';
-import { useAppStore } from '../../state/appStore';
-import { selectMember } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
@@ -27,11 +25,12 @@ const ORTHO_ZOOM = 230;
 /** Everything inside the Canvas: camera, studio lighting, ground grid + shadow
  * catcher, pipe meshes, the draw controller, and selection drag handles. */
 export function Scene() {
+  // Scene deliberately does NOT subscribe to the design document — the pipe and
+  // handle layers read it themselves. That keeps a drag (which mutates the doc
+  // every frame) from re-rendering the grid, gizmo, cameras, and lights.
   const projection = useEditorStore((s) => s.projection);
   const tool = useEditorStore((s) => s.tool);
-  const selectedIds = useEditorStore((s) => s.selectedIds);
   const night = useThemeStore((s) => s.night);
-  const design = useAppStore((s) => s.current);
   const pal = scenePalette(night);
 
   return (
@@ -56,7 +55,7 @@ export function Scene() {
         position={[6, 12, 8]}
         intensity={1.15}
         castShadow
-        shadow-mapSize={[2048, 2048]}
+        shadow-mapSize={[1024, 1024]}
         shadow-bias={-0.0002}
         shadow-camera-left={-4}
         shadow-camera-right={4}
@@ -80,13 +79,7 @@ export function Scene() {
         followCamera={false}
       />
 
-      {design && (
-        <PipeLayer
-          design={design}
-          selectedIds={selectedIds}
-          onSelect={tool === 'select' ? selectMember : undefined}
-        />
-      )}
+      <PipeLayer />
 
       {/* ground-plane pointer target + shadow catcher + draw preview */}
       <DrawController />

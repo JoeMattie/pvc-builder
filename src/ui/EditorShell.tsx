@@ -21,7 +21,11 @@ import { Viewport } from './scene/Viewport';
 /** The editor: the 3D viewport plus floating chrome — pillbox, selection
  * inspector, and the view / physics / theme toggles. */
 export function EditorShell() {
-  const design = useAppStore((s) => s.current);
+  // Narrow field subscriptions (not the whole document) so a drag — which
+  // mutates the doc every frame — doesn't re-render the chrome.
+  const hasDesign = useAppStore((s) => s.current !== null);
+  const designName = useAppStore((s) => s.current?.name ?? '');
+  const lengthsLocked = useAppStore((s) => s.current?.lengthsLocked ?? false);
   const closeProject = useAppStore((s) => s.closeProject);
   const updateCurrent = useAppStore((s) => s.updateCurrent);
   const undo = useAppStore((s) => s.undo);
@@ -33,7 +37,6 @@ export function EditorShell() {
   const night = useThemeStore((s) => s.night);
   const toggleNight = useThemeStore((s) => s.toggleNight);
 
-  const lengthsLocked = design?.lengthsLocked ?? false;
   const setLengthsLocked = (locked: boolean) =>
     updateCurrent((doc) => ({ ...doc, lengthsLocked: locked }));
 
@@ -123,7 +126,7 @@ export function EditorShell() {
     hook.dragNode = (id: string, raw: Vec3) => dragNodeTo(id, raw);
   }, []);
 
-  if (!design) return null;
+  if (!hasDesign) return null;
 
   return (
     <div className="relative h-full w-full overflow-hidden">
@@ -141,7 +144,7 @@ export function EditorShell() {
         </button>
         <div className="border-border bg-card flex items-center gap-2 rounded-lg border px-3 py-2 shadow-sm">
           <Box size={16} className="text-muted-foreground" />
-          <span className="text-sm font-medium">{design.name}</span>
+          <span className="text-sm font-medium">{designName}</span>
         </div>
       </div>
 

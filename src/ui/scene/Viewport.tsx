@@ -7,7 +7,9 @@ import { Scene } from './Scene';
 export function Viewport() {
   return (
     <Canvas
-      shadows
+      // 'percentage' = PCFShadowMap; the boolean/`'soft'` default is
+      // PCFSoftShadowMap, which three 0.185 warns is deprecated
+      shadows="percentage"
       dpr={[1, 2]}
       gl={{ antialias: true }}
       style={{ position: 'absolute', inset: 0 }}

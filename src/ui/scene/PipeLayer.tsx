@@ -2,7 +2,10 @@
 // clearcoat so white PVC reads as plastic (planfile §6), plus rounding spheres
 // at junctions. In the select tool, clicking a pipe selects its member.
 import type { ThreeEvent } from '@react-three/fiber';
-import type { Design } from '../../schema';
+import { useMemo } from 'react';
+import { useAppStore } from '../../state/appStore';
+import { selectMember } from '../../state/editorActions';
+import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
 import { placeAxis } from './axis';
@@ -46,19 +49,17 @@ function Pipe({
   );
 }
 
-export function PipeLayer({
-  design,
-  selectedIds,
-  onSelect,
-}: {
-  design: Design;
-  selectedIds: string[];
-  /** provided only when the select tool is active (enables click-to-select) */
-  onSelect?: (memberId: string) => void;
-}) {
+/** Renders the current design's pipe. Subscribes to the document itself (not
+ * via Scene) so drags only re-render this layer, not the whole scene. */
+export function PipeLayer() {
+  const design = useAppStore((s) => s.current);
+  const selectedIds = useEditorStore((s) => s.selectedIds);
+  const tool = useEditorStore((s) => s.tool);
   const night = useThemeStore((s) => s.night);
   const color = scenePalette(night).pvc;
-  const model = buildPipeModel(design);
+  const model = useMemo(() => (design ? buildPipeModel(design) : null), [design]);
+  if (!model) return null;
+  const onSelect = tool === 'select' ? selectMember : undefined;
   const selected = new Set(selectedIds);
 
   return (

@@ -11,6 +11,7 @@ import {
   setNodePosition,
   startPath,
 } from '../design/docOps';
+import { lockToNearestAxis, projectLengthOnAxis } from '../design/dragMath';
 import {
   defaultSnapTolerances,
   type SnapContext,
@@ -20,6 +21,10 @@ import {
 import type { Design, Vec3 } from '../schema';
 import { useAppStore } from './appStore';
 import { useEditorStore } from './editorStore';
+
+/** Shortest pipe a length drag can leave (one grid step), so a pipe never
+ * collapses to zero. */
+const MIN_MEMBER_LEN_M = 0.0254;
 
 function segmentsOf(design: Design, excludeNode?: string): SnapContext['segments'] {
   const out: SnapContext['segments'] = [];
@@ -103,20 +108,47 @@ export function clearSelection(): void {
   useEditorStore.getState().setSelection([]);
 }
 
-/** Drag a node to a new ground point, snapping to other geometry (the dragged
- * node is excluded from its own snap targets). */
-export function dragNodeTo(nodeId: string, raw: Vec3): void {
+/** Free move of a node to a ground point (the endpoint grab handle). Snaps to
+ * other geometry (the dragged node is excluded from its own snap targets).
+ * With `opts.lockAxis`, the move is constrained to whichever world axis it runs
+ * most along, anchored at `opts.anchor` (the node's position when the drag
+ * began) — the Shift behaviour. */
+export function dragNodeTo(
+  nodeId: string,
+  raw: Vec3,
+  opts?: { lockAxis?: boolean; anchor?: Vec3 },
+): void {
   const design = useAppStore.getState().current;
   if (!design) return;
-  const snap = snapPoint(raw, {
-    nodes: design.nodes
-      .filter((n) => n.id !== nodeId)
-      .map((n) => ({ id: n.id, position: n.position })),
-    segments: segmentsOf(design, nodeId),
-    fromNode: undefined,
-    ...defaultSnapTolerances(),
-  });
-  useAppStore.getState().updateCurrent((d) => setNodePosition(d, nodeId, snap.position));
+  let position: Vec3;
+  if (opts?.lockAxis && opts.anchor) {
+    position = lockToNearestAxis(opts.anchor, raw, defaultSnapTolerances().gridStepM).position;
+  } else {
+    position = snapPoint(raw, {
+      nodes: design.nodes
+        .filter((n) => n.id !== nodeId)
+        .map((n) => ({ id: n.id, position: n.position })),
+      segments: segmentsOf(design, nodeId),
+      fromNode: undefined,
+      ...defaultSnapTolerances(),
+    }).position;
+  }
+  useAppStore.getState().updateCurrent((d) => setNodePosition(d, nodeId, position));
+}
+
+/** Resize a member by dragging one end's arrow along the pipe's own axis: move
+ * `movingNodeId` along `axisDir` (unit, pointing away from `fixedEnd`) to the
+ * cursor's projection, grid-quantized and clamped. `fixedEnd` and `axisDir`
+ * are captured when the drag begins so the axis stays fixed as the end moves. */
+export function dragMemberEndLength(
+  movingNodeId: string,
+  fixedEnd: Vec3,
+  axisDir: Vec3,
+  raw: Vec3,
+): void {
+  const grid = defaultSnapTolerances().gridStepM;
+  const { position } = projectLengthOnAxis(fixedEnd, axisDir, raw, grid, MIN_MEMBER_LEN_M);
+  useAppStore.getState().updateCurrent((d) => setNodePosition(d, movingNodeId, position));
 }
 
 /** Set an exact length on a member (length editor). */

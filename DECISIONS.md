@@ -33,6 +33,22 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 - **Click vs orbit-drag** is disambiguated by pointer travel (< 6 px screen =
   place a point; more = the OrbitControls drag). Endpoint drags suspend
   OrbitControls and batch into one undo step via `begin/endGesture`.
+- **Direct-manipulation resize (revised):** a selected pipe shows two kinds of
+  handles at each end — an outward **length arrow** (cone) that resizes along
+  the pipe's own axis (opposite end fixed, grid-snapped, live label), and an
+  **endpoint grab sphere** that free-moves the junction on the ground, with
+  **Shift to lock to a world axis**. The drag math is pure/tested
+  (`design/dragMath.ts`: `projectLengthOnAxis`, `lockToNearestAxis`); the
+  numeric length field stays as the precise alternative.
+- **Drag performance:** the scene graph must not re-render on every drag frame.
+  `Scene` does NOT subscribe to the document; `PipeLayer`/`SelectionHandles`/
+  `DrawController` read it (or narrow slices) themselves, and `EditorShell`
+  subscribes to fields (name/lengthsLocked), so a drag only re-renders the pipe
+  + handle layers, not the grid/gizmo/cameras/lights. Shadow map is 1024² and
+  the Canvas uses `shadows="percentage"` (PCFShadowMap) — avoids three 0.185's
+  `PCFSoftShadowMap` deprecation warning and is cheaper. (The remaining
+  `THREE.Clock` deprecation is emitted inside @react-three/fiber's loop, not our
+  code.)
 - **Pipe material** is `meshPhysicalMaterial` (white PVC, roughness 0.38, faint
   clearcoat). Cylinders at true OD from `PipeSpec`; a rounding sphere at each
   junction sized to the thickest incident member.

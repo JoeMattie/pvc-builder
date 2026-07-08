@@ -24,3 +24,11 @@ export function placeAxis(a: Vec3, b: Vec3): AxisPlacement | null {
     len,
   };
 }
+
+/** Quaternion rotating a +Y-aligned primitive (e.g. a cone tip) to point along
+ * `dir`. */
+export function orientY(dir: Vec3): ThreeQuat {
+  const d = new Vector3(dir.x, dir.y, dir.z);
+  if (d.lengthSq() < 1e-12) return new ThreeQuat();
+  return new ThreeQuat().setFromUnitVectors(WORLD_UP, d.normalize());
+}
