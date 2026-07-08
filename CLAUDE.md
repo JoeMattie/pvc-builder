@@ -4,15 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-**Phases 0–4 are complete.** The Vite/React/TS app scaffold is up; you can draw straight pipe
-(SketchUp-style snapping/inference, PBR pipe at true OD, select + drag endpoints, edit exact lengths),
-the correct SCH 40 fitting is inferred and drawn at each joint (`resolveFittings` + procedural meshes)
-with conflicts flagged, draw **formed (heat-bent) pipe** as smooth splines (developed length + bend
-schedule + min-bend-radius) with overlapping members outlined red, and add **pivots**: with lengths
-locked, the `solve()` boundary runs deterministic kinematics (FK + IK) so pivots articulate via angle
-sliders and drag-to-rotate while preserving every member length, with a mobility readout. **Note the
-solver is closed-form kinematics, not CrashCat** — see DECISIONS.md. The next work is **Phase 5**
-(BOM/cut-list + examples + JSON export/import + Playwright smoke). The authoritative spec is
+**All planned phases (0–5) are complete.** The Vite/React/TS app: draw straight pipe (SketchUp-style
+snapping/inference, PBR pipe at true OD, select + drag endpoints, edit exact lengths); SCH 40 fittings
+inferred and drawn at each joint (`resolveFittings` + procedural meshes) with conflicts flagged; draw
+**formed (heat-bent) pipe** as smooth splines (developed length + bend schedule + min-bend-radius) with
+overlapping members outlined red; **pivots** with a locked-length `solve()` boundary running
+deterministic kinematics (FK + IK) — articulate via sliders + drag-to-rotate, lengths preserved, with a
+mobility readout; a **BOM/cut-list** with socket take-offs + CSV; JSON export/import; bundled examples;
+and a Playwright smoke on the built app. **The solver is closed-form kinematics, not CrashCat** — see
+DECISIONS.md. Fitting take-off constants and reducer take-offs are documented estimates to replace with
+manufacturer tables. Future work lives in the planfile's spirit, not a fixed phase list. The
+authoritative spec is
 `docs/planfiles/PLANFILE-pvc-builder.md` — read the relevant section before each phase; it defines the
 product, domain model, phased build plan, and acceptance criteria. `DECISIONS.md` logs choices already
 made (newest first) — check it before revisiting a decision.

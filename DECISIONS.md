@@ -4,6 +4,32 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Phase 5 — BOM + examples + export/import + smoke (2026-07-07)
+
+- **`bom(design)` is pure** (`design/bom.ts`): per-pipe cut length =
+  centre-to-centre span − each end's fitting take-off; fitting counts by
+  type + sizes (reducing flagged); formed pipes use developed length as the
+  span + report the bend schedule; total pipe by size. Hand-rolled CSV.
+- **Fitting take-off = max(0, centre-to-face − socket depth)**, with
+  centre-to-face as **documented per-type ÷OD estimates** (elbow/tee/cross ≈
+  1.2×OD, elbow45 ≈ 0.95×OD; couplings/reducers ≈ 0, butt at the centre). These
+  are placeholders to replace with Spears/manufacturer SCH 40 take-off tables —
+  the cut-list math is exact for whatever the constants are, and that's what the
+  tests cover.
+- **Export/import** reuse the Phase 0 `exportImport` (validate on the way out,
+  migrate+validate on the way in). `importAndOpen` gives the imported design a
+  fresh id so it never clobbers an existing project. `downloadFile` is a
+  user-initiated client blob (no network). BomPanel offers CSV download.
+- **Bundled examples** (generic subjects): Articulated arm (3 links + 2 pivots
+  — pose it with the locked-length solver), Cube frame (12 pipes, corner
+  conflicts flagged), and the earlier T-rex wireframe. Generated in
+  `examples/generators.ts`.
+- **Playwright smoke** (`e2e/smoke.spec.ts` + `playwright.config.ts`) runs
+  against the **built** app via `window.__pvc` — draw → fittings → BOM → JSON
+  round-trip (geometry byte-identical) → pivot 1-DOF, asserting a clean console.
+  `e2e/` is excluded from Biome (browser globals + harness). `npm run e2e`
+  builds + previews + drives chromium.
+
 ## Phase 4 — Pivots + locked-length physics (2026-07-07)
 
 - **Physics is deterministic kinematics, not CrashCat.** CrashCat exists on npm

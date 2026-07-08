@@ -1,9 +1,23 @@
-import { Box, ChevronLeft, Lock, LockOpen, Moon, Redo2, Sun, Undo2 } from 'lucide-react';
-import { useEffect } from 'react';
+import {
+  Box,
+  ChevronLeft,
+  ClipboardList,
+  FileDown,
+  FileUp,
+  Lock,
+  LockOpen,
+  Moon,
+  Redo2,
+  Sun,
+  Undo2,
+} from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { bom } from '../design/bom';
 import { deleteMember, memberById, memberLengthM } from '../design/docOps';
 import { resolveFittings } from '../design/fittings';
 import { analyzeFormed } from '../design/formed';
 import { intersectingMembers } from '../design/intersections';
+import { exportDesignJson, suggestedFileName } from '../persistence/exportImport';
 import type { Vec3 } from '../schema';
 import { solve } from '../solver';
 import { useAppStore } from '../state/appStore';
@@ -23,6 +37,8 @@ import {
 } from '../state/editorActions';
 import { useEditorStore } from '../state/editorStore';
 import { useThemeStore } from '../state/themeStore';
+import { BomPanel } from './BomPanel';
+import { downloadFile } from './lib/download';
 import { Pillbox } from './Pillbox';
 import { PivotPanel } from './PivotPanel';
 import { SelectionPanel } from './SelectionPanel';
@@ -39,8 +55,23 @@ export function EditorShell() {
   const lengthsLocked = useAppStore((s) => s.current?.lengthsLocked ?? false);
   const closeProject = useAppStore((s) => s.closeProject);
   const updateCurrent = useAppStore((s) => s.updateCurrent);
+  const importAndOpen = useAppStore((s) => s.importAndOpen);
   const undo = useAppStore((s) => s.undo);
   const redo = useAppStore((s) => s.redo);
+
+  const [bomOpen, setBomOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const exportJson = () => {
+    const design = useAppStore.getState().current;
+    if (design)
+      downloadFile(suggestedFileName(design), exportDesignJson(design), 'application/json');
+  };
+  const onImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) await importAndOpen(await file.text());
+  };
 
   const projection = useEditorStore((s) => s.projection);
   const toggleProjection = useEditorStore((s) => s.toggleProjection);
@@ -186,6 +217,16 @@ export function EditorShell() {
       if (!d) return null;
       return solve(d, { lengthsLocked: d.lengthsLocked, pivotAngles: pivotAnglesOf(d) }, 'pose');
     };
+    // BOM + export/import seams
+    hook.getBom = () => {
+      const d = useAppStore.getState().current;
+      return d ? bom(d) : null;
+    };
+    hook.exportJson = () => {
+      const d = useAppStore.getState().current;
+      return d ? exportDesignJson(d) : null;
+    };
+    hook.importJson = (text: string) => useAppStore.getState().importAndOpen(text);
   }, []);
 
   if (!hasDesign) return null;
@@ -208,7 +249,45 @@ export function EditorShell() {
           <Box size={16} className="text-muted-foreground" />
           <span className="text-sm font-medium">{designName}</span>
         </div>
+        <div className="border-border bg-card flex items-center gap-0.5 rounded-lg border px-1.5 py-1.5 shadow-sm">
+          <button
+            type="button"
+            onClick={() => setBomOpen((o) => !o)}
+            aria-pressed={bomOpen}
+            title="Cut list / BOM"
+            className={`rounded-md p-1.5 ${bomOpen ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}`}
+          >
+            <ClipboardList size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={exportJson}
+            aria-label="Export JSON"
+            title="Export .pvc.json"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          >
+            <FileDown size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="Import JSON"
+            title="Import .pvc.json"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          >
+            <FileUp size={16} />
+          </button>
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json,application/json"
+          className="hidden"
+          onChange={onImportFile}
+        />
       </div>
+
+      {bomOpen && <BomPanel onClose={() => setBomOpen(false)} />}
 
       {/* selected-member inspector (top-center) */}
       <SelectionPanel />

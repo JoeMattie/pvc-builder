@@ -29,6 +29,8 @@ export interface AppState {
   /** Apply a document change; persisted via debounced autosave. */
   updateCurrent(update: (doc: Design) => Design): void;
   importProject(fileText: string): Promise<void>;
+  /** Import a design file and open it as a new project. */
+  importAndOpen(fileText: string): Promise<void>;
   undo(): void;
   redo(): void;
   /** batch many updates (e.g. a drag gesture) into one undo step */
@@ -120,6 +122,16 @@ export function createAppStore(store: ProjectStore = new ProjectStore()) {
           async importProject(fileText) {
             const doc = importDesignJson(fileText);
             await store.saveProject(doc);
+            await get().refreshProjects();
+          },
+
+          async importAndOpen(fileText) {
+            // a fresh id so importing never clobbers an existing project
+            const doc: Design = { ...importDesignJson(fileText), id: crypto.randomUUID() };
+            await store.saveProject(doc);
+            setLastProjectId(doc.id);
+            set({ current: doc, saveState: 'saved' });
+            useStore.temporal.getState().clear();
             await get().refreshProjects();
           },
 
