@@ -129,10 +129,14 @@ export function DrawController() {
         startedPath = true;
       }
     }
+    // any non-drawing tool marquee-selects on an empty-canvas drag; move/rotate
+    // additionally switch to the select tool so the drag reads as a selection
+    const nonDrawing = liveTool !== 'draw' && liveTool !== 'formed';
     const move = (ev: PointerEvent) => {
-      // select tool: a drag on empty space is a rubber-band marquee
-      if (liveTool === 'select') {
+      if (nonDrawing) {
         if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > CLICK_SLOP_PX) {
+          if (useEditorStore.getState().tool !== 'select')
+            useEditorStore.getState().setTool('select');
           useEditorStore
             .getState()
             .setMarquee({ x0: startX, y0: startY, x1: ev.clientX, y1: ev.clientY });
@@ -150,7 +154,7 @@ export function DrawController() {
       window.removeEventListener('pointercancel', up);
       if (ev.button !== 0) return;
       const moved = Math.hypot(ev.clientX - startX, ev.clientY - startY);
-      if (liveTool === 'select') {
+      if (nonDrawing) {
         if (moved > CLICK_SLOP_PX) {
           // rubber-band: left→right = contained, right→left = touching (CAD)
           const { rect, mode } = marqueeFromDrag(startX, startY, ev.clientX, ev.clientY);

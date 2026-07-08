@@ -7,7 +7,7 @@ import { incidentMembers, memberById, nodeById } from '../../design/docOps';
 import { length, sub } from '../../geometry/math3';
 import { easedPos, useAnim } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
-import { selectMember } from '../../state/editorActions';
+import { placeDrawPoint, selectMember } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
@@ -22,12 +22,14 @@ function Pipe({
   selected,
   onSelect,
   onContext,
+  onDouble,
 }: {
   cyl: PipeCylinder;
   color: string;
   selected: boolean;
   onSelect?: (memberId: string) => void;
   onContext?: (memberId: string, e: ThreeEvent<MouseEvent>) => void;
+  onDouble?: (e: ThreeEvent<MouseEvent>) => void;
 }) {
   const placed = placeAxis(cyl.a, cyl.b);
   if (!placed) return null;
@@ -43,6 +45,12 @@ function Pipe({
         onContext(cyl.memberId, e);
       }
     : undefined;
+  const dbl = onDouble
+    ? (e: ThreeEvent<MouseEvent>) => {
+        e.stopPropagation();
+        onDouble(e);
+      }
+    : undefined;
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: r3f <mesh> is a three.js scene node, not a DOM element — the a11y rule does not apply
     <mesh
@@ -50,6 +58,7 @@ function Pipe({
       quaternion={placed.quat}
       onClick={click}
       onContextMenu={context}
+      onDoubleClick={dbl}
       castShadow
       receiveShadow
     >
@@ -118,6 +127,15 @@ export function PipeLayer() {
           store.openSizeMenu({ memberIds, x: ne.clientX, y: ne.clientY });
         }
       : undefined;
+  // double-click a pipe (in the select tool) → start drawing a new pipe from the
+  // clicked point (snaps on-pipe → a tee / branch start)
+  const onDouble =
+    tool === 'select' && !drawingFrom
+      ? (e: ThreeEvent<MouseEvent>) => {
+          useEditorStore.getState().setTool('draw');
+          placeDrawPoint(e.point);
+        }
+      : undefined;
   const selected = new Set(selectedIds);
 
   return (
@@ -130,6 +148,7 @@ export function PipeLayer() {
           selected={selected.has(c.memberId)}
           onSelect={onSelect}
           onContext={onContext}
+          onDouble={onDouble}
         />
       ))}
       {model.ends.map((e) => (
