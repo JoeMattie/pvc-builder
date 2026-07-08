@@ -9,6 +9,7 @@ import {
   connectPipe,
   memberEndpoints,
   nodeById,
+  resetPivots as resetPivotsOp,
   setMemberLengthM,
   setNodePosition,
   setPivotAngle as setPivotAngleOp,
@@ -245,6 +246,11 @@ export function createPivotAt(nodeId: string): void {
 /** Set a pivot's angle (the angle slider). */
 export function setPivotAngle(pivotId: string, angleRad: number): void {
   useAppStore.getState().updateCurrent((d) => setPivotAngleOp(d, pivotId, angleRad));
+}
+
+/** Reset all pivots to their rest angle. */
+export function resetPivots(): void {
+  useAppStore.getState().updateCurrent((d) => resetPivotsOp(d));
 }
 
 /** Drag-to-rotate in locked mode: run IK so `nodeId` follows the ground point,

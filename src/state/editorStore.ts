@@ -53,6 +53,8 @@ export interface EditorState {
   drawingFromNodeId: string | null;
   /** the committed points of the in-progress formed (heat-bent) pipe */
   formedPoints: Vec3[];
+  /** running the CrashCat rigid-body simulation (Play mode) */
+  simulating: boolean;
   /** snapping configuration (the snap pill) */
   snap: SnapSettings;
   setTool(tool: Tool): void;
@@ -63,6 +65,7 @@ export interface EditorState {
   setDrawingFrom(nodeId: string | null): void;
   pushFormedPoint(p: Vec3): void;
   clearFormedPoints(): void;
+  setSimulating(on: boolean): void;
   setSnap(patch: Partial<SnapSettings>): void;
   /** reset everything transient (e.g. when switching designs) — keeps snap */
   resetTransient(): void;
@@ -75,6 +78,7 @@ const INITIAL = {
   drawSize: '3/4"' as NominalSize,
   drawingFromNodeId: null as string | null,
   formedPoints: [] as Vec3[],
+  simulating: false,
 };
 
 export const useEditorStore = create<EditorState>()((set, get) => ({
@@ -108,6 +112,10 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   },
   clearFormedPoints() {
     set({ formedPoints: [] });
+  },
+  setSimulating(on) {
+    // leaving a drawing tool / selection isn't needed; just toggle the sim
+    set({ simulating: on });
   },
   setSnap(patch) {
     const next = { ...get().snap, ...patch };

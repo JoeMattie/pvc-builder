@@ -11,6 +11,15 @@ import { useEffect } from 'react';
 import { MOUSE, Vector3 } from 'three';
 import type { Vec3 } from '../../schema';
 import { solve } from '../../solver';
+import {
+  activeTopoHash,
+  physicsActive,
+  physicsNodePositions,
+  physicsTopoHash,
+  startPhysics,
+  stepPhysics,
+  stopPhysics,
+} from '../../solver/physics';
 import { bumpAnim, easedPos, stepEasing } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
 import { pivotAnglesOf } from '../../state/editorActions';
@@ -168,6 +177,21 @@ function GeometryAnimator() {
   useFrame((_, dt) => {
     const design = useAppStore.getState().current;
     if (!design) return;
+    const simulating = useEditorStore.getState().simulating;
+
+    // Play mode: step the CrashCat rigid-body world and render body positions.
+    if (simulating) {
+      const hash = physicsTopoHash(design);
+      if (!physicsActive() || activeTopoHash() !== hash) startPhysics(design);
+      stepPhysics(dt);
+      const pos = physicsNodePositions();
+      const target = design.nodes.map((n) => ({ id: n.id, position: pos[n.id] ?? n.position }));
+      stepEasing(target, 1, true); // physics is already smooth — no extra easing
+      bumpAnim();
+      return;
+    }
+    if (physicsActive()) stopPhysics(); // just stopped — sim disposed, revert to doc
+
     let target: Array<{ id: string; position: Vec3 }> = design.nodes;
     if (design.lengthsLocked && design.pivots.length) {
       const r = solve(design, { lengthsLocked: true, pivotAngles: pivotAnglesOf(design) }, 'pose');

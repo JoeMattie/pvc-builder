@@ -155,7 +155,8 @@ export function setMemberLengthM(design: Design, memberId: string, lengthM: numb
 }
 
 /** Delete a member and prune any node it leaves with no incident members
- * (Phase 1 nodes exist only as member endpoints). */
+ * (Phase 1 nodes exist only as member endpoints). Pivots that referenced the
+ * deleted member, or a node it orphaned, are removed too (no dangling pivots). */
 export function deleteMember(design: Design, memberId: string): Design {
   const members = design.members.filter((m) => m.id !== memberId);
   const referenced = new Set<string>();
@@ -163,11 +164,20 @@ export function deleteMember(design: Design, memberId: string): Design {
     referenced.add(m.nodeA);
     referenced.add(m.nodeB);
   }
+  const pivots = design.pivots.filter(
+    (p) => p.memberA !== memberId && p.memberB !== memberId && referenced.has(p.nodeId),
+  );
   return {
     ...design,
     members,
     nodes: design.nodes.filter((n) => referenced.has(n.id)),
+    pivots,
   };
+}
+
+/** Reset every pivot to its rest angle (0). */
+export function resetPivots(design: Design): Design {
+  return { ...design, pivots: design.pivots.map((p) => ({ ...p, angleRad: 0 })) };
 }
 
 /** A node's incident members (both straight and formed). */

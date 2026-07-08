@@ -7,7 +7,9 @@ import {
   Lock,
   LockOpen,
   Moon,
+  Play,
   Redo2,
+  Square,
   Sun,
   Undo2,
 } from 'lucide-react';
@@ -20,6 +22,7 @@ import { intersectingMembers } from '../design/intersections';
 import { exportDesignJson, suggestedFileName } from '../persistence/exportImport';
 import type { Vec3 } from '../schema';
 import { solve } from '../solver';
+import { physicsNodePositions } from '../solver/physics';
 import { useAppStore } from '../state/appStore';
 import {
   clearSelection,
@@ -30,6 +33,7 @@ import {
   pivotAnglesOf,
   placeDrawPoint,
   placeFormedPoint,
+  resetPivots,
   selectMember,
   setMemberLength,
   setPivotAngle,
@@ -75,6 +79,8 @@ export function EditorShell() {
 
   const projection = useEditorStore((s) => s.projection);
   const toggleProjection = useEditorStore((s) => s.toggleProjection);
+  const simulating = useEditorStore((s) => s.simulating);
+  const setSimulating = useEditorStore((s) => s.setSimulating);
 
   const night = useThemeStore((s) => s.night);
   const toggleNight = useThemeStore((s) => s.toggleNight);
@@ -119,6 +125,8 @@ export function EditorShell() {
         editor.setTool('formed');
       } else if (e.key === 'p' || e.key === 'P') {
         editor.setTool('pivot');
+      } else if (e.key === 'r' || e.key === 'R') {
+        resetPivots();
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         const id = editor.selectedIds[0];
         if (id) {
@@ -227,6 +235,9 @@ export function EditorShell() {
       return d ? exportDesignJson(d) : null;
     };
     hook.importJson = (text: string) => useAppStore.getState().importAndOpen(text);
+    // physics seams
+    hook.setSimulating = (on: boolean) => useEditorStore.getState().setSimulating(on);
+    hook.getPhysics = () => physicsNodePositions();
   }, []);
 
   if (!hasDesign) return null;
@@ -301,8 +312,23 @@ export function EditorShell() {
       {/* pivot angle sliders + mobility (locked mode, top-right) */}
       <PivotPanel />
 
-      {/* top-right: undo/redo + view + physics + theme toggles */}
+      {/* top-right: play + undo/redo + view + physics + theme toggles */}
       <div className="absolute top-4 right-4 flex items-center gap-1 rounded-lg border border-border bg-card px-1.5 py-1.5 shadow-sm">
+        <button
+          type="button"
+          onClick={() => setSimulating(!simulating)}
+          aria-pressed={simulating}
+          title={simulating ? 'Stop simulation' : 'Play — rigid-body physics'}
+          className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium ${
+            simulating
+              ? 'bg-primary text-primary-foreground'
+              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+          }`}
+        >
+          {simulating ? <Square size={13} /> : <Play size={13} />}
+          {simulating ? 'Stop' : 'Play'}
+        </button>
+        <div className="mx-0.5 h-5 w-px bg-border" />
         <button
           type="button"
           onClick={undo}

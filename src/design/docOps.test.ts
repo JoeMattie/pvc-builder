@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { createEmptyDesign, type Design, type Vec3 } from '../schema';
 import {
+  addPivot,
   appendPipe,
   deleteMember,
   memberLengthM,
   nodeById,
   nodeDegrees,
+  resetPivots,
   setMemberLengthM,
   setNodePosition,
+  setPivotAngle,
   startPath,
 } from './docOps';
 
@@ -104,5 +107,27 @@ describe('nodeDegrees', () => {
     expect(deg.get(a!.id)).toBe(1);
     expect(deg.get(b!.id)).toBe(2);
     expect(deg.get(c!.id)).toBe(1);
+  });
+});
+
+describe('pivots', () => {
+  it('deleting a pipe removes pivots that referenced it (no orphans)', () => {
+    // L path → corner node shared by two members; make it a pivot
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0), V(1, 0, 1)]);
+    const corner = design.nodes[1]!.id;
+    const withPivot = addPivot(design, corner).design;
+    expect(withPivot.pivots).toHaveLength(1);
+    // deleting one of the pivot's members must drop the pivot
+    const out = deleteMember(withPivot, memberIds[0]!);
+    expect(out.pivots).toHaveLength(0);
+  });
+
+  it('resetPivots zeroes every pivot angle', () => {
+    const { design } = drawPath([V(0, 0, 0), V(1, 0, 0), V(1, 0, 1)]);
+    const corner = design.nodes[1]!.id;
+    const added = addPivot(design, corner);
+    const posed = setPivotAngle(added.design, added.pivotId!, 1.2);
+    expect(posed.pivots[0]!.angleRad).toBe(1.2);
+    expect(resetPivots(posed).pivots[0]!.angleRad).toBe(0);
   });
 });

@@ -30,6 +30,31 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
   `e2e/` is excluded from Biome (browser globals + harness). `npm run e2e`
   builds + previews + drives chromium.
 
+## Post-Phase-5 — CrashCat rigid-body physics (Play mode) (2026-07-07)
+
+- **Added real physics via CrashCat (0.0.5), alongside the kinematic solver.**
+  The Phase-4 kinematic `solve()` stays for *exact locked posing* (sliders set
+  precise angles, drag IK, deterministic); the new `src/solver/physics.ts` is a
+  *dynamic simulation* — pipes are dynamic capsules, welds are fixed
+  constraints, pivots are hinge constraints with friction, gravity + an infinite
+  static floor at y = 0. A **Play/Stop** toggle (`editorStore.simulating`) runs
+  it; `GeometryAnimator` steps the world each frame and renders body positions
+  (rebuild keyed by a topology hash). Play is a preview — the document isn't
+  mutated; Stop reverts to the design.
+- **Simulate at 20× scale.** Physics engines' contact slop is tuned for
+  ~metre objects; PVC pipe is ~1 cm radius and sinks into the floor at true
+  scale. The world is built at `SCALE = 20` (gravity scaled to match) and
+  positions divided back — the geometry is engine-friendly and motion reads at
+  real speed. Verified: a pipe drops and rests at ~radius on the floor, rigid
+  links preserved, no explosion.
+- **Why this also fixes closed loops:** a pivoted 4-bar (parallelogram) is a
+  loop the tree-kinematic solver reports as over-locked / can't move; the
+  physics solver handles it naturally. (The kinematic mobility readout is still
+  spatial-Grübler and may mislabel planar loops — improving that is future work.)
+- **Fixes bundled:** deleting a pipe now removes pivots that referenced it or a
+  node it orphaned (no dangling pivots); a Reset-pivots button + **R** hotkey
+  zeroes all pivot angles.
+
 ## Phase 4 — Pivots + locked-length physics (2026-07-07)
 
 - **Physics is deterministic kinematics, not CrashCat.** CrashCat exists on npm
