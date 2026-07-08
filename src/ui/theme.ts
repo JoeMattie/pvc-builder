@@ -15,9 +15,8 @@ export const GROUND_SIZE_M = 20 * 0.3048;
 const SCENE = {
   day: {
     viewport: '#f6f7f9',
-    // ground vs sky are swapped between modes: dark in day, light in night, so the
-    // ground always reads as distinct — and in dark mode it's LIGHTER than the sky
-    ground: '#0b0d12',
+    // a mid-gray ground, distinct from the sky and darker than the pipes
+    ground: '#c6cad3',
     gridCell: '#d9dbe2',
     gridSection: '#b9bcc7',
     pvc: '#e7e9ee',
@@ -27,7 +26,8 @@ const SCENE = {
   },
   night: {
     viewport: '#101218',
-    ground: '#eceef2',
+    // dark gray: lighter than the near-black sky, but darker than the light pipes
+    ground: '#2b2f38',
     gridCell: '#2a2d38',
     gridSection: '#3a3f4b',
     pvc: '#c6cbd7',

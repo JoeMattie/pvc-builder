@@ -5,18 +5,23 @@
 import {
   addBodyJoint,
   addFormedMember,
+  addMeasurement,
   appendPipe,
   connectPipe,
   deleteMember,
   detachMemberEnd as detachMemberEndOp,
   incidentMembers,
+  measurementEndPos,
+  measurePerp,
   memberEndpoints,
   nodeById,
   reconcileBodyJoints,
+  removeMeasurement,
   resetJoints as resetJointsOp,
   rotateMember,
   setJoinMode as setJoinModeOp,
   setJointAngle as setJointAngleOp,
+  setMeasurementOffset,
   setMemberLengthM,
   setMemberSize as setMemberSizeOp,
   setNodePosition,
@@ -40,7 +45,15 @@ import {
   snapPoint,
 } from '../design/snapping';
 import { add, dot, length, normalize, scale, sub } from '../geometry/math3';
-import type { Design, JointMode, LengthDisplay, NominalSize, Quaternion, Vec3 } from '../schema';
+import type {
+  Design,
+  JointMode,
+  LengthDisplay,
+  MeasurementEnd,
+  NominalSize,
+  Quaternion,
+  Vec3,
+} from '../schema';
 import { pipeSpec } from '../schema';
 import { solve } from '../solver';
 import { useAppStore } from './appStore';
@@ -448,6 +461,81 @@ export function weldDroppedNode(nodeId: string): void {
   );
   if (!other) return;
   useAppStore.getState().updateCurrent((d) => weldNodes(d, nodeId, other.id));
+}
+
+// ── tape measure ────────────────────────────────────────────────────────────
+
+/** Snap a tape-measure point like a draw point (to ends + along pipes), but
+ * without axis inference (measurements are free spans). */
+export function snapMeasurePoint(raw: Vec3): SnapResult {
+  const design = useAppStore.getState().current;
+  const snap = snapPoint(raw, {
+    nodes: design ? design.nodes.map((n) => ({ id: n.id, position: n.position })) : [],
+    segments: design ? segmentsOf(design) : [],
+    fromNode: undefined,
+    ...snapTol(),
+  });
+  return { ...snap, position: clampGround(snap.position) };
+}
+
+/** Resolve a snap to a measurement end — pinned to a node when snapped to one,
+ * else a free point. */
+function measureEndOf(snap: SnapResult): MeasurementEnd {
+  return snap.kind === 'node' && snap.nodeId
+    ? { nodeId: snap.nodeId }
+    : { position: snap.position };
+}
+
+/** A tape-measure click: place the first end, then the second (which creates the
+ * measurement and enters offset-adjust), then confirm the perpendicular offset. */
+export function placeMeasurePoint(raw: Vec3): void {
+  const design = useAppStore.getState().current;
+  const editor = useEditorStore.getState();
+  if (!design) return;
+  if (editor.measureAdjustId) {
+    editor.setMeasureAdjustId(null); // third click confirms the offset
+    return;
+  }
+  const end = measureEndOf(snapMeasurePoint(raw));
+  if (!editor.measureFrom) {
+    editor.setMeasureFrom(end);
+    return;
+  }
+  const from = editor.measureFrom;
+  let id = '';
+  useAppStore.getState().updateCurrent((d) => {
+    const r = addMeasurement(d, from, end, 0);
+    id = r.measurementId;
+    return r.design;
+  });
+  editor.setMeasureFrom(null);
+  editor.setMeasureAdjustId(id);
+  editor.selectMeasurement(id);
+}
+
+/** While adjusting a just-placed measurement, set its dimension-line offset from
+ * the cursor's perpendicular distance to the measured axis. */
+export function updateMeasureOffset(raw: Vec3): void {
+  const editor = useEditorStore.getState();
+  const design = useAppStore.getState().current;
+  const id = editor.measureAdjustId;
+  if (!design || !id) return;
+  const m = design.measurements.find((x) => x.id === id);
+  if (!m) return;
+  const a = measurementEndPos(design, m.a);
+  const b = measurementEndPos(design, m.b);
+  if (!a || !b) return;
+  const perp = measurePerp(a, b);
+  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.z + b.z) / 2 };
+  const off = dot(sub(raw, mid), perp);
+  useAppStore.getState().updateCurrent((d) => setMeasurementOffset(d, id, off));
+}
+
+/** Delete a measurement. */
+export function deleteMeasurement(id: string): void {
+  useAppStore.getState().updateCurrent((d) => removeMeasurement(d, id));
+  const editor = useEditorStore.getState();
+  if (editor.selectedMeasurementId === id) editor.selectMeasurement(null);
 }
 
 // ── joints (right-click a pipe join → wrapped / free / anchor) ──────────────

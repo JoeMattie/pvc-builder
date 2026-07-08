@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { DEFAULT_GRID_M } from '../design/snapping';
 import { getSnapPref, setSnapPref } from '../persistence/prefs';
-import type { NominalSize, Vec3 } from '../schema';
+import type { MeasurementEnd, NominalSize, Vec3 } from '../schema';
 
 /** Snapping configuration (the snap pill). A workspace preference, persisted
  * to localStorage, never in the document. */
@@ -43,7 +43,7 @@ function initialSnap(): SnapSettings {
 /** Active editing tool. `formed` draws a heat-bent spline; `move` translates the
  * selected member along a world axis via arrow handles; `rotate` swings it about
  * a ring gizmo. Pivots are created by right-clicking a pipe join (no tool). */
-export type Tool = 'select' | 'draw' | 'formed' | 'move' | 'rotate';
+export type Tool = 'select' | 'draw' | 'formed' | 'move' | 'rotate' | 'measure';
 
 /** Camera projection: orthographic isometric by default, one-toggle
  * perspective (planfile §1). */
@@ -66,6 +66,13 @@ export interface EditorState {
   drawStartWrapMember: string | null;
   /** the committed points of the in-progress formed (heat-bent) pipe */
   formedPoints: Vec3[];
+  /** tape measure: the first placed end (waiting for the second), or null */
+  measureFrom: MeasurementEnd | null;
+  /** tape measure: the just-placed measurement whose perpendicular offset is
+   * being set by the next click/move, or null */
+  measureAdjustId: string | null;
+  /** the currently selected measurement (highlighted; Delete removes it) */
+  selectedMeasurementId: string | null;
   /** while drawing, the length typed into the length pill (empty = not typing) */
   drawLength: string;
   /** the current draw direction (unit, from the path cursor toward the preview) —
@@ -91,6 +98,9 @@ export interface EditorState {
   setDrawStartWrap(memberId: string | null): void;
   pushFormedPoint(p: Vec3): void;
   clearFormedPoints(): void;
+  setMeasureFrom(end: MeasurementEnd | null): void;
+  setMeasureAdjustId(id: string | null): void;
+  selectMeasurement(id: string | null): void;
   setDrawLength(s: string): void;
   setDrawDirection(v: Vec3 | null): void;
   setSimulating(on: boolean): void;
@@ -113,6 +123,9 @@ const INITIAL = {
   drawingFromNodeId: null as string | null,
   drawStartWrapMember: null as string | null,
   formedPoints: [] as Vec3[],
+  measureFrom: null as MeasurementEnd | null,
+  measureAdjustId: null as string | null,
+  selectedMeasurementId: null as string | null,
   drawLength: '',
   drawDirection: null as Vec3 | null,
   simulating: false,
@@ -131,6 +144,8 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
       drawingFromNodeId: tool === 'draw' ? get().drawingFromNodeId : null,
       drawStartWrapMember: tool === 'draw' ? get().drawStartWrapMember : null,
       formedPoints: tool === 'formed' ? get().formedPoints : [],
+      measureFrom: tool === 'measure' ? get().measureFrom : null,
+      measureAdjustId: tool === 'measure' ? get().measureAdjustId : null,
       drawLength: '',
       drawDirection: null,
     });
@@ -142,10 +157,10 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     set({ projection: get().projection === 'ortho' ? 'perspective' : 'ortho' });
   },
   setSelection(ids) {
-    set({ selectedIds: ids, selectedJointId: null });
+    set({ selectedIds: ids, selectedJointId: null, selectedMeasurementId: null });
   },
   selectJoint(jointId) {
-    set({ selectedJointId: jointId, selectedIds: [] });
+    set({ selectedJointId: jointId, selectedIds: [], selectedMeasurementId: null });
   },
   setDrawSize(size) {
     set({ drawSize: size });
@@ -161,6 +176,15 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   },
   clearFormedPoints() {
     set({ formedPoints: [] });
+  },
+  setMeasureFrom(end) {
+    set({ measureFrom: end });
+  },
+  setMeasureAdjustId(id) {
+    set({ measureAdjustId: id });
+  },
+  selectMeasurement(id) {
+    set({ selectedMeasurementId: id, selectedIds: [], selectedJointId: null });
   },
   setDrawLength(s) {
     set({ drawLength: s });

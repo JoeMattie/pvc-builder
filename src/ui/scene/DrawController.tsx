@@ -14,8 +14,11 @@ import {
   clearSelection,
   placeDrawPoint,
   placeFormedPoint,
+  placeMeasurePoint,
   snapDrawPoint,
   snapFormedPoint,
+  snapMeasurePoint,
+  updateMeasureOffset,
 } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
@@ -110,6 +113,7 @@ export function DrawController() {
   const lengthDisplay = useAppStore((s) => s.current?.lengthDisplay);
   const formedPoints = useEditorStore((s) => s.formedPoints);
   const drawLength = useEditorStore((s) => s.drawLength);
+  const measureFrom = useEditorStore((s) => s.measureFrom);
   const [preview, setPreview] = useState<SnapResult | null>(null);
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
@@ -184,6 +188,10 @@ export function DrawController() {
         useEditorStore.getState().setDrawDirection(length(d) > 1e-6 ? d : null);
       }
     } else if (tool === 'formed') setPreview(snapFormedPoint(g));
+    else if (tool === 'measure') {
+      if (useEditorStore.getState().measureAdjustId) updateMeasureOffset(g);
+      else setPreview(snapMeasurePoint(g));
+    }
   };
 
   // The press+release is driven by WINDOW listeners, not the mesh's own
@@ -203,9 +211,21 @@ export function DrawController() {
         startedPath = true;
       }
     }
+    // tape measure: press places the first end (click-drag), unless mid-sequence
+    let startedMeasure = false;
+    if (liveTool === 'measure') {
+      const ms = useEditorStore.getState();
+      if (!ms.measureFrom && !ms.measureAdjustId) {
+        const g = targetOf(e.ray);
+        if (g) {
+          placeMeasurePoint(g);
+          startedMeasure = true;
+        }
+      }
+    }
     // any non-drawing tool marquee-selects on an empty-canvas drag; move/rotate
     // additionally switch to the select tool so the drag reads as a selection
-    const nonDrawing = liveTool !== 'draw' && liveTool !== 'formed';
+    const nonDrawing = liveTool !== 'draw' && liveTool !== 'formed' && liveTool !== 'measure';
     const move = (ev: PointerEvent) => {
       if (nonDrawing) {
         if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > CLICK_SLOP_PX) {
@@ -221,6 +241,10 @@ export function DrawController() {
       if (!g) return;
       if (liveTool === 'draw') setPreview(snapDrawPoint(g, ev.shiftKey));
       else if (liveTool === 'formed') setPreview(snapFormedPoint(g));
+      else if (liveTool === 'measure') {
+        if (useEditorStore.getState().measureAdjustId) updateMeasureOffset(g);
+        else setPreview(snapMeasurePoint(g));
+      }
     };
     const up = (ev: PointerEvent) => {
       window.removeEventListener('pointermove', move);
@@ -255,6 +279,11 @@ export function DrawController() {
         if (moved > CLICK_SLOP_PX || !startedPath) setPreview(placeDrawPoint(g, ev.shiftKey));
       } else if (moved <= CLICK_SLOP_PX && liveTool === 'formed') {
         setPreview(placeFormedPoint(g));
+      } else if (liveTool === 'measure') {
+        // a drag places the 2nd end; a two-click sequence places it on the 2nd
+        // click; a click during offset-adjust confirms it (placeMeasurePoint reads
+        // the phase from state)
+        if (moved > CLICK_SLOP_PX || !startedMeasure) placeMeasurePoint(g);
       }
     };
     window.addEventListener('pointermove', move);
@@ -294,10 +323,45 @@ export function DrawController() {
         <shadowMaterial transparent opacity={night ? 0.35 : 0.2} />
       </mesh>
 
-      {/* snap indicator (dot + End/On Pipe pill + outline) for draw + formed */}
-      {(tool === 'draw' || tool === 'formed') && preview && (
+      {/* snap indicator (dot + End/On Pipe pill + outline) for draw + formed + measure */}
+      {(tool === 'draw' || tool === 'formed' || tool === 'measure') && preview && (
         <SnapHint preview={preview} night={night} />
       )}
+
+      {/* tape-measure rubber band: first end → cursor */}
+      {tool === 'measure' &&
+        measureFrom &&
+        preview &&
+        (() => {
+          const design = useAppStore.getState().current;
+          const a =
+            'nodeId' in measureFrom
+              ? design
+                ? nodeById(design, measureFrom.nodeId)?.position
+                : undefined
+              : measureFrom.position;
+          if (!a) return null;
+          const b = preview.position;
+          return (
+            <>
+              <Line
+                points={[
+                  [a.x, a.y, a.z],
+                  [b.x, b.y, b.z],
+                ]}
+                color="#e08a00"
+                lineWidth={1.75}
+                dashed
+                dashSize={0.04}
+                gapSize={0.03}
+              />
+              <mesh position={[a.x, a.y, a.z]}>
+                <sphereGeometry args={[0.012, 12, 10]} />
+                <meshBasicMaterial color="#e08a00" />
+              </mesh>
+            </>
+          );
+        })()}
 
       {showPreview && p && (
         <>

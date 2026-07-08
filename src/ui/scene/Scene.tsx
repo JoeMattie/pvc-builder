@@ -43,6 +43,7 @@ import { FittingLayer } from './FittingLayer';
 import { FormedLayer } from './FormedLayer';
 import { IntersectionLayer } from './IntersectionLayer';
 import { JointLayer } from './JointLayer';
+import { MeasureLayer } from './MeasureLayer';
 import { PipeLayer } from './PipeLayer';
 import { MoveGizmo, RotateGizmo, SelectionHandles } from './SelectionHandles';
 
@@ -132,6 +133,7 @@ export function Scene() {
       <FittingLayer />
       <JointLayer />
       <IntersectionLayer />
+      <MeasureLayer />
 
       {/* ground-plane pointer target + shadow catcher + draw preview */}
       <DrawController />

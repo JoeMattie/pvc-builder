@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createEmptyDesign, type Design, type Vec3 } from '../schema';
 import {
   addBodyJoint,
+  addMeasurement,
   appendPipe,
   dedupeJoints,
   deleteMember,
@@ -9,15 +10,19 @@ import {
   healBodyJoints,
   joinContext,
   jointsAtNode,
+  measurementLengthM,
+  measurePerp,
   memberLengthM,
   nodeById,
   nodeDegrees,
   reconcileBodyJoints,
   removeJoint,
+  removeMeasurement,
   resetJoints,
   rotateMember,
   setJoinMode,
   setJointAngle,
+  setMeasurementOffset,
   setMemberLengthM,
   setMemberSize,
   setNodePosition,
@@ -611,5 +616,31 @@ describe('weldNodes', () => {
     // welding a member's own two ends removes it
     const out = weldNodes(design, b, a);
     expect(out.members).toHaveLength(0);
+  });
+});
+
+describe('measurements', () => {
+  it('adds, offsets, and removes a tape measure; length tracks pinned nodes', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0)]);
+    const m = design.members.find((x) => x.id === memberIds[0])!;
+    const added = addMeasurement(design, { nodeId: m.nodeA }, { nodeId: m.nodeB }, 0);
+    expect(added.design.measurements).toHaveLength(1);
+    expect(measurementLengthM(added.design, added.design.measurements[0]!)).toBeCloseTo(1, 9);
+
+    const offset = setMeasurementOffset(added.design, added.measurementId, 0.1);
+    expect(offset.measurements[0]?.offsetM).toBe(0.1);
+
+    // a free-point measure reports the straight-line distance
+    const free = addMeasurement(design, { position: V(0, 0, 0) }, { position: V(3, 4, 0) }, 0);
+    expect(measurementLengthM(free.design, free.design.measurements[0]!)).toBeCloseTo(5, 9);
+
+    const removed = removeMeasurement(offset, added.measurementId);
+    expect(removed.measurements).toHaveLength(0);
+  });
+
+  it('measurePerp is horizontal and perpendicular to the axis', () => {
+    const perp = measurePerp(V(0, 0, 0), V(1, 0, 0));
+    expect(perp.y).toBe(0);
+    expect(perp.x * 1 + perp.y * 0 + perp.z * 0).toBeCloseTo(0, 9); // ⟂ to +X
   });
 });

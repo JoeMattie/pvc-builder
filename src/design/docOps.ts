@@ -7,6 +7,8 @@ import type {
   Design,
   Joint,
   JointMode,
+  Measurement,
+  MeasurementEnd,
   Member,
   Node,
   NominalSize,
@@ -342,6 +344,61 @@ export function deleteMember(design: Design, memberId: string): Design {
     nodes: design.nodes.filter((n) => referenced.has(n.id)),
     joints,
   };
+}
+
+// ── measurements: persistent tape-measure annotations (schema v6) ───────────
+
+/** World position of one measurement end: a pinned node's live position, or a
+ * free stored point. */
+export function measurementEndPos(design: Design, end: MeasurementEnd): Vec3 | undefined {
+  return 'nodeId' in end ? nodeById(design, end.nodeId)?.position : end.position;
+}
+
+/** The (horizontal) unit direction the dimension line is offset along — the
+ * perpendicular to the measured axis. Shared by the offset action and the
+ * renderer so the number and the drawing agree. Falls back to +X when the axis
+ * is vertical. */
+export function measurePerp(a: Vec3, b: Vec3): Vec3 {
+  const axis = sub(b, a);
+  if (length(axis) < 1e-9) return { x: 1, y: 0, z: 0 };
+  const up = { x: 0, y: 1, z: 0 };
+  const p = cross(normalize(axis), up);
+  return length(p) < 1e-6 ? { x: 1, y: 0, z: 0 } : normalize(p);
+}
+
+/** The centre-to-centre length a measurement reports (SI metres). */
+export function measurementLengthM(design: Design, m: Measurement): number {
+  const a = measurementEndPos(design, m.a);
+  const b = measurementEndPos(design, m.b);
+  return a && b ? length(sub(b, a)) : 0;
+}
+
+/** Add a persistent tape measure between two ends. */
+export function addMeasurement(
+  design: Design,
+  a: MeasurementEnd,
+  b: MeasurementEnd,
+  offsetM = 0,
+  id: string = makeId('ms'),
+): { design: Design; measurementId: string } {
+  const measurement: Measurement = { id, a, b, offsetM };
+  return {
+    design: { ...design, measurements: [...design.measurements, measurement] },
+    measurementId: id,
+  };
+}
+
+/** Set a measurement's perpendicular dimension-line offset. */
+export function setMeasurementOffset(design: Design, id: string, offsetM: number): Design {
+  return {
+    ...design,
+    measurements: design.measurements.map((m) => (m.id === id ? { ...m, offsetM } : m)),
+  };
+}
+
+/** Remove a measurement. */
+export function removeMeasurement(design: Design, id: string): Design {
+  return { ...design, measurements: design.measurements.filter((m) => m.id !== id) };
 }
 
 // ── joints: unified pipe connections (planfile §4/§5) ───────────────────────

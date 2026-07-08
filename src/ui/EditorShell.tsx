@@ -27,6 +27,7 @@ import { useAppStore } from '../state/appStore';
 import { requestPose, resetPose, setView, type ViewName } from '../state/cameraStore';
 import {
   clearSelection,
+  deleteMeasurement,
   deleteMembers,
   detachMemberEnd,
   dragNodeTo,
@@ -37,6 +38,7 @@ import {
   placeDrawAtDistance,
   placeDrawPoint,
   placeFormedPoint,
+  placeMeasurePoint,
   resetPivots,
   rotateMemberBy,
   selectMember,
@@ -222,7 +224,10 @@ export function EditorShell() {
       if (e.key === 'Escape' || e.key === 'Enter') {
         if (editor.drawingFromNodeId) finishPath();
         else if (editor.formedPoints.length) finishFormed();
-        else clearSelection();
+        else if (editor.measureFrom || editor.measureAdjustId) {
+          editor.setMeasureFrom(null);
+          editor.setMeasureAdjustId(null);
+        } else clearSelection();
       } else if (e.key === ' ') {
         // spacebar → back to the select tool
         e.preventDefault();
@@ -236,12 +241,14 @@ export function EditorShell() {
       } else if (e.key === 'c' || e.key === 'C') {
         // the heat-formed spline tool, now labelled "Curve"
         editor.setTool('formed');
+      } else if (e.key === 't' || e.key === 'T') {
+        editor.setTool('measure');
       } else if (e.key === 'r' || e.key === 'R') {
         resetPivots();
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
-        const ids = editor.selectedIds;
-        if (ids.length) {
-          deleteMembers(ids);
+        if (editor.selectedMeasurementId) deleteMeasurement(editor.selectedMeasurementId);
+        else if (editor.selectedIds.length) {
+          deleteMembers(editor.selectedIds);
           clearSelection();
         }
       }
@@ -303,7 +310,7 @@ export function EditorShell() {
         lengthM: memberLengthM(d, m),
       }));
     };
-    hook.setTool = (tool: 'select' | 'draw' | 'formed' | 'move' | 'rotate') =>
+    hook.setTool = (tool: 'select' | 'draw' | 'formed' | 'move' | 'rotate' | 'measure') =>
       useEditorStore.getState().setTool(tool);
     hook.setProjection = (p: 'ortho' | 'perspective') => useEditorStore.getState().setProjection(p);
     hook.setView = (name: ViewName) => setView(name);
@@ -317,6 +324,9 @@ export function EditorShell() {
     hook.finishPath = () => finishPath();
     hook.drawFormed = (raw: Vec3) => placeFormedPoint(raw);
     hook.finishFormed = () => finishFormed();
+    hook.measure = (raw: Vec3) => placeMeasurePoint(raw);
+    hook.getMeasurements = () => useAppStore.getState().current?.measurements ?? [];
+    hook.deleteMeasurement = (id: string) => deleteMeasurement(id);
     hook.selectMember = (id: string) => selectMember(id);
     hook.selectJoint = (id: string | null) => useEditorStore.getState().selectJoint(id);
     hook.clearSelection = () => clearSelection();
