@@ -4,12 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-**Phases 0–3 are complete.** The Vite/React/TS app scaffold is up; you can draw straight pipe
+**Phases 0–4 are complete.** The Vite/React/TS app scaffold is up; you can draw straight pipe
 (SketchUp-style snapping/inference, PBR pipe at true OD, select + drag endpoints, edit exact lengths),
 the correct SCH 40 fitting is inferred and drawn at each joint (`resolveFittings` + procedural meshes)
-with conflicts flagged, and you can draw **formed (heat-bent) pipe** as smooth splines (developed
-length + bend schedule + min-bend-radius check) with overlapping members outlined red. The next work
-is **Phase 4** (pivots + locked-length physics via CrashCat). The authoritative spec is
+with conflicts flagged, draw **formed (heat-bent) pipe** as smooth splines (developed length + bend
+schedule + min-bend-radius) with overlapping members outlined red, and add **pivots**: with lengths
+locked, the `solve()` boundary runs deterministic kinematics (FK + IK) so pivots articulate via angle
+sliders and drag-to-rotate while preserving every member length, with a mobility readout. **Note the
+solver is closed-form kinematics, not CrashCat** — see DECISIONS.md. The next work is **Phase 5**
+(BOM/cut-list + examples + JSON export/import + Playwright smoke). The authoritative spec is
 `docs/planfiles/PLANFILE-pvc-builder.md` — read the relevant section before each phase; it defines the
 product, domain model, phased build plan, and acceptance criteria. `DECISIONS.md` logs choices already
 made (newest first) — check it before revisiting a decision.

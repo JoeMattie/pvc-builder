@@ -5,21 +5,26 @@ import { resolveFittings } from '../design/fittings';
 import { analyzeFormed } from '../design/formed';
 import { intersectingMembers } from '../design/intersections';
 import type { Vec3 } from '../schema';
+import { solve } from '../solver';
 import { useAppStore } from '../state/appStore';
 import {
   clearSelection,
+  createPivotAt,
   dragNodeTo,
   finishFormed,
   finishPath,
+  pivotAnglesOf,
   placeDrawPoint,
   placeFormedPoint,
   selectMember,
   setMemberLength,
+  setPivotAngle,
   snapDrawPoint,
 } from '../state/editorActions';
 import { useEditorStore } from '../state/editorStore';
 import { useThemeStore } from '../state/themeStore';
 import { Pillbox } from './Pillbox';
+import { PivotPanel } from './PivotPanel';
 import { SelectionPanel } from './SelectionPanel';
 import { SnapPill } from './SnapPill';
 import { Viewport } from './scene/Viewport';
@@ -81,6 +86,8 @@ export function EditorShell() {
         editor.setTool('draw');
       } else if (e.key === 'h' || e.key === 'H') {
         editor.setTool('formed');
+      } else if (e.key === 'p' || e.key === 'P') {
+        editor.setTool('pivot');
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         const id = editor.selectedIds[0];
         if (id) {
@@ -145,7 +152,8 @@ export function EditorShell() {
         lengthM: memberLengthM(d, m),
       }));
     };
-    hook.setTool = (tool: 'select' | 'draw' | 'formed') => useEditorStore.getState().setTool(tool);
+    hook.setTool = (tool: 'select' | 'draw' | 'formed' | 'pivot') =>
+      useEditorStore.getState().setTool(tool);
     hook.setProjection = (p: 'ortho' | 'perspective') => useEditorStore.getState().setProjection(p);
     hook.setDrawSize = (size: '1/2"' | '3/4"') => useEditorStore.getState().setDrawSize(size);
     hook.setLengthsLocked = (locked: boolean) =>
@@ -169,6 +177,14 @@ export function EditorShell() {
       const d = useAppStore.getState().current;
       const m = d ? memberById(d, id) : undefined;
       return d && m && m.kind === 'formed' ? analyzeFormed(d, m) : null;
+    };
+    // pivots / solver seams
+    hook.createPivotAt = (nodeId: string) => createPivotAt(nodeId);
+    hook.setPivotAngle = (pivotId: string, angleRad: number) => setPivotAngle(pivotId, angleRad);
+    hook.getSolve = () => {
+      const d = useAppStore.getState().current;
+      if (!d) return null;
+      return solve(d, { lengthsLocked: d.lengthsLocked, pivotAngles: pivotAnglesOf(d) }, 'pose');
     };
   }, []);
 
@@ -202,6 +218,9 @@ export function EditorShell() {
 
       {/* snapping settings (bottom-left) */}
       <SnapPill />
+
+      {/* pivot angle sliders + mobility (locked mode, top-right) */}
+      <PivotPanel />
 
       {/* top-right: undo/redo + view + physics + theme toggles */}
       <div className="absolute top-4 right-4 flex items-center gap-1 rounded-lg border border-border bg-card px-1.5 py-1.5 shadow-sm">

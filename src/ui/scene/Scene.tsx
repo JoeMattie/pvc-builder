@@ -9,8 +9,11 @@ import {
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect } from 'react';
 import { MOUSE, Vector3 } from 'three';
+import type { Vec3 } from '../../schema';
+import { solve } from '../../solver';
 import { bumpAnim, easedPos, stepEasing } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
+import { pivotAnglesOf } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
@@ -19,6 +22,7 @@ import { FittingLayer } from './FittingLayer';
 import { FormedLayer } from './FormedLayer';
 import { IntersectionLayer } from './IntersectionLayer';
 import { PipeLayer } from './PipeLayer';
+import { PivotLayer } from './PivotLayer';
 import { SelectionHandles } from './SelectionHandles';
 
 // Looking down the (1,1,1) diagonal gives the classic isometric three-quarter
@@ -97,6 +101,7 @@ export function Scene() {
 
       {/* endpoint drag handles for the selected member */}
       {tool === 'select' && <SelectionHandles />}
+      <PivotLayer />
 
       {/* middle = pan, right = free rotate; left is reserved (drawing / select
           / future marquee), so it never orbits */}
@@ -156,14 +161,24 @@ function VelocityZoom() {
 const EASE_TAU = 0.045;
 const MAX_ANIMATED_NODES = 160;
 
-/** Drives the eased render positions once per frame (see state/animStore). */
+/** Drives the eased render positions once per frame (see state/animStore).
+ * When lengths are locked and pivots exist, the target positions come from the
+ * solver (pose kinematics); otherwise from the document. */
 function GeometryAnimator() {
   useFrame((_, dt) => {
     const design = useAppStore.getState().current;
     if (!design) return;
+    let target: Array<{ id: string; position: Vec3 }> = design.nodes;
+    if (design.lengthsLocked && design.pivots.length) {
+      const r = solve(design, { lengthsLocked: true, pivotAngles: pivotAnglesOf(design) }, 'pose');
+      target = design.nodes.map((n) => ({
+        id: n.id,
+        position: r.nodePositions[n.id] ?? n.position,
+      }));
+    }
     const instant = design.nodes.length > MAX_ANIMATED_NODES;
     const alpha = Math.min(1, 1 - Math.exp(-dt / EASE_TAU));
-    if (stepEasing(design.nodes, alpha, instant)) bumpAnim();
+    if (stepEasing(target, alpha, instant)) bumpAnim();
   });
   return null;
 }

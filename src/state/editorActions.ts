@@ -4,12 +4,14 @@
 // the appStore (undo/autosave) and transient editorStore.
 import {
   addFormedMember,
+  addPivot,
   appendPipe,
   connectPipe,
   memberEndpoints,
   nodeById,
   setMemberLengthM,
   setNodePosition,
+  setPivotAngle as setPivotAngleOp,
   startPath,
 } from '../design/docOps';
 import { lockToNearestAxis, projectLengthOnAxis } from '../design/dragMath';
@@ -23,8 +25,16 @@ import {
 } from '../design/snapping';
 import type { Design, Vec3 } from '../schema';
 import { pipeSpec } from '../schema';
+import { solve } from '../solver';
 import { useAppStore } from './appStore';
 import { useEditorStore } from './editorStore';
+
+/** The stored angle of every pivot as the solver's input map. */
+export function pivotAnglesOf(design: Design): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const p of design.pivots) out[p.id] = p.angleRad ?? 0;
+  return out;
+}
 
 /** Shortest pipe a length drag can leave (one grid step), so a pipe never
  * collapses to zero. */
@@ -223,4 +233,36 @@ export function dragMemberEndLength(
 /** Set an exact length on a member (length editor). */
 export function setMemberLength(memberId: string, lengthM: number): void {
   useAppStore.getState().updateCurrent((d) => setMemberLengthM(d, memberId, lengthM));
+}
+
+// ── pivots (Phase 4) ────────────────────────────────────────────────────────
+
+/** Turn a 2-member node into a heat-formed pivot (the pivot tool). */
+export function createPivotAt(nodeId: string): void {
+  useAppStore.getState().updateCurrent((d) => addPivot(d, nodeId).design);
+}
+
+/** Set a pivot's angle (the angle slider). */
+export function setPivotAngle(pivotId: string, angleRad: number): void {
+  useAppStore.getState().updateCurrent((d) => setPivotAngleOp(d, pivotId, angleRad));
+}
+
+/** Drag-to-rotate in locked mode: run IK so `nodeId` follows the ground point,
+ * writing the resolved pivot angles back to the document. */
+export function dragLocked(nodeId: string, ground: Vec3): void {
+  const design = useAppStore.getState().current;
+  if (!design) return;
+  const r = solve(
+    design,
+    {
+      lengthsLocked: true,
+      pivotAngles: pivotAnglesOf(design),
+      dragTarget: { nodeId, position: ground },
+    },
+    'pose',
+  );
+  useAppStore.getState().updateCurrent((d) => ({
+    ...d,
+    pivots: d.pivots.map((p) => ({ ...p, angleRad: r.pivotAngles[p.id] ?? p.angleRad ?? 0 })),
+  }));
 }

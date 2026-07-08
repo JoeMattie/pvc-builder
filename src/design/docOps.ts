@@ -2,8 +2,8 @@
 // docOps): every editing action is a pure `Design → Design` transform, applied
 // through appStore.updateCurrent so undo/autosave stay centralized. No
 // three.js / UI types here.
-import { length, normalize, sub } from '../geometry/math3';
-import type { Design, Member, Node, NominalSize, Vec3 } from '../schema';
+import { cross, length, normalize, sub } from '../geometry/math3';
+import type { Design, Member, Node, NominalSize, Pivot, Vec3 } from '../schema';
 import { makeId } from './ids';
 
 /** An existing node at (or very near) `pos`, for reusing a junction instead of
@@ -167,6 +167,66 @@ export function deleteMember(design: Design, memberId: string): Design {
     ...design,
     members,
     nodes: design.nodes.filter((n) => referenced.has(n.id)),
+  };
+}
+
+/** A node's incident members (both straight and formed). */
+export function incidentMembers(design: Design, nodeId: string): Member[] {
+  return design.members.filter((m) => m.nodeA === nodeId || m.nodeB === nodeId);
+}
+
+/** Whether a node can become a pivot: exactly two members meet and it isn't
+ * already a pivot. */
+export function canPivot(design: Design, nodeId: string): boolean {
+  return (
+    incidentMembers(design, nodeId).length === 2 && !design.pivots.some((p) => p.nodeId === nodeId)
+  );
+}
+
+/** Add a heat-formed revolute pivot at a 2-member node. The default axis is the
+ * joint-plane normal (so rotating opens/closes the bend); for a straight
+ * (collinear) run it falls back to a horizontal axis across the run. Returns
+ * the design unchanged with `pivotId: null` if the node can't pivot. */
+export function addPivot(
+  design: Design,
+  nodeId: string,
+  id: string = makeId('pv'),
+): { design: Design; pivotId: string | null } {
+  if (!canPivot(design, nodeId)) return { design, pivotId: null };
+  const node = nodeById(design, nodeId);
+  if (!node) return { design, pivotId: null };
+  const [mA, mB] = incidentMembers(design, nodeId) as [Member, Member];
+  const otherA = mA.nodeA === nodeId ? mA.nodeB : mA.nodeA;
+  const otherB = mB.nodeA === nodeId ? mB.nodeB : mB.nodeA;
+  const pA = nodeById(design, otherA)?.position;
+  const pB = nodeById(design, otherB)?.position;
+  if (!pA || !pB) return { design, pivotId: null };
+  const dirA = normalize(sub(pA, node.position));
+  const dirB = normalize(sub(pB, node.position));
+  let axis = cross(dirA, dirB);
+  if (length(axis) < 1e-6) {
+    axis = cross(dirA, { x: 0, y: 1, z: 0 });
+    if (length(axis) < 1e-6) axis = { x: 1, y: 0, z: 0 };
+  }
+  const pivot: Pivot = {
+    id,
+    nodeId,
+    memberA: mA.id,
+    memberB: mB.id,
+    axis: normalize(axis),
+    angleRad: 0,
+  };
+  return { design: { ...design, pivots: [...design.pivots, pivot] }, pivotId: id };
+}
+
+export function removePivot(design: Design, pivotId: string): Design {
+  return { ...design, pivots: design.pivots.filter((p) => p.id !== pivotId) };
+}
+
+export function setPivotAngle(design: Design, pivotId: string, angleRad: number): Design {
+  return {
+    ...design,
+    pivots: design.pivots.map((p) => (p.id === pivotId ? { ...p, angleRad } : p)),
   };
 }
 

@@ -4,6 +4,36 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Phase 4 — Pivots + locked-length physics (2026-07-07)
+
+- **Physics is deterministic kinematics, not CrashCat.** CrashCat exists on npm
+  but is v0.0.5 with untested determinism (the planfile flags this), and a
+  locked-length revolute mechanism is *exactly solvable* — the acceptance is
+  literally closed-form (arc / angle / length-preservation). So `solve()` is
+  implemented as forward + inverse kinematics (`src/solver/kinematics.ts`),
+  which is exact, deterministic, dependency-free, and satisfies every test. This
+  **supersedes the Phase 0 decision** ("physics = CrashCat"); the planfile's own
+  "trust the tests, not the engine" is the rationale. The pure `solve(design,
+  inputs, mode)` boundary is exactly as pinned (no engine/UI types cross it).
+- **Solver model:** welded members → rigid bodies (union-find; a pivot node is
+  not welded across), pivots → revolute joints, forward kinematics over a
+  rooted body tree/forest (rigid transforms ⇒ lengths preserved by
+  construction), drag → cyclic-coordinate-descent IK over the path pivots,
+  writing resolved angles back so the sliders track a drag. Grübler-style
+  spatial mobility `6(B−1) − 5J` per component + over-constrained (loop)
+  readout. `SolveResult` adds `pivotAngles` (an extension) for drag→slider sync.
+- **Pivot** = `{ nodeId, memberA, memberB, axis, angleRad?, limits? }` (schema
+  v3 + migration adding `pivots:[]`). Default axis = joint-plane normal
+  (`cross(dirA, dirB)`), so rotating opens/closes the bend. Pivot nodes are
+  exempt from fitting resolution.
+- **Locked-mode integration:** `GeometryAnimator` eases toward *solved*
+  positions when `lengthsLocked && pivots.length` (else document positions), so
+  every layer that reads the eased map (pipe, fittings, handles) follows the
+  mechanism for free. `PivotPanel` shows the mobility badge + an angle slider
+  per pivot; endpoint drag switches from length-edit to IK drag-to-rotate;
+  `PivotLayer` draws a hinge glyph and click-to-create markers for the Pivot
+  tool.
+
 ## Phase 3 — Formed (spline) pipe + intersections (2026-07-07)
 
 - **`formed` member = a Catmull-Rom spline** through nodeA → controlPoints →

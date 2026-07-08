@@ -8,7 +8,7 @@ import { length, normalize, sub } from '../../geometry/math3';
 import { pipeSpec, type Vec3 } from '../../schema';
 import { easedPos, useAnim } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
-import { dragMemberEndLength, dragNodeTo } from '../../state/editorActions';
+import { dragLocked, dragMemberEndLength, dragNodeTo } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { formatLength } from '../units';
@@ -66,11 +66,24 @@ function useGroundDrag(onMove: (ground: Vec3, ev: PointerEvent) => void) {
 }
 
 /** Endpoint grab sphere: free move of the junction on the ground, one undo
- * step. Hold Shift to lock the move to a world axis. */
-function MoveHandle({ nodeId, pos, radiusM }: { nodeId: string; pos: Vec3; radiusM: number }) {
+ * step. Hold Shift to lock the move to a world axis. When lengths are locked,
+ * the drag runs pivot IK instead (drag-to-rotate). */
+function MoveHandle({
+  nodeId,
+  pos,
+  radiusM,
+  locked,
+}: {
+  nodeId: string;
+  pos: Vec3;
+  radiusM: number;
+  locked: boolean;
+}) {
   const anchor = useRef<Vec3 | null>(null);
   const { start, dragging } = useGroundDrag((g, ev) =>
-    dragNodeTo(nodeId, g, { lockAxis: ev.shiftKey, anchor: anchor.current ?? undefined }),
+    locked
+      ? dragLocked(nodeId, g)
+      : dragNodeTo(nodeId, g, { lockAxis: ev.shiftKey, anchor: anchor.current ?? undefined }),
   );
   return (
     <mesh
@@ -177,27 +190,33 @@ export function SelectionHandles() {
   const odR = pipeSpec(member.size).odM / 2;
   const handleR = Math.max(odR * 1.7, 0.02);
   const units = design.unitsPreference;
+  const locked = design.lengthsLocked;
 
   return (
     <>
-      <MoveHandle nodeId={a.id} pos={aPos} radiusM={handleR} />
-      <MoveHandle nodeId={b.id} pos={bPos} radiusM={handleR} />
-      <LengthArrow
-        movingNodeId={a.id}
-        movingPos={aPos}
-        fixedPos={bPos}
-        odR={odR}
-        night={night}
-        units={units}
-      />
-      <LengthArrow
-        movingNodeId={b.id}
-        movingPos={bPos}
-        fixedPos={aPos}
-        odR={odR}
-        night={night}
-        units={units}
-      />
+      <MoveHandle nodeId={a.id} pos={aPos} radiusM={handleR} locked={locked} />
+      <MoveHandle nodeId={b.id} pos={bPos} radiusM={handleR} locked={locked} />
+      {/* no length editing while locked (drag rotates pivots instead) */}
+      {!locked && (
+        <>
+          <LengthArrow
+            movingNodeId={a.id}
+            movingPos={aPos}
+            fixedPos={bPos}
+            odR={odR}
+            night={night}
+            units={units}
+          />
+          <LengthArrow
+            movingNodeId={b.id}
+            movingPos={bPos}
+            fixedPos={aPos}
+            odR={odR}
+            night={night}
+            units={units}
+          />
+        </>
+      )}
     </>
   );
 }

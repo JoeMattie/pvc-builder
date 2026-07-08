@@ -34,9 +34,9 @@ function initialSnap(): SnapSettings {
 // undo history — that is the document's job (appStore). Resolved fittings will
 // also be cached here from Phase 2 on.
 
-/** Active editing tool. `formed` draws a heat-bent spline; pivot arrives in
- * Phase 4. */
-export type Tool = 'select' | 'draw' | 'formed';
+/** Active editing tool. `formed` draws a heat-bent spline; `pivot` turns a
+ * junction into a heat-formed revolute joint. */
+export type Tool = 'select' | 'draw' | 'formed' | 'pivot';
 
 /** Camera projection: orthographic isometric by default, one-toggle
  * perspective (planfile §1). */

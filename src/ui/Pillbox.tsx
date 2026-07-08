@@ -1,4 +1,4 @@
-import { MousePointer2, Pencil, Spline } from 'lucide-react';
+import { MousePointer2, Pencil, Rotate3d, Spline } from 'lucide-react';
 import type { NominalSize } from '../schema';
 import { useEditorStore } from '../state/editorStore';
 
@@ -52,6 +52,19 @@ export function Pillbox() {
         }`}
       >
         <Spline size={15} /> Bend
+      </button>
+      <button
+        type="button"
+        aria-pressed={tool === 'pivot'}
+        onClick={() => setTool('pivot')}
+        title="Pivot — heat-formed revolute joint (P)"
+        className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium ${
+          tool === 'pivot'
+            ? 'bg-primary text-primary-foreground'
+            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+        }`}
+      >
+        <Rotate3d size={15} /> Pivot
       </button>
 
       <div className="mx-0.5 h-6 w-px bg-border" />
