@@ -1,6 +1,7 @@
 import { type Design, migrateToLatest } from '../schema';
 import { articulatedArm, cubeFrame } from './generators';
-import trexWireframe from './trex-wireframe.json';
+import trexPivots from './trex-pivots.json';
+import trexRigid from './trex-rigid.json';
 
 // Bundled example designs, offered from the project list for a fast look
 // (planfile §7). Generic subjects only. Each `load()` runs the baked JSON
@@ -26,9 +27,15 @@ export const EXAMPLES: Example[] = [
     load: () => cubeFrame(),
   },
   {
-    id: 'trex-wireframe',
-    name: 'T-rex (wireframe)',
-    description: '262 nodes · 780 pipes — a low-poly mesh drawn as pipe (no fittings)',
-    load: () => migrateToLatest(trexWireframe),
+    id: 'trex-rigid',
+    name: 'T-rex (rigid)',
+    description: '57 nodes · 145 pipes — decimated low-poly mesh, all joints rigid',
+    load: () => migrateToLatest(trexRigid),
+  },
+  {
+    id: 'trex-pivots',
+    name: 'T-rex (universal pivots)',
+    description: '145 pipes · 233 free ball joints — every intersection is a universal pivot',
+    load: () => migrateToLatest(trexPivots),
   },
 ];
