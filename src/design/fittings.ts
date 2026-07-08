@@ -167,10 +167,13 @@ function classify(ends: FittingEnd[]): Classified | null {
 export function resolveFittings(design: Design): FittingResolution {
   const ends = incidentEnds(design);
   const nodePos = new Map(design.nodes.map((n) => [n.id, n.position]));
+  // a node carrying a pivot is exempt — the pivot IS its fitting (planfile §4)
+  const pivotNodes = new Set(design.pivots.map((p) => p.nodeId));
   const fittings: ResolvedFitting[] = [];
   const conflicts: Conflict[] = [];
 
   for (const [nodeId, list] of ends) {
+    if (pivotNodes.has(nodeId)) continue;
     const position = nodePos.get(nodeId);
     if (!position) continue;
     const result = classify(list);

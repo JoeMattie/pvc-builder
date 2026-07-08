@@ -11,6 +11,8 @@ export const migrations: Record<number, Migration> = {
   // v1 → v2: added the `formed` member variant. Existing v1 documents (straight
   // members only) are already valid v2 documents — stamp only.
   1: (doc) => doc,
+  // v2 → v3: added `pivots` (revolute joints); old docs get an empty array.
+  2: (doc) => ({ ...doc, pivots: Array.isArray(doc.pivots) ? doc.pivots : [] }),
 };
 
 export class MigrationError extends Error {}

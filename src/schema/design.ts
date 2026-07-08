@@ -4,8 +4,9 @@ import { idSchema, nominalSizeSchema, unitsPreferenceSchema, vec3Schema } from '
 /** Bump on every schema change and add a migration keyed by the version it
  * upgrades FROM (planfile §3, enforced by migrations.test).
  * v1: nodes + straight members.
- * v2: `formed` (heat-bent spline) member variant. */
-export const SCHEMA_VERSION = 2;
+ * v2: `formed` (heat-bent spline) member variant.
+ * v3: `pivots` (heat-formed revolute joints). */
+export const SCHEMA_VERSION = 3;
 
 /** A junction where pipe ends meet. Position is SI metres. */
 export const nodeSchema = z.object({
@@ -44,6 +45,20 @@ export const memberSchema = z.discriminatedUnion('kind', [
   formedMemberSchema,
 ]);
 
+/** A heat-formed wrapping pivot (planfile §3): a revolute joint between two
+ * members that share `nodeId`, rotating about `axis` (design-space unit
+ * vector). `angleRad` is the current/target rotation from the design rest pose
+ * (read/written by both drag and the angle slider). */
+export const pivotSchema = z.object({
+  id: idSchema,
+  nodeId: idSchema,
+  memberA: idSchema,
+  memberB: idSchema,
+  axis: vec3Schema,
+  angleRad: z.number().optional(),
+  limits: z.object({ minRad: z.number(), maxRad: z.number() }).optional(),
+});
+
 /** The top-level design document — the single source of truth for the file
  * format. Resolved fittings are NOT stored (planfile §3): they are a pure
  * function of the design, recomputed continuously. */
@@ -54,17 +69,20 @@ export const designSchema = z.object({
   unitsPreference: unitsPreferenceSchema,
   /** which nominal sizes the pillbox offers (planfile §1) */
   enabledSizes: z.array(nominalSizeSchema),
-  /** global "lock lengths" toggle: when true, only heat-formed pivots move
-   * (planfile §1 physics); v1 stores the flag, the solver arrives in Phase 4 */
+  /** global "lock lengths" toggle: when true, all lengths + non-pivot joints
+   * freeze and only pivots move (planfile §1 physics / §5 solver) */
   lengthsLocked: z.boolean(),
   nodes: z.array(nodeSchema),
   members: z.array(memberSchema),
+  /** heat-formed revolute joints */
+  pivots: z.array(pivotSchema),
 });
 
 export type Node = z.infer<typeof nodeSchema>;
 export type StraightMember = z.infer<typeof straightMemberSchema>;
 export type FormedMember = z.infer<typeof formedMemberSchema>;
 export type Member = z.infer<typeof memberSchema>;
+export type Pivot = z.infer<typeof pivotSchema>;
 export type Design = z.infer<typeof designSchema>;
 
 export function createEmptyDesign(id: string, name: string): Design {
@@ -77,5 +95,6 @@ export function createEmptyDesign(id: string, name: string): Design {
     lengthsLocked: false,
     nodes: [],
     members: [],
+    pivots: [],
   };
 }
