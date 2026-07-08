@@ -4,6 +4,7 @@ import {
   addBodyJoint,
   addMeasurement,
   appendPipe,
+  bendMember,
   dedupeJoints,
   deleteMember,
   detachMemberEnd,
@@ -522,6 +523,50 @@ describe('dedupeJoints (swapped / duplicate joint pairs)', () => {
     };
     const healed = reconcileBodyJoints(reported);
     expect(healed.joints).toHaveLength(1);
+  });
+});
+
+describe('bendMember', () => {
+  it('converts a straight pipe to a formed curve, endpoints fixed', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0)]);
+    const m0 = design.members.find((m) => m.id === memberIds[0])!;
+    const out = bendMember(design, memberIds[0]!, 0.5, V(0, 0, 0.3), 0.06, {
+      lockEndAngles: false,
+    });
+    const bent = out.members.find((m) => m.id === memberIds[0])!;
+    expect(bent.kind).toBe('formed');
+    // endpoints unchanged
+    expect(bent.nodeA).toBe(m0.nodeA);
+    expect(bent.nodeB).toBe(m0.nodeB);
+    if (bent.kind === 'formed') {
+      expect(bent.controlPoints).toHaveLength(1);
+      // the single control point is pulled off-axis in +Z
+      expect(bent.controlPoints[0]!.z).toBeGreaterThan(0.2);
+    }
+  });
+
+  it('lockEndAngles adds straight lead-ins (3 control points)', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0)]);
+    const out = bendMember(design, memberIds[0]!, 0.5, V(0, 0, 0.3), 0.06, {
+      lockEndAngles: true,
+    });
+    const bent = out.members.find((m) => m.id === memberIds[0])!;
+    if (bent.kind === 'formed') {
+      expect(bent.controlPoints).toHaveLength(3);
+      // lead-ins stay on the axis (z ≈ 0), middle is pulled out
+      expect(Math.abs(bent.controlPoints[0]!.z)).toBeLessThan(1e-9);
+      expect(bent.controlPoints[1]!.z).toBeGreaterThan(0.2);
+      expect(Math.abs(bent.controlPoints[2]!.z)).toBeLessThan(1e-9);
+    }
+  });
+
+  it('re-bends an already-bent member (live drag) and clamps the pull', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0)]);
+    const once = bendMember(design, memberIds[0]!, 0.5, V(0, 0, 0.2), 0.06);
+    // a second bend (huge pull) recomputes from the chord and clamps to the length
+    const twice = bendMember(once, memberIds[0]!, 0.5, V(0, 0, 99), 0.06, { lockEndAngles: false });
+    const bent = twice.members.find((m) => m.id === memberIds[0])!;
+    if (bent.kind === 'formed') expect(bent.controlPoints[0]!.z).toBeLessThanOrEqual(1 + 1e-9);
   });
 });
 

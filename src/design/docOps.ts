@@ -2,7 +2,7 @@
 // docOps): every editing action is a pure `Design → Design` transform, applied
 // through appStore.updateCurrent so undo/autosave stay centralized. No
 // three.js / UI types here.
-import { add, cross, dot, length, normalize, sub } from '../geometry/math3';
+import { add, cross, dot, length, normalize, scale, sub } from '../geometry/math3';
 import type {
   Design,
   Joint,
@@ -146,6 +146,63 @@ export function setNodePosition(design: Design, nodeId: string, position: Vec3):
     ...design,
     nodes: design.nodes.map((n) => (n.id === nodeId ? { ...n, position } : n)),
   };
+}
+
+/** Bend a straight member into a heat-formed curve: pull the point at parameter
+ * `t` (0..1 along the pipe) by `perpOffset` (its component perpendicular to the
+ * pipe axis is used). Endpoints stay fixed (the developed length grows). With
+ * `lockEndAngles`, the bend starts a short distance in from each end so the end
+ * tangents stay axial (a smooth transition). `filletRadiusM` is the heat-form
+ * bend radius to record (the caller derives it from the pipe size + min-radius).
+ * The perpendicular pull is clamped to the pipe length to keep the bend sane. */
+export function bendMember(
+  design: Design,
+  memberId: string,
+  t: number,
+  perpOffset: Vec3,
+  filletRadiusM: number,
+  opts?: { lockEndAngles?: boolean },
+): Design {
+  const m = memberById(design, memberId);
+  // works on a straight member OR an already-bent one (a live drag re-bends each
+  // frame from the fixed endpoints), so the bend recomputes from the chord
+  if (!m) return design;
+  const a = nodeById(design, m.nodeA)?.position;
+  const b = nodeById(design, m.nodeB)?.position;
+  if (!a || !b) return design;
+  const axis = sub(b, a);
+  const len = length(axis);
+  if (len < 1e-6) return design;
+  const u = scale(axis, 1 / len);
+  const tc = Math.max(0, Math.min(1, t));
+  // perpendicular component of the pull, clamped in magnitude
+  let perp = sub(perpOffset, scale(u, dot(perpOffset, u)));
+  const pmag = length(perp);
+  if (pmag > len) perp = scale(perp, len / pmag);
+  const grab = add(a, scale(u, tc * len));
+  const control = add(grab, perp);
+
+  let controlPoints: Vec3[];
+  let filletRadiiM: number[];
+  if (opts?.lockEndAngles) {
+    // straight lead-ins near each end keep the end tangents axial
+    const d = Math.min(len * 0.2, len * tc, len * (1 - tc));
+    controlPoints = [add(a, scale(u, d)), control, sub(b, scale(u, d))];
+    filletRadiiM = [filletRadiusM, filletRadiusM, filletRadiusM];
+  } else {
+    controlPoints = [control];
+    filletRadiiM = [filletRadiusM];
+  }
+  const formed: Member = {
+    id: m.id,
+    kind: 'formed',
+    nodeA: m.nodeA,
+    nodeB: m.nodeB,
+    controlPoints,
+    size: m.size,
+    filletRadiiM,
+  };
+  return { ...design, members: design.members.map((mm) => (mm.id === memberId ? formed : mm)) };
 }
 
 /** Change a member's nominal size (the right-click size switcher). Reducing

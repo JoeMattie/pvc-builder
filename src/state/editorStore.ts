@@ -43,7 +43,7 @@ function initialSnap(): SnapSettings {
 /** Active editing tool. `formed` draws a heat-bent spline; `move` translates the
  * selected member along a world axis via arrow handles; `rotate` swings it about
  * a ring gizmo. Pivots are created by right-clicking a pipe join (no tool). */
-export type Tool = 'select' | 'draw' | 'formed' | 'move' | 'rotate' | 'measure';
+export type Tool = 'select' | 'draw' | 'formed' | 'move' | 'rotate' | 'measure' | 'bend';
 
 /** Camera projection: orthographic isometric by default, one-toggle
  * perspective (planfile §1). */
@@ -73,6 +73,8 @@ export interface EditorState {
   measureAdjustId: string | null;
   /** the currently selected measurement (highlighted; Delete removes it) */
   selectedMeasurementId: string | null;
+  /** Bend tool: keep the pipe's end tangents axial (smooth bend away from ends) */
+  bendLockEndAngles: boolean;
   /** while drawing, the length typed into the length pill (empty = not typing) */
   drawLength: string;
   /** the current draw direction (unit, from the path cursor toward the preview) —
@@ -101,6 +103,7 @@ export interface EditorState {
   setMeasureFrom(end: MeasurementEnd | null): void;
   setMeasureAdjustId(id: string | null): void;
   selectMeasurement(id: string | null): void;
+  setBendLockEndAngles(on: boolean): void;
   setDrawLength(s: string): void;
   setDrawDirection(v: Vec3 | null): void;
   setSimulating(on: boolean): void;
@@ -126,6 +129,7 @@ const INITIAL = {
   measureFrom: null as MeasurementEnd | null,
   measureAdjustId: null as string | null,
   selectedMeasurementId: null as string | null,
+  bendLockEndAngles: true,
   drawLength: '',
   drawDirection: null as Vec3 | null,
   simulating: false,
@@ -185,6 +189,9 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   },
   selectMeasurement(id) {
     set({ selectedMeasurementId: id, selectedIds: [], selectedJointId: null });
+  },
+  setBendLockEndAngles(on) {
+    set({ bendLockEndAngles: on });
   },
   setDrawLength(s) {
     set({ drawLength: s });

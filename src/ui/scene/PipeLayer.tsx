@@ -2,16 +2,19 @@
 // clearcoat so white PVC reads as plastic (planfile §6), plus a hollow bore at
 // each free pipe end so pipes read as real tube with wall thickness. In the
 // select tool, clicking a pipe selects its member.
-import type { ThreeEvent } from '@react-three/fiber';
+import { type ThreeEvent, useThree } from '@react-three/fiber';
+import { useMemo } from 'react';
+import { Raycaster, Vector2, Vector3 } from 'three';
 import { incidentMembers, memberById, nodeById } from '../../design/docOps';
-import { length, sub } from '../../geometry/math3';
+import { add, dot, length, scale, sub } from '../../geometry/math3';
 import { easedPos, useAnim } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
-import { placeDrawPoint, selectMember } from '../../state/editorActions';
+import { bendMemberAt, placeDrawPoint, selectMember } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
 import { orientZ, placeAxis } from './axis';
+import { dominantAxisNormal, rayToPlane } from './ground';
 import { buildPipeModel, type PipeCylinder, type PipeEnd } from './pipeModel';
 
 const RADIAL_SEGMENTS = 20;
@@ -23,6 +26,7 @@ function Pipe({
   onSelect,
   onContext,
   onDouble,
+  onBend,
 }: {
   cyl: PipeCylinder;
   color: string;
@@ -30,6 +34,7 @@ function Pipe({
   onSelect?: (memberId: string) => void;
   onContext?: (memberId: string, e: ThreeEvent<MouseEvent>) => void;
   onDouble?: (e: ThreeEvent<MouseEvent>) => void;
+  onBend?: (memberId: string, e: ThreeEvent<PointerEvent>) => void;
 }) {
   const placed = placeAxis(cyl.a, cyl.b);
   if (!placed) return null;
@@ -39,6 +44,7 @@ function Pipe({
         onSelect(cyl.memberId);
       }
     : undefined;
+  const bendDown = onBend ? (e: ThreeEvent<PointerEvent>) => onBend(cyl.memberId, e) : undefined;
   const context = onContext
     ? (e: ThreeEvent<MouseEvent>) => {
         e.stopPropagation();
@@ -59,6 +65,7 @@ function Pipe({
       onClick={click}
       onContextMenu={context}
       onDoubleClick={dbl}
+      onPointerDown={bendDown}
       castShadow
       receiveShadow
     >
@@ -84,6 +91,12 @@ export function PipeLayer() {
   const tool = useEditorStore((s) => s.tool);
   const drawingFrom = useEditorStore((s) => s.drawingFromNodeId);
   const night = useThemeStore((s) => s.night);
+  const camera = useThree((s) => s.camera);
+  const gl = useThree((s) => s.gl);
+  const controls = useThree((s) => s.controls) as { enabled: boolean } | null;
+  const rc = useMemo(() => new Raycaster(), []);
+  const ndc = useMemo(() => new Vector2(), []);
+  const fwd = useMemo(() => new Vector3(), []);
   // re-render while geometry is easing toward its snapped target (reads the
   // mutable eased-position map, so it recomputes each animating frame)
   useAnim((s) => s.v);
@@ -127,6 +140,53 @@ export function PipeLayer() {
           store.openSizeMenu({ memberIds, x: ne.clientX, y: ne.clientY });
         }
       : undefined;
+  // Bend tool: press+drag a pipe to bend it. The grab parameter t comes from the
+  // click point along the pipe; the drag rides a view-facing plane through the
+  // grab so the bend follows the cursor. Window listeners keep the drag alive off
+  // the mesh (same reason as the endpoint handles).
+  const onBend =
+    tool === 'bend' && design
+      ? (memberId: string, e: ThreeEvent<PointerEvent>) => {
+          if (e.nativeEvent.button !== 0) return;
+          const m = memberById(design, memberId);
+          if (!m) return;
+          const a = easedPos(m.nodeA) ?? nodeById(design, m.nodeA)?.position;
+          const b = easedPos(m.nodeB) ?? nodeById(design, m.nodeB)?.position;
+          if (!a || !b) return;
+          e.stopPropagation();
+          const axis = sub(b, a);
+          const len2 = dot(axis, axis);
+          const gp = { x: e.point.x, y: e.point.y, z: e.point.z };
+          const t = len2 > 1e-9 ? Math.max(0, Math.min(1, dot(sub(gp, a), axis) / len2)) : 0.5;
+          const grab = add(a, scale(axis, t));
+          camera.getWorldDirection(fwd);
+          const normal = dominantAxisNormal({ x: fwd.x, y: fwd.y, z: fwd.z });
+          if (controls) controls.enabled = false;
+          useAppStore.getState().beginGesture();
+          const el = gl.domElement;
+          const move = (ev: PointerEvent) => {
+            const rect = el.getBoundingClientRect();
+            ndc.set(
+              ((ev.clientX - rect.left) / rect.width) * 2 - 1,
+              -((ev.clientY - rect.top) / rect.height) * 2 + 1,
+            );
+            rc.setFromCamera(ndc, camera);
+            const cur = rayToPlane(rc.ray, grab, normal);
+            if (cur) bendMemberAt(memberId, t, sub(cur, grab));
+          };
+          const up = () => {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+            window.removeEventListener('pointercancel', up);
+            if (controls) controls.enabled = true;
+            useAppStore.getState().endGesture();
+          };
+          window.addEventListener('pointermove', move);
+          window.addEventListener('pointerup', up);
+          window.addEventListener('pointercancel', up);
+        }
+      : undefined;
+
   // double-click a pipe (in the select tool) → start drawing a new pipe from the
   // clicked point (snaps on-pipe → a tee / branch start)
   const onDouble =
@@ -149,6 +209,7 @@ export function PipeLayer() {
           onSelect={onSelect}
           onContext={onContext}
           onDouble={onDouble}
+          onBend={onBend}
         />
       ))}
       {model.ends.map((e) => (

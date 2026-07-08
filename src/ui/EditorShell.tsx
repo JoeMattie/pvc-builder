@@ -26,6 +26,7 @@ import { physicsNodePositions } from '../solver/physics';
 import { useAppStore } from '../state/appStore';
 import { requestPose, resetPose, setView, type ViewName } from '../state/cameraStore';
 import {
+  bendMemberAt,
   clearSelection,
   deleteMeasurement,
   deleteMembers,
@@ -55,6 +56,7 @@ import {
 } from '../state/editorActions';
 import { useEditorStore } from '../state/editorStore';
 import { useThemeStore } from '../state/themeStore';
+import { BendPill } from './BendPill';
 import { BomPanel } from './BomPanel';
 import { JoinMenu } from './JoinMenu';
 import { downloadFile } from './lib/download';
@@ -241,6 +243,8 @@ export function EditorShell() {
       } else if (e.key === 'c' || e.key === 'C') {
         // the heat-formed spline tool, now labelled "Curve"
         editor.setTool('formed');
+      } else if (e.key === 'b' || e.key === 'B') {
+        editor.setTool('bend');
       } else if (e.key === 't' || e.key === 'T') {
         editor.setTool('measure');
       } else if (e.key === 'r' || e.key === 'R') {
@@ -310,7 +314,7 @@ export function EditorShell() {
         lengthM: memberLengthM(d, m),
       }));
     };
-    hook.setTool = (tool: 'select' | 'draw' | 'formed' | 'move' | 'rotate' | 'measure') =>
+    hook.setTool = (tool: 'select' | 'draw' | 'formed' | 'move' | 'rotate' | 'measure' | 'bend') =>
       useEditorStore.getState().setTool(tool);
     hook.setProjection = (p: 'ortho' | 'perspective') => useEditorStore.getState().setProjection(p);
     hook.setView = (name: ViewName) => setView(name);
@@ -327,6 +331,8 @@ export function EditorShell() {
     hook.measure = (raw: Vec3) => placeMeasurePoint(raw);
     hook.getMeasurements = () => useAppStore.getState().current?.measurements ?? [];
     hook.deleteMeasurement = (id: string) => deleteMeasurement(id);
+    hook.bendMember = (memberId: string, t: number, perpOffset: Vec3) =>
+      bendMemberAt(memberId, t, perpOffset);
     hook.selectMember = (id: string) => selectMember(id);
     hook.selectJoint = (id: string | null) => useEditorStore.getState().selectJoint(id);
     hook.clearSelection = () => clearSelection();
@@ -452,6 +458,9 @@ export function EditorShell() {
 
       {/* selected-member inspector (top-center) */}
       <SelectionPanel />
+
+      {/* Bend-tool options (top-center) */}
+      <BendPill />
 
       {/* tool pillbox (bottom-center) */}
       <Pillbox />

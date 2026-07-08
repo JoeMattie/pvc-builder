@@ -1,4 +1,12 @@
-import { MousePointer2, Move3d, Pencil, RotateCw, Ruler, Spline } from 'lucide-react';
+import {
+  CornerUpRight,
+  MousePointer2,
+  Move3d,
+  Pencil,
+  RotateCw,
+  Ruler,
+  Spline,
+} from 'lucide-react';
 import type { ComponentType } from 'react';
 import type { NominalSize } from '../schema';
 import { type Tool, useEditorStore } from '../state/editorStore';
@@ -12,6 +20,7 @@ const TOOLS: { id: Tool; icon: ComponentType<{ size?: number }>; label: string; 
   { id: 'move', icon: Move3d, label: 'Move', key: 'M' },
   { id: 'rotate', icon: RotateCw, label: 'Rotate' },
   { id: 'formed', icon: Spline, label: 'Curve', key: 'C' },
+  { id: 'bend', icon: CornerUpRight, label: 'Bend', key: 'B' },
   { id: 'measure', icon: Ruler, label: 'Measure', key: 'T' },
 ];
 

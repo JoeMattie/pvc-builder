@@ -7,6 +7,7 @@ import {
   addFormedMember,
   addMeasurement,
   appendPipe,
+  bendMember,
   connectPipe,
   deleteMember,
   detachMemberEnd as detachMemberEndOp,
@@ -533,6 +534,19 @@ export function updateMeasureOffset(raw: Vec3): void {
   const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.z + b.z) / 2 };
   const off = dot(sub(raw, mid), perp);
   useAppStore.getState().updateCurrent((d) => setMeasurementOffset(d, id, off));
+}
+
+/** Bend a straight pipe into a curve (the Bend tool drag): pull the point at
+ * parameter `t` by `perpOffset`. Uses the pipe's min heat-form radius as the
+ * bend radius and the live "lock end angles" toggle. */
+export function bendMemberAt(memberId: string, t: number, perpOffset: Vec3): void {
+  const design = useAppStore.getState().current;
+  if (!design) return;
+  const m = design.members.find((x) => x.id === memberId);
+  const size = m?.size ?? '3/4"';
+  const fillet = MIN_BEND_RADIUS_FACTOR * pipeSpec(size).odM;
+  const lockEndAngles = useEditorStore.getState().bendLockEndAngles;
+  updateReconciled((d) => bendMember(d, memberId, t, perpOffset, fillet, { lockEndAngles }));
 }
 
 /** Delete a measurement. */
