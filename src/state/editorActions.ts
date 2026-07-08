@@ -8,6 +8,7 @@ import {
   addWrap,
   appendPipe,
   connectPipe,
+  convertWrapToFitting as convertWrapToFittingOp,
   memberEndpoints,
   nodeById,
   resetPivots as resetPivotsOp,
@@ -305,6 +306,11 @@ export function resetPivots(): void {
 /** Switch a wrap between rigid (screwed) and a natural pivot. */
 export function setWrapRigid(wrapId: string, rigid: boolean): void {
   useAppStore.getState().updateCurrent((d) => setWrapRigidOp(d, wrapId, rigid));
+}
+
+/** Convert a wrap into a standard socket fitting (split the run → a tee). */
+export function convertWrapToFitting(wrapId: string): void {
+  useAppStore.getState().updateCurrent((d) => convertWrapToFittingOp(d, wrapId));
 }
 
 /** Drag-to-rotate in locked mode: run IK so `nodeId` follows the ground point,

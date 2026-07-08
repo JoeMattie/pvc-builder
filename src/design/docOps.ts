@@ -299,6 +299,27 @@ export function addWrap(
   return { design: { ...design, wraps: [...design.wraps, wrap] }, wrapId: id };
 }
 
+/** Convert a heat-wrapped tee into a standard socket fitting: split the run at
+ * the wrap's branch node so the branch node becomes a real junction (two
+ * collinear run halves + the branch = a tee that `resolveFittings` classifies)
+ * and drop the wrap. Only meaningful where a manufactured fitting exists (the
+ * branch ~perpendicular → tee); the UI gates the option to those angles. */
+export function convertWrapToFitting(design: Design, wrapId: string): Design {
+  const wrap = design.wraps.find((w) => w.id === wrapId);
+  if (!wrap) return design;
+  const through = memberById(design, wrap.throughMember);
+  if (through?.kind !== 'straight') return design;
+  const n = wrap.branchNode;
+  if (n === through.nodeA || n === through.nodeB) return design; // already an end
+  const a = addMember(design, through.nodeA, n, through.size);
+  const b = addMember(a.design, n, through.nodeB, through.size);
+  return {
+    ...b.design,
+    members: b.design.members.filter((m) => m.id !== through.id),
+    wraps: b.design.wraps.filter((w) => w.id !== wrapId),
+  };
+}
+
 /** Toggle a wrap between rigid (screwed) and a natural pivot. */
 export function setWrapRigid(design: Design, wrapId: string, rigid: boolean): Design {
   return {

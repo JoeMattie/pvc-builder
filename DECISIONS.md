@@ -4,6 +4,23 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Standard socket fitting as a joint option (2026-07-07)
+
+- **A wrap tee can be converted to a standard manufactured socket tee.** The
+  selection inspector's Wrap control gained a third option — **Fitting** —
+  alongside Screwed / Pivot. `convertWrapToFitting` (pure, tested) splits the run
+  at the branch node into two collinear halves and drops the wrap, so the branch
+  node becomes a real degree-3 junction that `resolveFittings` already
+  classifies as a **tee** (rendered by FittingLayer). Seam
+  `__pvc.convertWrapToFitting`.
+- **Gated to angles where a real fitting fits:** the Fitting button is enabled
+  only when the branch is within ~7° of perpendicular to the run (a
+  manufactured tee angle). `splitMemberAt` from the earlier tee work stays for
+  the non-wrap split path. **Corner (elbow) and cross fittings already resolve**
+  for explicit shared-node joins at 90°/45° (Phase 2 `resolveFittings`), so
+  "corner standard fittings" needed no new code — this adds the 3-way tee as a
+  selectable alternative to a heat-wrap.
+
 ## Pivots render as heat-wrapped swivels + Solve fabrication (2026-07-07)
 
 - **Every pivot now renders as a heat-wrap collar** (the accent-tinted smooth

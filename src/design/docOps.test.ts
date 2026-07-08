@@ -4,6 +4,7 @@ import {
   addPivot,
   addWrap,
   appendPipe,
+  convertWrapToFitting,
   deleteMember,
   memberLengthM,
   nodeById,
@@ -244,5 +245,16 @@ describe('heat-wrapped tees', () => {
       (m) => m.nodeA === branchNode || m.nodeB === branchNode,
     )!;
     expect(deleteMember(withWrap, branchMember.id).wraps).toHaveLength(0);
+  });
+
+  it('convertWrapToFitting splits the run into a tee and drops the wrap', () => {
+    const { design, throughId, branchNode } = runWithBranch();
+    const r = addWrap(design, throughId, branchNode);
+    const out = convertWrapToFitting(r.design, r.wrapId!);
+    expect(out.wraps).toHaveLength(0);
+    // the run is now two collinear members + the branch = 3 members
+    expect(out.members).toHaveLength(3);
+    // the branch node is a degree-3 junction (a tee)
+    expect(nodeDegrees(out).get(branchNode)).toBe(3);
   });
 });

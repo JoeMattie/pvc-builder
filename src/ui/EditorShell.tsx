@@ -27,6 +27,7 @@ import { physicsNodePositions } from '../solver/physics';
 import { useAppStore } from '../state/appStore';
 import {
   clearSelection,
+  convertWrapToFitting,
   createPivotAt,
   dragNodeTo,
   finishFormed,
@@ -258,6 +259,7 @@ export function EditorShell() {
     // heat-wrapped tee seams
     hook.getWraps = () => useAppStore.getState().current?.wraps ?? [];
     hook.setWrapRigid = (wrapId: string, rigid: boolean) => setWrapRigid(wrapId, rigid);
+    hook.convertWrapToFitting = (wrapId: string) => convertWrapToFitting(wrapId);
     // pivots / solver seams
     hook.createPivotAt = (nodeId: string) => createPivotAt(nodeId);
     hook.setPivotAngle = (pivotId: string, angleRad: number) => setPivotAngle(pivotId, angleRad);
