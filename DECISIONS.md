@@ -4,7 +4,20 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
-## Move tool + hotkey changes (2026-07-07)
+## Render quality — hollow pipe ends, no junction ball, softer shadows (2026-07-07)
+
+- **Pipes read as real tube with wall thickness.** `buildPipeModel` no longer
+  emits a rounding **ball** at junctions (classified fittings / heat-wraps cover
+  real joints); instead it emits a `PipeEnd` at every *free* (degree-1, non-wrap)
+  pipe end, rendered as a recessed dark **bore** disc (radius = OD/2 − wall)
+  inside the pipe's rim — so an open end shows the hole + wall. `orientZ` added
+  for facing the disc down the pipe axis.
+- **Softer shadows:** Canvas switched to `shadows="soft"` (PCFSoftShadowMap,
+  which honours the light's `shadow-radius`) with `shadow-radius={6}`,
+  `shadow-mapSize=2048`, and `shadow-normalBias={0.02}` to keep the blurred edge
+  clean. (drei `SoftShadows`/PCSS was tried first but its shader calls
+  `unpackRGBAToDepth` in a way three 0.185's shadow map rejects — broken shader,
+  reverted.)
 
 - **Move tool (M): a 3-axis translate gizmo on the selected member.** Arrows in
   the axis-triad colours (X red / Y green / Z blue) at the member's midpoint;

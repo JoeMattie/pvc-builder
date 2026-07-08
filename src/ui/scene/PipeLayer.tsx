@@ -1,6 +1,7 @@
 // r3f renderer for the pipe model: PBR cylinders at true OD with a faint
-// clearcoat so white PVC reads as plastic (planfile §6), plus rounding spheres
-// at junctions. In the select tool, clicking a pipe selects its member.
+// clearcoat so white PVC reads as plastic (planfile §6), plus a hollow bore at
+// each free pipe end so pipes read as real tube with wall thickness. In the
+// select tool, clicking a pipe selects its member.
 import type { ThreeEvent } from '@react-three/fiber';
 import { easedPos, useAnim } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
@@ -8,8 +9,8 @@ import { selectMember } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
-import { placeAxis } from './axis';
-import { buildPipeModel, type PipeCylinder } from './pipeModel';
+import { orientZ, placeAxis } from './axis';
+import { buildPipeModel, type PipeCylinder, type PipeEnd } from './pipeModel';
 
 const RADIAL_SEGMENTS = 20;
 
@@ -78,23 +79,28 @@ export function PipeLayer() {
           onSelect={onSelect}
         />
       ))}
-      {model.joints.map((j) => (
-        <mesh
-          key={j.nodeId}
-          position={[j.center.x, j.center.y, j.center.z]}
-          castShadow
-          receiveShadow
-        >
-          <sphereGeometry args={[j.radiusM, 18, 14]} />
-          <meshPhysicalMaterial
-            color={color}
-            roughness={0.38}
-            metalness={0}
-            clearcoat={0.6}
-            clearcoatRoughness={0.35}
-          />
-        </mesh>
+      {model.ends.map((e) => (
+        <Bore key={e.nodeId} end={e} night={night} />
       ))}
     </>
+  );
+}
+
+/** A hollow pipe end: a recessed dark bore disc inside the pipe's rim, so the
+ * open end reads as tube with wall thickness (OD rim − bore = the wall). */
+function Bore({ end, night }: { end: PipeEnd; night: boolean }) {
+  const inner = Math.max(end.odM / 2 - end.wallM, 0.001);
+  const quat = orientZ(end.dir);
+  // sit the bore just outside the end face so it isn't hidden by the cylinder cap
+  const c: [number, number, number] = [
+    end.center.x + end.dir.x * 0.0004,
+    end.center.y + end.dir.y * 0.0004,
+    end.center.z + end.dir.z * 0.0004,
+  ];
+  return (
+    <mesh position={c} quaternion={quat}>
+      <circleGeometry args={[inner, 24]} />
+      <meshStandardMaterial color={night ? '#0c0e12' : '#3a3d44'} roughness={0.9} side={2} />
+    </mesh>
   );
 }

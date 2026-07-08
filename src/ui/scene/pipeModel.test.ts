@@ -30,14 +30,21 @@ describe('buildPipeModel', () => {
     );
   });
 
-  it('rounds every pipe-carrying node and sizes the joint to its thickest member', () => {
+  it('emits a hollow bore at each free (degree-1) pipe end, not interior joints', () => {
+    // an L path has 3 nodes: two free ends (degree 1) + one corner (degree 2)
     const model = buildPipeModel(lPath('3/4"'));
-    expect(model.joints).toHaveLength(3);
-    for (const j of model.joints) expect(j.radiusM).toBeCloseTo(pipeSpec('3/4"').odM / 2, 12);
+    expect(model.ends).toHaveLength(2);
+    const spec = pipeSpec('3/4"');
+    for (const e of model.ends) {
+      expect(e.odM).toBeCloseTo(spec.odM, 12);
+      expect(e.wallM).toBeCloseTo(spec.wallM, 12);
+      // outward direction is a unit vector
+      expect(Math.hypot(e.dir.x, e.dir.y, e.dir.z)).toBeCloseTo(1, 9);
+    }
   });
 
   it('skips nodes with no incident members', () => {
     const empty = createEmptyDesign('d', 'empty');
-    expect(buildPipeModel(empty)).toEqual({ cylinders: [], joints: [] });
+    expect(buildPipeModel(empty)).toEqual({ cylinders: [], ends: [] });
   });
 });

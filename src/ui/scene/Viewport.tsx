@@ -7,9 +7,10 @@ import { Scene } from './Scene';
 export function Viewport() {
   return (
     <Canvas
-      // 'percentage' = PCFShadowMap; the boolean/`'soft'` default is
-      // PCFSoftShadowMap, which three 0.185 warns is deprecated
-      shadows="percentage"
+      // 'soft' = PCFSoftShadowMap, which honours the light's shadow-radius for a
+      // soft penumbra (PCFShadowMap ignores radius). three 0.185 may deprecation-
+      // warn, but it's the cheap path to genuinely soft shadows.
+      shadows="soft"
       dpr={[1, 2]}
       gl={{ antialias: true }}
       style={{ position: 'absolute', inset: 0 }}

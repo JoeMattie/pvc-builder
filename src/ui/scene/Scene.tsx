@@ -75,12 +75,17 @@ export function Scene() {
 
       <ambientLight intensity={0.65} />
       <hemisphereLight intensity={0.35} />
+      {/* soft shadows: PCFSoftShadowMap (Canvas shadows="soft") + a blur radius
+          gives a gentle penumbra instead of a hard edge. A big map keeps the
+          softened edge from looking blocky. */}
       <directionalLight
         position={[6, 12, 8]}
         intensity={1.15}
         castShadow
-        shadow-mapSize={[1024, 1024]}
+        shadow-mapSize={[2048, 2048]}
+        shadow-radius={6}
         shadow-bias={-0.0002}
+        shadow-normalBias={0.02}
         shadow-camera-left={-4}
         shadow-camera-right={4}
         shadow-camera-top={4}

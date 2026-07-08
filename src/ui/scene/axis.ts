@@ -32,3 +32,13 @@ export function orientY(dir: Vec3): ThreeQuat {
   if (d.lengthSq() < 1e-12) return new ThreeQuat();
   return new ThreeQuat().setFromUnitVectors(WORLD_UP, d.normalize());
 }
+
+const WORLD_FWD = new Vector3(0, 0, 1);
+
+/** Quaternion rotating a +Z-facing primitive (e.g. a circle/ring, whose normal
+ * is +Z) to face along `dir`. */
+export function orientZ(dir: Vec3): ThreeQuat {
+  const d = new Vector3(dir.x, dir.y, dir.z);
+  if (d.lengthSq() < 1e-12) return new ThreeQuat();
+  return new ThreeQuat().setFromUnitVectors(WORLD_FWD, d.normalize());
+}
