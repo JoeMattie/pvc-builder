@@ -4,6 +4,28 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Interaction fixes — camera + length arrow (2026-07-07)
+
+- **Projection toggle preserves the camera** (`state/cameraStore.ts`, a
+  React-less module store like animStore). Toggling ortho ⇄ perspective still
+  remounts OrbitControls (via `key={projection}`) so the controls rebind to the
+  new default camera, but position/target/zoom now come from a shared pose:
+  `CameraPoseSync` records the live pose on every controls `change`, and each
+  camera mounts from it. **Scale is matched across the toggle** — ortho stores
+  `zoom` directly; perspective converts its target distance into the equivalent
+  ortho zoom (`visibleHeight = viewportH/zoom = 2·d·tan(fov/2)`), so switching
+  doesn't jump apparent size. Verified in-browser: pan+rotate, toggle, camera
+  target + view direction preserved (no reset to `[3.2,3.2,3.2]`/origin).
+  New seam `__pvc.getCameraTarget()`.
+- **Length arrow no longer jumps on first move.** The arrow head sits outward
+  past the pipe end; the old drag set the length to the cursor's *absolute* axis
+  projection, so grabbing the offset head snapped the length out to that larger
+  value on frame one. Now `lengthFromGrabDrag` (pure, tested in `dragMath`)
+  tracks the *delta* from the grab: at pointer-down `SelectionHandles` captures
+  the pipe length + the cursor's axis projection, and each move applies
+  `L0 + (projNow − grabProj)`, grid-snapped + clamped. `dragMemberEndLength`
+  takes the captured `grab` offset.
+
 ## Phase 5 — BOM + examples + export/import + smoke (2026-07-07)
 
 - **`bom(design)` is pure** (`design/bom.ts`): per-pipe cut length =

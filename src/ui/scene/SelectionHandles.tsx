@@ -4,7 +4,7 @@ import { useThree } from '@react-three/fiber';
 import { useMemo, useRef, useState } from 'react';
 import { Raycaster, Vector2 } from 'three';
 import { memberById, nodeById } from '../../design/docOps';
-import { length, normalize, sub } from '../../geometry/math3';
+import { dot, length, normalize, sub } from '../../geometry/math3';
 import { pipeSpec, type Vec3 } from '../../schema';
 import { easedPos, useAnim } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
@@ -119,8 +119,11 @@ function LengthArrow({
 }) {
   const fixed = useRef<Vec3>(fixedPos);
   const dir = useRef<Vec3>({ x: 1, y: 0, z: 0 });
+  // captured at grab: pipe length + the cursor's axis projection, so the
+  // outward-offset arrow head doesn't jump the length on the first move
+  const grab = useRef<{ startLenM: number; grabProj: number }>({ startLenM: 0, grabProj: 0 });
   const { start, dragging } = useGroundDrag((g) =>
-    dragMemberEndLength(movingNodeId, fixed.current, dir.current, g),
+    dragMemberEndLength(movingNodeId, fixed.current, dir.current, g, grab.current),
   );
 
   const outward = normalize(sub(movingPos, fixedPos));
@@ -142,6 +145,11 @@ function LengthArrow({
         onPointerDown={(e) => {
           fixed.current = fixedPos;
           dir.current = outward;
+          const g = rayToGround(e.ray);
+          grab.current = {
+            startLenM: segLen,
+            grabProj: g ? dot(sub(g, fixedPos), outward) : segLen,
+          };
           start(e);
         }}
       >

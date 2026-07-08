@@ -24,6 +24,26 @@ export function projectLengthOnAxis(
   return { lengthM, position: add(fixedEnd, scale(axisDir, lengthM)) };
 }
 
+/** Length-arrow drag with a grab offset. The arrow head sits OUTWARD from the
+ * pipe end, so the cursor grabs it at projection `grabProj` (along `axisDir`
+ * from `fixedEnd`) while the pipe is `startLenM` long. As the cursor moves, the
+ * length changes by the *delta* in projection, not the absolute projection — so
+ * the first move doesn't jump the length out to the arrow's offset. The result
+ * is grid-quantized and clamped to `minLenM`. */
+export function lengthFromGrabDrag(
+  fixedEnd: Vec3,
+  axisDir: Vec3,
+  cursor: Vec3,
+  startLenM: number,
+  grabProj: number,
+  gridStepM: number,
+  minLenM: number,
+): { lengthM: number; position: Vec3 } {
+  const proj = dot(sub(cursor, fixedEnd), axisDir);
+  const lengthM = Math.max(minLenM, roundTo(startLenM + (proj - grabProj), gridStepM));
+  return { lengthM, position: add(fixedEnd, scale(axisDir, lengthM)) };
+}
+
 const AXES: Array<{ key: 'x' | 'y' | 'z'; dir: Vec3 }> = [
   { key: 'x', dir: { x: 1, y: 0, z: 0 } },
   { key: 'y', dir: { x: 0, y: 1, z: 0 } },

@@ -15,7 +15,7 @@ import {
   setPivotAngle as setPivotAngleOp,
   startPath,
 } from '../design/docOps';
-import { lockToNearestAxis, projectLengthOnAxis } from '../design/dragMath';
+import { lengthFromGrabDrag, lockToNearestAxis } from '../design/dragMath';
 import { MIN_BEND_RADIUS_FACTOR } from '../design/formed';
 import {
   AXIS_BAND_M,
@@ -217,17 +217,28 @@ export function dragNodeTo(
 }
 
 /** Resize a member by dragging one end's arrow along the pipe's own axis: move
- * `movingNodeId` along `axisDir` (unit, pointing away from `fixedEnd`) to the
- * cursor's projection, grid-quantized and clamped. `fixedEnd` and `axisDir`
- * are captured when the drag begins so the axis stays fixed as the end moves. */
+ * `movingNodeId` along `axisDir` (unit, pointing away from `fixedEnd`) tracking
+ * the cursor's *delta* from the grab, grid-quantized and clamped. `fixedEnd`,
+ * `axisDir`, and `grab` (the pipe's length + the cursor's axis projection at the
+ * moment of grab) are captured when the drag begins, so the outward-offset arrow
+ * head doesn't jump the length on the first move. */
 export function dragMemberEndLength(
   movingNodeId: string,
   fixedEnd: Vec3,
   axisDir: Vec3,
   raw: Vec3,
+  grab: { startLenM: number; grabProj: number },
 ): void {
   const grid = snapTol().gridStepM;
-  const { position } = projectLengthOnAxis(fixedEnd, axisDir, raw, grid, MIN_MEMBER_LEN_M);
+  const { position } = lengthFromGrabDrag(
+    fixedEnd,
+    axisDir,
+    raw,
+    grab.startLenM,
+    grab.grabProj,
+    grid,
+    MIN_MEMBER_LEN_M,
+  );
   useAppStore.getState().updateCurrent((d) => setNodePosition(d, movingNodeId, position));
 }
 

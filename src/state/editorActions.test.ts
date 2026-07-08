@@ -149,11 +149,31 @@ describe('length arrows + Shift-lock', () => {
     placeDrawPoint(V(0, 0, 0));
     placeDrawPoint(V(0.3048, 0, 0)); // pipe A(0,0,0) → B(0.3048,0,0)
     const m = design().members[0]!;
-    // drag B's arrow: fixed end = A, axis = +X, cursor off-axis near 0.508 m
-    dragMemberEndLength(m.nodeB, V(0, 0, 0), V(1, 0, 0), V(0.51, 0, 0.2));
+    // drag B's arrow: fixed end = A, axis = +X, grab at the end (len 0.3048,
+    // projection 0.3048), cursor off-axis near 0.508 m
+    dragMemberEndLength(m.nodeB, V(0, 0, 0), V(1, 0, 0), V(0.51, 0, 0.2), {
+      startLenM: 0.3048,
+      grabProj: 0.3048,
+    });
     const b = design().nodes.find((n) => n.id === m.nodeB)!;
     expect(b.position.x).toBeCloseTo(0.508, 6); // 0.51 → 80 × 1/4" grid
     expect(b.position.z).toBeCloseTo(0, 9); // stays on the axis
+  });
+
+  it('does not jump on the first move when grabbing the outward arrow head', () => {
+    placeDrawPoint(V(0, 0, 0));
+    placeDrawPoint(V(0.3048, 0, 0)); // pipe A(0,0,0) → B(0.3048,0,0), len 0.3048
+    const m = design().members[0]!;
+    // arrow head sits outward past B; grab it at projection 0.36 (> the 0.3048
+    // end). First move keeps the cursor at the grab point → zero delta.
+    const grab = { startLenM: 0.3048, grabProj: 0.36 };
+    dragMemberEndLength(m.nodeB, V(0, 0, 0), V(1, 0, 0), V(0.36, 0, 0), grab);
+    let b = design().nodes.find((n) => n.id === m.nodeB)!;
+    expect(b.position.x).toBeCloseTo(0.3048, 6); // no jump to 0.36
+    // now drag +0.1 from the grab point → length grows by ~0.1
+    dragMemberEndLength(m.nodeB, V(0, 0, 0), V(1, 0, 0), V(0.46, 0, 0), grab);
+    b = design().nodes.find((n) => n.id === m.nodeB)!;
+    expect(b.position.x).toBeCloseTo(0.4064, 6); // 0.4048 → nearest 1/4" grid
   });
 
   it('locks a free move to the Z axis with Shift, anchored at drag start', () => {

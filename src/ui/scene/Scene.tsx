@@ -22,6 +22,14 @@ import {
 } from '../../solver/physics';
 import { bumpAnim, easedPos, stepEasing } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
+import {
+  getCameraPose,
+  orthoInit,
+  PERSP_FOV,
+  perspInit,
+  recordPose,
+  type V3,
+} from '../../state/cameraStore';
 import { pivotAnglesOf } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
@@ -34,15 +42,6 @@ import { PipeLayer } from './PipeLayer';
 import { PivotLayer } from './PivotLayer';
 import { SelectionHandles } from './SelectionHandles';
 
-// Looking down the (1,1,1) diagonal gives the classic isometric three-quarter
-// view. Same heading for both cameras so toggling projection doesn't jump.
-// Distance + ortho zoom are tuned to frame ~4 m of ground on a typical
-// viewport — pipe-scale work (0.3–2 m) reads clearly without zooming in, and
-// the perspective camera's framing at this distance matches the ortho zoom so
-// the projection toggle doesn't jump scale.
-const ISO_DIR: [number, number, number] = [3.2, 3.2, 3.2];
-const ORTHO_ZOOM = 230;
-
 /** Everything inside the Canvas: camera, studio lighting, ground grid + shadow
  * catcher, pipe meshes, the draw controller, and selection drag handles. */
 export function Scene() {
@@ -53,21 +52,24 @@ export function Scene() {
   const tool = useEditorStore((s) => s.tool);
   const night = useThemeStore((s) => s.night);
   const pal = scenePalette(night);
+  // Viewport pixel height, to match ortho zoom ⇄ perspective distance on toggle.
+  // Only changes on resize, so this doesn't re-render during a drag.
+  const viewportH = useThree((s) => s.size.height);
 
   return (
     <>
       <color attach="background" args={[pal.viewport]} />
 
       {projection === 'ortho' ? (
-        <OrthographicCamera
-          makeDefault
-          position={ISO_DIR}
-          zoom={ORTHO_ZOOM}
-          near={-100}
-          far={100}
-        />
+        <OrthographicCamera makeDefault {...orthoInit()} near={-100} far={100} />
       ) : (
-        <PerspectiveCamera makeDefault position={ISO_DIR} fov={40} near={0.01} far={1000} />
+        <PerspectiveCamera
+          makeDefault
+          {...perspInit(viewportH)}
+          fov={PERSP_FOV}
+          near={0.01}
+          far={1000}
+        />
       )}
 
       <ambientLight intensity={0.65} />
@@ -113,15 +115,18 @@ export function Scene() {
       <PivotLayer />
 
       {/* middle = pan, right = free rotate; left is reserved (drawing / select
-          / future marquee), so it never orbits */}
+          / future marquee), so it never orbits. `key={projection}` remounts the
+          controls onto the new default camera on toggle; the target comes from
+          the shared pose so the view doesn't reset. */}
       <OrbitControls
         key={projection}
         makeDefault
         enableDamping
         zoomToCursor
-        target={[0, 0, 0]}
+        target={getCameraPose().target}
         mouseButtons={{ MIDDLE: MOUSE.PAN, RIGHT: MOUSE.ROTATE }}
       />
+      <CameraPoseSync />
 
       <GizmoHelper alignment="bottom-right" margin={[64, 64]}>
         <GizmoViewport axisColors={['#d64545', '#3d9950', '#2a78d6']} labelColor="#fff" />
@@ -162,6 +167,40 @@ function VelocityZoom() {
       controls.zoomSpeed = BASE;
     };
   }, [gl, controls]);
+  return null;
+}
+
+/** Records the live camera pose (position / target / zoom) into cameraStore on
+ * every OrbitControls change, so a projection toggle — which remounts the
+ * camera + controls — can restore the same view instead of snapping back to the
+ * default isometric framing. Mirrors VelocityZoom's `useThree(s => s.controls)`
+ * access; no React re-renders (writes module state only). */
+function CameraPoseSync() {
+  const controls = useThree((s) => s.controls) as {
+    target: { x: number; y: number; z: number };
+    addEventListener: (t: string, cb: () => void) => void;
+    removeEventListener: (t: string, cb: () => void) => void;
+  } | null;
+  const camera = useThree((s) => s.camera);
+  const height = useThree((s) => s.size.height);
+  const projection = useEditorStore((s) => s.projection);
+  useEffect(() => {
+    if (!controls) return;
+    const onChange = () => {
+      const p = camera.position;
+      const t = controls.target;
+      recordPose(
+        projection,
+        [p.x, p.y, p.z] as V3,
+        [t.x, t.y, t.z] as V3,
+        (camera as { zoom?: number }).zoom ?? 1,
+        height,
+      );
+    };
+    onChange(); // capture the initial pose too (so the first toggle is clean)
+    controls.addEventListener('change', onChange);
+    return () => controls.removeEventListener('change', onChange);
+  }, [controls, camera, height, projection]);
   return null;
 }
 
@@ -213,7 +252,10 @@ function GeometryAnimator() {
 function DebugBridge() {
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
-  const controls = useThree((s) => s.controls) as { enabled: boolean } | null;
+  const controls = useThree((s) => s.controls) as {
+    enabled: boolean;
+    target?: { x: number; y: number; z: number };
+  } | null;
   useEffect(() => {
     const w = window as unknown as { __pvc?: Record<string, unknown> };
     if (!w.__pvc) w.__pvc = {};
@@ -222,6 +264,10 @@ function DebugBridge() {
       y: camera.position.y,
       z: camera.position.z,
     });
+    w.__pvc.getCameraTarget = () =>
+      controls?.target
+        ? { x: controls.target.x, y: controls.target.y, z: controls.target.z }
+        : null;
     w.__pvc.isControlsEnabled = () => (controls ? controls.enabled : null);
     w.__pvc.getEasedPos = (id: string) => easedPos(id) ?? null;
     // orthographic zoom factor (rises as you zoom in) — for verifying wheel zoom
