@@ -1,7 +1,7 @@
 // Pure math for the two direct-manipulation drags (planfile §1 "freely
 // adjustable dimensions"): resizing a pipe along its own axis (the length
 // arrows) and axis-locked free moves (Shift). No three.js / UI types.
-import { add, dot, scale, sub } from '../geometry/math3';
+import { add, dot, length, normalize, scale, sub } from '../geometry/math3';
 import type { Vec3 } from '../schema';
 
 function roundTo(v: number, step: number): number {
@@ -92,4 +92,47 @@ export function lockToNearestAxis(
   }
   const t = roundTo(dot(rel, best.dir), gridStepM);
   return { position: add(anchor, scale(best.dir, t)), axis: best.key };
+}
+
+/** The world axis (x/y/z) nearest to a direction — for colouring a lock guide. */
+export function nearestAxisKey(dir: Vec3): 'x' | 'y' | 'z' {
+  let key: 'x' | 'y' | 'z' = 'x';
+  let bestAbs = -1;
+  for (const ax of AXES) {
+    const a = Math.abs(dot(dir, ax.dir));
+    if (a > bestAbs) {
+      bestAbs = a;
+      key = ax.key;
+    }
+  }
+  return key;
+}
+
+/** Lock a draw point to the nearest of the 3 world axes OR any `extraDirs`
+ * (Shift while drawing): pick the candidate direction the cursor runs most
+ * along, grid-quantize the length along it. Passing the previous segment's
+ * perpendicular as an extra direction makes Shift snap a right-angle turn even
+ * when the run isn't world-aligned. */
+export function lockToNearestDirection(
+  anchor: Vec3,
+  cursor: Vec3,
+  gridStepM: number,
+  extraDirs: Vec3[] = [],
+): { position: Vec3; dir: Vec3 } {
+  const rel = sub(cursor, anchor);
+  const cands: Vec3[] = [
+    ...AXES.map((a) => a.dir),
+    ...extraDirs.filter((d) => length(d) > 1e-6).map(normalize),
+  ];
+  let best = cands[0]!;
+  let bestAbs = -1;
+  for (const d of cands) {
+    const a = Math.abs(dot(rel, d));
+    if (a > bestAbs) {
+      bestAbs = a;
+      best = d;
+    }
+  }
+  const t = roundTo(dot(rel, best), gridStepM);
+  return { position: add(anchor, scale(best, t)), dir: best };
 }

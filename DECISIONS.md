@@ -128,9 +128,11 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
   `pipeRadiusM` (falls back to `pointRadiusM`); the old combined `snapToPoints`
   pref migrates to both. Also: pointer handlers read the tool **live** from the
   store (a fresh tool switch can be a render ahead of the closure).
-- **Deferred:** Shift snapping *perpendicular to the previous segment* (for
-  non-axis-aligned runs) — world-axis lock incl. Y is done; perpendicular-to-
-  previous is a small follow-up.
+- **Shift perpendicular-to-previous (done):** `lockToNearestDirection` (pure,
+  tested) locks a draw point to the nearest of the 3 world axes OR the direction
+  perpendicular to the previous segment (nearest the cursor) — a right-angle turn
+  in any plane, even when the run isn't world-aligned. `snapDrawPoint` feeds it
+  the previous segment's perpendicular as an extra candidate.
 
 ## Render quality — hollow pipe ends, no junction ball, softer shadows (2026-07-07)
 

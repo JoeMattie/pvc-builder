@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { Vec3 } from '../schema';
+import { dot, normalize, sub } from '../geometry/math3';
 import {
   closestAxisPointToRay,
   lengthFromGrabDrag,
   lockToNearestAxis,
+  lockToNearestDirection,
   projectLengthOnAxis,
 } from './dragMath';
 
@@ -85,6 +87,24 @@ describe('closestAxisPointToRay (move-tool arrows)', () => {
   it('falls back to the origin when the ray is parallel to the axis', () => {
     const p = closestAxisPointToRay(V(1, 0, 0), X, V(0, 3, 0), X);
     expect(p).toEqual(V(1, 0, 0));
+  });
+});
+
+describe('lockToNearestDirection (Shift lock incl. perpendicular-to-previous)', () => {
+  it('locks to a world axis when the cursor runs along it', () => {
+    const r = lockToNearestDirection(V(0, 0, 0), V(0.31, 0, 0.05), 0.0254);
+    expect(r.dir).toEqual(V(1, 0, 0));
+    expect(r.position.x).toBeCloseTo(0.3048, 6);
+  });
+
+  it('locks perpendicular to a diagonal previous segment', () => {
+    const prev = normalize(V(1, 0, 1)); // previous run, not world-aligned
+    const perp = normalize(V(1, 0, -1)); // ⟂ prev, in the ground plane
+    // cursor runs mostly along the perpendicular
+    const r = lockToNearestDirection(V(0, 0, 0), V(0.3, 0, -0.28), 0, [perp]);
+    expect(Math.abs(dot(r.dir, prev))).toBeLessThan(1e-9); // chose the perpendicular
+    // the resulting move is exactly perpendicular to the previous segment
+    expect(Math.abs(dot(sub(r.position, V(0, 0, 0)), prev))).toBeLessThan(1e-9);
   });
 });
 

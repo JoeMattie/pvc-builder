@@ -9,6 +9,7 @@ import {
   appendPipe,
   connectPipe,
   convertWrapToFitting as convertWrapToFittingOp,
+  incidentMembers,
   memberEndpoints,
   nodeById,
   resetPivots as resetPivotsOp,
@@ -20,7 +21,13 @@ import {
   startPath,
   translateMember,
 } from '../design/docOps';
-import { lengthFromGrabDrag, lockToNearestAxis } from '../design/dragMath';
+import {
+  lengthFromGrabDrag,
+  lockToNearestAxis,
+  lockToNearestDirection,
+  nearestAxisKey,
+} from '../design/dragMath';
+import { dot, length, normalize, scale, sub } from '../geometry/math3';
 import { MIN_BEND_RADIUS_FACTOR } from '../design/formed';
 import {
   AXIS_BAND_M,
@@ -85,13 +92,39 @@ export function buildDrawSnapContext(): SnapContext {
   };
 }
 
-/** Resolve a draw point. `lockAxis` (Shift) forces the point onto whichever
- * world axis from the path start it runs most along, overriding proximity-based
- * inference. */
+/** The direction of the segment that ends at the current path cursor, if any —
+ * so Shift can offer a lock perpendicular to it. */
+function prevSegmentDir(fromId: string | null, fromPos: Vec3): Vec3 | null {
+  const design = useAppStore.getState().current;
+  if (!design || !fromId) return null;
+  const members = incidentMembers(design, fromId);
+  const m = members[members.length - 1];
+  if (!m) return null;
+  const otherId = m.nodeA === fromId ? m.nodeB : m.nodeA;
+  const op = nodeById(design, otherId)?.position;
+  if (!op) return null;
+  const d = sub(fromPos, op);
+  return length(d) < 1e-6 ? null : normalize(d);
+}
+
+/** Resolve a draw point. `lockAxis` (Shift) locks the point to the nearest of
+ * the 3 world axes from the path start OR — when there's a previous segment —
+ * the direction perpendicular to it (a right-angle turn in any plane), whichever
+ * the cursor runs most along. Overrides proximity inference. */
 export function snapDrawPoint(raw: Vec3, lockAxis = false): SnapResult {
   const ctx = buildDrawSnapContext();
   if (lockAxis && ctx.fromNode) {
-    const { position, axis } = lockToNearestAxis(ctx.fromNode, raw, ctx.gridStepM);
+    const fromId = useEditorStore.getState().drawingFromNodeId;
+    const extra: Vec3[] = [];
+    const prev = prevSegmentDir(fromId, ctx.fromNode);
+    if (prev) {
+      // the direction in the plane ⟂ the previous segment nearest the cursor
+      const rel = sub(raw, ctx.fromNode);
+      const perp = sub(rel, scale(prev, dot(rel, prev)));
+      if (length(perp) > 1e-6) extra.push(normalize(perp));
+    }
+    const { position, dir } = lockToNearestDirection(ctx.fromNode, raw, ctx.gridStepM, extra);
+    const axis = nearestAxisKey(dir);
     return {
       position,
       kind: `axis-${axis}` as SnapResult['kind'],
