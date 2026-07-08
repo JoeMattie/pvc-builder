@@ -71,7 +71,7 @@ export function SnapPill() {
       : `${current?.label ?? snap.gridStepM}${current ? unitTag : ''}`;
 
   return (
-    <div ref={ref} className="absolute bottom-5 left-4">
+    <div ref={ref} className="relative">
       {open && (
         <div className="mb-2 w-44 rounded-xl border border-border bg-card p-2 shadow-md">
           <div className="px-1 pb-1 text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">

@@ -456,11 +456,11 @@ export function EditorShell() {
       {/* tool pillbox (bottom-center) */}
       <Pillbox />
 
-      {/* snapping settings (bottom-left) */}
-      <SnapPill />
-
-      {/* display-units pill (bottom-right) */}
-      <UnitsPill />
+      {/* snapping settings + display-units (bottom-left, side by side) */}
+      <div className="absolute bottom-5 left-4 flex items-end gap-2">
+        <SnapPill />
+        <UnitsPill />
+      </div>
 
       {/* pivot angle sliders + mobility (locked mode, top-right) */}
       <PivotPanel />

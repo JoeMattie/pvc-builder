@@ -39,7 +39,7 @@ export function UnitsPill() {
   if (!hasDesign) return null;
 
   return (
-    <div ref={ref} className="absolute right-4 bottom-5">
+    <div ref={ref} className="relative">
       {open && (
         <div className="mb-2 w-44 rounded-xl border border-border bg-card p-1 shadow-md">
           <div className="px-2 pt-1 pb-1 text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">
