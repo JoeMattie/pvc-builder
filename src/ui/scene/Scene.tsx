@@ -107,9 +107,41 @@ export function Scene() {
       </GizmoHelper>
 
       <GeometryAnimator />
+      <VelocityZoom />
       <DebugBridge />
     </>
   );
+}
+
+/** Velocity-aware wheel zoom: scale OrbitControls' per-tick zoom step by how
+ * fast the wheel is spinning, so a quick flick covers ground while a slow
+ * scroll stays fine. Runs in the capture phase so the updated zoomSpeed is in
+ * place before OrbitControls handles the same wheel event. */
+function VelocityZoom() {
+  const gl = useThree((s) => s.gl);
+  const controls = useThree((s) => s.controls) as { zoomSpeed: number } | null;
+  useEffect(() => {
+    if (!controls) return;
+    const el = gl.domElement;
+    const BASE = controls.zoomSpeed;
+    let last = performance.now();
+    let vel = 0; // smoothed wheel magnitude per ms
+    const onWheel = (e: WheelEvent) => {
+      const now = performance.now();
+      const dt = Math.max(1, now - last);
+      last = now;
+      // fade prior velocity over ~130 ms, then add this tick's instantaneous
+      // speed (bigger/faster deltas ⇒ more) so rapid flicks accumulate
+      vel = vel * Math.exp(-dt / 130) + Math.abs(e.deltaY) / dt;
+      controls.zoomSpeed = Math.min(5, Math.max(0.6, 0.7 + vel * 0.9));
+    };
+    el.addEventListener('wheel', onWheel, { passive: true, capture: true });
+    return () => {
+      el.removeEventListener('wheel', onWheel, { capture: true } as EventListenerOptions);
+      controls.zoomSpeed = BASE;
+    };
+  }, [gl, controls]);
+  return null;
 }
 
 // Ease at ~40 ms time-constant; skip animation past this many nodes (e.g. the
@@ -146,6 +178,8 @@ function DebugBridge() {
     });
     w.__pvc.isControlsEnabled = () => (controls ? controls.enabled : null);
     w.__pvc.getEasedPos = (id: string) => easedPos(id) ?? null;
+    // orthographic zoom factor (rises as you zoom in) — for verifying wheel zoom
+    w.__pvc.getZoom = () => (camera as { zoom?: number }).zoom ?? null;
     w.__pvc.screenOf = (p: { x: number; y: number; z: number }) => {
       const rect = gl.domElement.getBoundingClientRect();
       const v = new Vector3(p.x, p.y, p.z).project(camera);

@@ -25,6 +25,11 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
   **right-click ends the current path** (right-drag still rotates). **Shift while
   drawing locks to the nearest world axis from the path start** (forced, beyond
   proximity inference).
+- **Velocity-aware wheel zoom** (`<VelocityZoom/>`): a capture-phase wheel
+  listener measures wheel speed (smoothed magnitude/ms) and sets
+  OrbitControls' `zoomSpeed` before it handles the same event, so a fast flick
+  covers ground and a slow scroll stays fine. Verified: same total delta, fast
+  ≈1.9× vs slow ≈1.45× zoom.
 - **Deferred:** SketchUp-style reference inference — hover a feature to seed
   extra inference directions (from-point axes, parallel/perpendicular) — is not
   built yet; only the basic Shift axis-lock is. Revisit alongside richer
