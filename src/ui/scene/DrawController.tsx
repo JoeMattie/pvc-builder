@@ -90,10 +90,13 @@ export function DrawController() {
                 <cylinderGeometry args={[odR, odR, ghost.len, 16]} />
                 <meshStandardMaterial color="#2a78d6" transparent opacity={0.3} roughness={0.5} />
               </mesh>
+              {/* fixed screen-size label pinned to the segment midpoint — NO
+                  distanceFactor, so it stays readable at any zoom (that scale
+                  makes it balloon when zoomed in) */}
               <Html
-                position={[ghost.mid.x, ghost.mid.y + 0.03, ghost.mid.z]}
+                position={[ghost.mid.x, ghost.mid.y, ghost.mid.z]}
                 center
-                distanceFactor={8}
+                zIndexRange={[100, 0]}
               >
                 <div
                   style={{
@@ -105,6 +108,7 @@ export function DrawController() {
                     border: `1px solid ${night ? '#33363f' : '#e4e4e7'}`,
                     whiteSpace: 'nowrap',
                     pointerEvents: 'none',
+                    transform: 'translateY(-14px)',
                   }}
                 >
                   {formatLength(segLen, units)}
