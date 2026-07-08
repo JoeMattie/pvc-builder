@@ -4,10 +4,10 @@
 // joinContext (free needs two butted ends). A rigid anchor auto-uses a
 // manufactured fitting when the angle matches (e.g. a 90° tee) and a wrap+bolt
 // otherwise — no manual choice. Drives the same editorActions the __pvc hook does.
-import { Circle, Lock, Rotate3d } from 'lucide-react';
+import { Circle, Factory, Lock, Rotate3d } from 'lucide-react';
 import { joinContext } from '../design/docOps';
 import { useAppStore } from '../state/appStore';
-import { setJoinMode } from '../state/editorActions';
+import { makeManufacturedJoint, setJoinMode } from '../state/editorActions';
 import { useEditorStore } from '../state/editorStore';
 
 export function JoinMenu() {
@@ -101,6 +101,14 @@ export function JoinMenu() {
             hint="eye-bolt + cord ball joint"
             active={current === 'free'}
             onClick={() => setJoinMode(menu.nodeId, menu.moverId, 'free')}
+          />
+        )}
+        {ctx.canWrap && !ctx.onBody && (
+          <Item
+            icon={<Factory size={14} />}
+            label="Manufactured joint"
+            hint="snap to a standard elbow/coupling"
+            onClick={() => makeManufacturedJoint(menu.nodeId, menu.moverId)}
           />
         )}
       </div>

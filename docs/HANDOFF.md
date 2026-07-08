@@ -32,7 +32,9 @@ rationale live in the plan file: **`/home/joe/.claude/plans/read-the-todo-txt-sc
 | **Wave 2 · 2B** — tape-measure tool (T) | ✅ done |
 | **Wave 2 · 2D** — new Bend tool (B) + draggable control points | ✅ done (length-lock toggle = follow-up; only "grow" mode) |
 | **Wave 2 · 2C** — draw-on-plane tool (F) | ✅ done (angle snaps to world cardinals ±X/±Z; **pipe-relative cardinals = follow-up**) |
-| **Wave 3** — BOM wrap-allowance/end-cap-ghost/manufactured-split; manufactured joints; T-rex decimation | ⬜ **NOT started** (next) |
+| **Wave 3 · 3A** — BOM wrap-allowance + end-cap extension + editor ghost | ✅ done (manufactured-union **cut-list splitting** = follow-up) |
+| **Wave 3 · 3B** — manufactured joints (join menu → snap to standard elbow/coupling) | ✅ done |
+| **Wave 3 · 3C** — T-rex decimation → rigid + universal-pivot examples | ✅ done |
 | User-reported fixes (weld-on-drop, finite ground + dark-mode dark-gray, curve auto-junction parity, units pill next to snap pill, bend control points) | ✅ all done + verified |
 
 ## Remaining work — specifics

@@ -12,6 +12,7 @@ import {
   deleteMember,
   detachMemberEnd as detachMemberEndOp,
   incidentMembers,
+  makeManufacturedJoint as makeManufacturedJointOp,
   measurementEndPos,
   measurePerp,
   memberEndpoints,
@@ -650,6 +651,12 @@ export function setJoinMode(
 /** Swap which pipe wraps which (a wrapped end-to-end joint's ⇄ control). */
 export function swapJointReceiver(jointId: string): void {
   useAppStore.getState().updateCurrent((d) => swapReceiverOp(d, jointId));
+}
+
+/** Replace a joint with a MANUFACTURED fitting: snap the mover to the nearest
+ * standard angle + drop the pivot record (the join menu's "Manufactured"). */
+export function makeManufacturedJoint(nodeId: string, moverId: string): void {
+  updateReconciled((d) => makeManufacturedJointOp(d, nodeId, moverId));
 }
 
 /** Set a wrapped pivot's angle (the angle slider). In a locked mechanism with

@@ -11,6 +11,7 @@ import {
   healBodyJoints,
   joinContext,
   jointsAtNode,
+  makeManufacturedJoint,
   measurementLengthM,
   measurePerp,
   memberLengthM,
@@ -524,6 +525,37 @@ describe('dedupeJoints (swapped / duplicate joint pairs)', () => {
     };
     const healed = reconcileBodyJoints(reported);
     expect(healed.joints).toHaveLength(1);
+  });
+});
+
+describe('makeManufacturedJoint', () => {
+  it('snaps a near-90° corner to exactly 90° and drops the pivot record', () => {
+    // two pipes meeting at ~85°; make the corner a wrapped pivot, then manufacture it
+    const d0 = createEmptyDesign('d', 'Mfg');
+    d0.nodes.push(
+      { id: 'a', position: V(-1, 0, 0) },
+      { id: 'c', position: V(0, 0, 0) }, // corner
+      { id: 'e', position: V(0.087, 0, 0.996) }, // ~85° from +Z
+    );
+    d0.members.push(
+      { id: 'mr', kind: 'straight', nodeA: 'a', nodeB: 'c', size: '3/4"' },
+      { id: 'mm', kind: 'straight', nodeA: 'c', nodeB: 'e', size: '3/4"' },
+    );
+    const withPivot = setJoinMode(d0, 'c', 'mm', 'wrapped');
+    expect(withPivot.joints).toHaveLength(1);
+    const out = makeManufacturedJoint(withPivot, 'c', 'mm');
+    // pivot record gone (→ resolveFittings will infer a socket elbow)
+    expect(out.joints).toHaveLength(0);
+    // the mover now leaves the corner at exactly 90° from the receiver
+    const c = V(0, 0, 0);
+    const dirR = nodeById(out, 'a')!.position; // receiver dir a-c is along -X from c → (a-c) = (-1,0,0)
+    const e = nodeById(out, 'e')!.position;
+    const recvDir = { x: dirR.x - c.x, y: 0, z: dirR.z - c.z };
+    const moverDir = { x: e.x - c.x, y: e.y - c.y, z: e.z - c.z };
+    const rl = Math.hypot(recvDir.x, recvDir.z);
+    const ml = Math.hypot(moverDir.x, moverDir.y, moverDir.z);
+    const cos = (recvDir.x * moverDir.x + recvDir.z * moverDir.z) / (rl * ml);
+    expect(Math.acos(cos)).toBeCloseTo(Math.PI / 2, 4);
   });
 });
 

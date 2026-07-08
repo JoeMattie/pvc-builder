@@ -590,6 +590,43 @@ export function removeJoint(design: Design, jointId: string): Design {
   return { ...design, joints: design.joints.filter((j) => j.id !== jointId) };
 }
 
+/** Convert a connection to a MANUFACTURED joint: rotate the `moverId` pipe about
+ * `nodeId` so its approach angle snaps to the nearest standard off-the-shelf
+ * fitting (a 90° or 45° elbow, or a straight coupling), and drop any pivot/wrap
+ * record — so `resolveFittings` then classifies + draws a real socket fitting.
+ * The standard is chosen by the angle between the two OUTGOING directions:
+ * 90° (elbow), 135° (45° elbow), or 180° (coupling). Straight movers only. */
+export function makeManufacturedJoint(design: Design, nodeId: string, moverId: string): Design {
+  const ctx = joinContext(design, nodeId, moverId);
+  const receiverId = ctx.receiver;
+  if (!receiverId) return design;
+  const recv = memberById(design, receiverId);
+  const mover = memberById(design, moverId);
+  if (recv?.kind !== 'straight' || mover?.kind !== 'straight') return design;
+  const recvDir = memberDirFromNode(design, recv, nodeId);
+  const moverDir = memberDirFromNode(design, mover, nodeId);
+  const nodePos = nodeById(design, nodeId)?.position;
+  if (!recvDir || !moverDir || !nodePos) return design;
+  const cur = Math.acos(Math.max(-1, Math.min(1, dot(recvDir, moverDir))));
+  const axis = cross(recvDir, moverDir);
+  if (length(axis) < 1e-6) return design; // already collinear — nothing to snap
+  const n = normalize(axis);
+  // nearest standard angle between the outgoing directions
+  const STANDARDS = [Math.PI / 2, (3 * Math.PI) / 4, Math.PI];
+  const target = STANDARDS.reduce((best, s) =>
+    Math.abs(s - cur) < Math.abs(best - cur) ? s : best,
+  );
+  const far = mover.nodeA === nodeId ? mover.nodeB : mover.nodeA;
+  const farPos = nodeById(design, far)?.position;
+  if (!farPos) return design;
+  const rotated = rotateAroundAxis(farPos, nodePos, n, target - cur);
+  // move the mover's far end to the snapped angle, drop the pivot record →
+  // resolveFittings now infers the manufactured elbow/coupling
+  const moved = setNodePosition(design, far, rotated);
+  const existing = jointForMover(moved, nodeId, moverId);
+  return existing ? removeJoint(moved, existing.id) : moved;
+}
+
 /** Set member `moverId`'s connection mode at `nodeId`, creating / updating /
  * removing the joint record. `receiverId` overrides the auto-picked receiver
  * (must be one of `joinContext.candidates`). A plain end-to-end anchor is the
