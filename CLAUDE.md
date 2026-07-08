@@ -4,9 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-**Phase 0 (scaffold) is complete.** The Vite/React/TS app is up: schema, persistence, state stores,
-pure math, and an empty 3D viewport all build/typecheck/lint/test green. The next work is **Phase 1**
-(draw straight pipe + realistic render). The authoritative spec is
+**Phases 0–1 are complete.** The Vite/React/TS app scaffold is up, and you can draw straight pipe:
+click-to-lay runs with SketchUp-style snapping/inference, PBR pipe at true OD, select + drag endpoints,
+and edit exact lengths. The next work is **Phase 2** (fitting auto-solve + procedural meshes). The
+authoritative spec is
 `docs/planfiles/PLANFILE-pvc-builder.md` — read the relevant section before each phase; it defines the
 product, domain model, phased build plan, and acceptance criteria. `DECISIONS.md` logs choices already
 made (newest first) — check it before revisiting a decision.
@@ -86,6 +87,14 @@ physics logic can be tested and reasoned about without three.js/React/engine typ
   `appStore` = the persisted/undoable document with a single `updateCurrent` mutation path and gesture
   batching for drags; `editorStore` = transient tool/selection/view state (resolved fittings cached
   here), never persisted or undone.
+
+- **Editing flow (built in Phase 1)**: pure `Design → Design` transforms in `src/design/docOps.ts`,
+  pure SketchUp-style snapping in `src/design/snapping.ts`, bridged to the stores by ONE action layer
+  `src/state/editorActions.ts` that **both the pointer tools and the `window.__pvc` debug hook call** —
+  so scripted checks drive exactly what the pointer drives. The 3D scene lives in `src/ui/scene/*`
+  (`Scene`, `DrawController` = ground raycast + draw preview, `SelectionHandles` = endpoint drag,
+  `PipeLayer` + pure `pipeModel.ts`). When adding an interaction, put the logic in docOps/snapping
+  (tested) and expose it through `editorActions` + a `__pvc` seam, not inline in a component.
 
 - **Persistence**: Dexie (IndexedDB) project store + autosave + JSON export/import (`<slug>.pvc.json`),
   mirroring `riglab/src/persistence/*`.

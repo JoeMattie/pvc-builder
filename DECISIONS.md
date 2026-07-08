@@ -4,6 +4,49 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Phase 1 — Draw straight pipe + realistic render (2026-07-07)
+
+- **Editing is pure `Design → Design` docOps** (`src/design/docOps.ts`) applied
+  through `appStore.updateCurrent`, so undo/autosave stay centralized. Nodes are
+  shared junctions: dragging a node moves every incident member; `deleteMember`
+  prunes only the nodes it orphans.
+- **Snapping is one pure function** (`src/design/snapping.ts`) with a fixed
+  priority: existing node → on-pipe point → axis inference from the path start →
+  world grid → free. Axis inference grid-quantizes the length *along* the locked
+  axis (so on-axis draws land on exact dimensions). Tolerances are world-metre
+  (1" grid, 20 mm point radius, 30 mm axis corridor) — good enough at rig scale;
+  screen-space tolerances can come later if zoom range demands it.
+- **The tools and the `__pvc` hook call ONE action layer**
+  (`src/state/editorActions.ts`): `placeDrawPoint` / `dragNodeTo` / `snapDraw…`
+  bridge snapping + docOps + stores, so a scripted check drives exactly what the
+  pointer drives. New seams: `draw`, `snap`, `finishPath`, `selectMember`,
+  `clearSelection`, `setMemberLength`, `dragNode`, `getMembers`, `setDrawSize`.
+- **Ground-plane interaction model.** Drawing and dragging both raycast the
+  y = 0 plane (`rayToGround`); node centrelines live on the grid plane. A single
+  full-bleed plane in `DrawController` doubles as the pointer target and the
+  shadow catcher.
+- **Shadows via a shadow-map + `shadowMaterial` catcher, not drei
+  `ContactShadows`.** A coincident invisible picker plane confuses
+  ContactShadows' whole-scene depth pass; a `shadowMaterial` ground plane only
+  renders shadowed fragments, so it grounds the pipe *and* is a clean r3f pointer
+  target. Still no network (drei `Environment` presets remain out — Phase 0).
+- **Click vs orbit-drag** is disambiguated by pointer travel (< 6 px screen =
+  place a point; more = the OrbitControls drag). Endpoint drags suspend
+  OrbitControls and batch into one undo step via `begin/endGesture`.
+- **Pipe material** is `meshPhysicalMaterial` (white PVC, roughness 0.38, faint
+  clearcoat). Cylinders at true OD from `PipeSpec`; a rounding sphere at each
+  junction sized to the thickest incident member.
+- **Pillbox = tool (select/draw) + active draw size.** The two size buttons pick
+  the active `drawSize` (editor state); `design.enabledSizes` stays both.
+  Keyboard: V/B tools, Esc/Enter finish path, Delete removes selection, ⌘/Ctrl+Z
+  undo.
+
+**State at end of Phase 1:** typecheck / lint / **73 unit+integration tests** /
+build all green; a headless-chromium smoke against the built app confirms the
+WebGL scene mounts, a 3-pipe path drawn through `__pvc` preserves segment
+lengths within 1e-6 m at correct OD, length-edit + selection + perspective
+toggle work, and the console/network is error-free.
+
 ## Phase 0 — Scaffold & stack (2026-07-07)
 
 Already-made decisions carried in from the planfile (§10), recorded here at the

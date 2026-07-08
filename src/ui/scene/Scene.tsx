@@ -1,0 +1,93 @@
+import {
+  GizmoHelper,
+  GizmoViewport,
+  Grid,
+  OrbitControls,
+  OrthographicCamera,
+  PerspectiveCamera,
+} from '@react-three/drei';
+import { useAppStore } from '../../state/appStore';
+import { selectMember } from '../../state/editorActions';
+import { useEditorStore } from '../../state/editorStore';
+import { useThemeStore } from '../../state/themeStore';
+import { scenePalette } from '../theme';
+import { DrawController } from './DrawController';
+import { PipeLayer } from './PipeLayer';
+import { SelectionHandles } from './SelectionHandles';
+
+// Looking down the (1,1,1) diagonal gives the classic isometric three-quarter
+// view. Same heading for both cameras so toggling projection doesn't jump.
+const ISO_DIR: [number, number, number] = [10, 10, 10];
+
+/** Everything inside the Canvas: camera, studio lighting, ground grid + shadow
+ * catcher, pipe meshes, the draw controller, and selection drag handles. */
+export function Scene() {
+  const projection = useEditorStore((s) => s.projection);
+  const tool = useEditorStore((s) => s.tool);
+  const selectedIds = useEditorStore((s) => s.selectedIds);
+  const night = useThemeStore((s) => s.night);
+  const design = useAppStore((s) => s.current);
+  const pal = scenePalette(night);
+
+  return (
+    <>
+      <color attach="background" args={[pal.viewport]} />
+
+      {projection === 'ortho' ? (
+        <OrthographicCamera makeDefault position={ISO_DIR} zoom={90} near={-100} far={100} />
+      ) : (
+        <PerspectiveCamera makeDefault position={ISO_DIR} fov={40} near={0.01} far={1000} />
+      )}
+
+      <ambientLight intensity={0.65} />
+      <hemisphereLight intensity={0.35} />
+      <directionalLight
+        position={[6, 12, 8]}
+        intensity={1.15}
+        castShadow
+        shadow-mapSize={[2048, 2048]}
+        shadow-bias={-0.0002}
+        shadow-camera-left={-4}
+        shadow-camera-right={4}
+        shadow-camera-top={4}
+        shadow-camera-bottom={-4}
+        shadow-camera-near={0.1}
+        shadow-camera-far={40}
+      />
+
+      <Grid
+        args={[40, 40]}
+        infiniteGrid
+        cellSize={0.1}
+        cellThickness={0.6}
+        cellColor={pal.gridCell}
+        sectionSize={0.5}
+        sectionThickness={1}
+        sectionColor={pal.gridSection}
+        fadeDistance={30}
+        fadeStrength={1.5}
+        followCamera={false}
+      />
+
+      {design && (
+        <PipeLayer
+          design={design}
+          selectedIds={selectedIds}
+          onSelect={tool === 'select' ? selectMember : undefined}
+        />
+      )}
+
+      {/* ground-plane pointer target + shadow catcher + draw preview */}
+      <DrawController />
+
+      {/* endpoint drag handles for the selected member */}
+      {tool === 'select' && <SelectionHandles />}
+
+      <OrbitControls key={projection} makeDefault enableDamping target={[0, 0, 0]} />
+
+      <GizmoHelper alignment="bottom-right" margin={[64, 64]}>
+        <GizmoViewport axisColors={['#d64545', '#3d9950', '#2a78d6']} labelColor="#fff" />
+      </GizmoHelper>
+    </>
+  );
+}
