@@ -13,7 +13,7 @@ applied elsewhere via `appStore.updateCurrent` for undo/autosave.
 | File | Responsibility | Key exports |
 |---|---|---|
 | `docOps.ts` (518) | Core editing API — nodes, members, path drawing, move/rotate/split/delete, and the whole **joints** subsystem | lookups (`nodeById`, `memberEndpoints`, `memberLengthM`, `throughMemberAt`, `nodeDegrees`); mutations (`addMember`, `startPath`, `appendPipe`, `setNodePosition`, `translateMember`, `rotateMember`, `setMemberLengthM`, `splitMemberAt`, `deleteMember`); joints (`joinContext`, `setJoinMode`, `addBodyJoint`, `healBodyJoints`, `reconcileBodyJoints`, `removeJoint`, `swapReceiver`, `setJointAngle`, `setJointOrientation`, `resetJoints`, `jointsAtNode`) |
-| `fittings.ts` (188) | **Core feature.** Classify each node's incident pipe ends → coupling/reducer/elbow45/elbow90/tee/cross or conflict | `resolveFittings(design): FittingResolution`, `incidentEnds`, `FittingType`, `ANGLE_TOL_DEG=3` |
+| `fittings.ts` (188) | **Core feature.** Classify each node's incident pipe ends → coupling/reducer/elbow45/elbow90/elbow3way/tee/cross or conflict | `resolveFittings(design): FittingResolution`, `incidentEnds`, `FittingType`, `ANGLE_TOL_DEG=3` |
 | `bom.ts` (206) | Cut-list / BOM — per-pipe cut length, fitting + joint hardware counts, totals, CSV | `bom(design): Bom`, `bomToCsv`, `fittingTakeoffM`, `EYE_BOLT_TAKEOFF_M` |
 | `formed.ts` (74) | Heat-bent pipe analysis — developed length, bend schedule, min-bend-radius | `formedPoints`, `analyzeFormed`, `MIN_BEND_RADIUS_FACTOR=3` |
 | `snapping.ts` (150) | SketchUp-style draw inference + snapping (node → on-pipe → axis → grid → free priority) | `snapPoint(raw, ctx)`, `closestPointOnSegment`, `DEFAULT_GRID_M` (¼") |

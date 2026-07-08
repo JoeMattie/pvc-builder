@@ -24,6 +24,7 @@ const conflictAt = (d: Design, id = 'c') =>
 
 const X = V(1, 0, 0);
 const NX = V(-1, 0, 0);
+const Y = V(0, 1, 0);
 const Z = V(0, 0, 1);
 const NZ = V(0, 0, -1);
 const S = 1 / Math.SQRT2;
@@ -148,6 +149,30 @@ describe('resolveFittings — tees', () => {
       ]),
     );
     expect(c?.reason).toMatch(/no straight run/);
+  });
+
+  it('three mutually perpendicular pipes → 3-way corner elbow', () => {
+    const f = fittingAt(
+      star([
+        { dir: X, size: '3/4"' },
+        { dir: Y, size: '3/4"' },
+        { dir: Z, size: '3/4"' },
+      ]),
+    );
+    expect(f?.type).toBe('elbow3way');
+    expect(f?.reducing).toBe(false);
+  });
+
+  it('3-way corner mixing sizes → reducing 3-way elbow', () => {
+    const f = fittingAt(
+      star([
+        { dir: X, size: '3/4"' },
+        { dir: Y, size: '1/2"' },
+        { dir: Z, size: '3/4"' },
+      ]),
+    );
+    expect(f?.type).toBe('elbow3way');
+    expect(f?.reducing).toBe(true);
   });
 });
 

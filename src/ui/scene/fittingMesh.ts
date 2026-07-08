@@ -43,6 +43,7 @@ const HAS_BODY: Record<FittingType, boolean> = {
   reducer: false,
   elbow45: true,
   elbow90: true,
+  elbow3way: true, // three perpendicular hubs + a corner blend
   tee: true,
   cross: true,
 };

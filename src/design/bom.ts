@@ -22,6 +22,7 @@ export const EYE_BOLT_TAKEOFF_M = 0.0254;
 const CENTRE_TO_FACE_FACTOR: Partial<Record<FittingType, number>> = {
   elbow90: 1.2,
   elbow45: 0.95,
+  elbow3way: 1.2, // corner elbow — body eats in like a 90° elbow on each axis
   tee: 1.2,
   cross: 1.2,
 };

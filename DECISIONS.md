@@ -4,6 +4,16 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Post-batch fixes (2026-07-08)
+
+- **3-way (side-outlet) corner elbow** added to the fitting library (`FittingType 'elbow3way'`).
+  A node with three **mutually perpendicular** pipe ends (the classic cube-frame corner)
+  previously flagged a conflict (`'three pipes with no straight run'`); it now resolves to a
+  3-way elbow. Rendering is automatic (`HAS_BODY` → three perpendicular hubs + a corner blend
+  sphere); BOM take-off reuses the 90° elbow centre-to-face factor (documented ESTIMATE). A
+  coplanar Y (no straight run, not all-perpendicular) is still a conflict. Reducing 3-way
+  (mixed sizes) is allowed, mirroring the cross.
+
 ## todo.txt batch — bug fixes, tools, BOM, T-rex (2026-07-08)
 
 Implemented the root `todo.txt` batch on `feat/todo-batch-wave1` in three review-gated

@@ -10,7 +10,14 @@ import { nodeById } from './docOps';
 /** Angle tolerance for classifying joint geometry (planfile §4). */
 export const ANGLE_TOL_DEG = 3;
 
-export type FittingType = 'coupling' | 'reducer' | 'elbow45' | 'elbow90' | 'tee' | 'cross';
+export type FittingType =
+  | 'coupling'
+  | 'reducer'
+  | 'elbow45'
+  | 'elbow90'
+  | 'elbow3way'
+  | 'tee'
+  | 'cross';
 
 /** One pipe end arriving at a junction node. */
 export interface FittingEnd {
@@ -128,7 +135,19 @@ function classify(ends: FittingEnd[]): Classified | null {
           break;
         }
       }
-      if (runI < 0) return { conflict: 'three pipes with no straight run' };
+      if (runI < 0) {
+        // No collinear run: three mutually perpendicular pipes form a 3-way
+        // (side-outlet) corner elbow — the classic cube-frame corner. Anything
+        // else (e.g. a coplanar Y) has no standard fitting.
+        const [a, b, c] = ends as [FittingEnd, FittingEnd, FittingEnd];
+        if (
+          perpendicular(a.dir, b.dir) &&
+          perpendicular(a.dir, c.dir) &&
+          perpendicular(b.dir, c.dir)
+        )
+          return { type: 'elbow3way', reducing: !allSameSize(ends) };
+        return { conflict: 'three pipes with no straight run' };
+      }
       const branch = ends[3 - runI - runJ]!;
       const run = ends[runI]!;
       const runMate = ends[runJ]!;
