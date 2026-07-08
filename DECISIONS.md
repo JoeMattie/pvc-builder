@@ -40,6 +40,21 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
   **Shift to lock to a world axis**. The drag math is pure/tested
   (`design/dragMath.ts`: `projectLengthOnAxis`, `lockToNearestAxis`); the
   numeric length field stays as the precise alternative.
+- **Handle drags use window pointer listeners, not mesh events.** r3f only
+  sends a mesh pointermove/up while the ray intersects it, so a mesh-driven drag
+  stopped — and its "re-enable OrbitControls" pointerup never fired — the moment
+  the cursor left the small handle, leaving the camera stuck (and fighting a
+  leftover `setPointerCapture`). `useGroundDrag` (SelectionHandles) now suspends
+  OrbitControls on pointer-down and drives move/up from `window` listeners
+  (raycasting the ground each move), guaranteeing the pointer-up re-enables
+  controls anywhere. No `setPointerCapture`.
+- **Bundled examples + a mesh-import path.** `src/examples/` holds baked Design
+  JSON offered from the project list (`appStore.createFromExample`). The first
+  is a **T-rex wireframe** — a low-poly STL turned into pipe by
+  `scripts/gen-trex.mjs` (edges → straight members, vertices → nodes, welded;
+  remapped Z-up→Y-up, rested on the ground, scaled to ~1.8 m; no fittings). It
+  doubles as a render stress test (262 nodes / 780 pipes). Generated JSON +
+  one-off scripts are excluded from Biome.
 - **Drag performance:** the scene graph must not re-render on every drag frame.
   `Scene` does NOT subscribe to the document; `PipeLayer`/`SelectionHandles`/
   `DrawController` read it (or narrow slices) themselves, and `EditorShell`

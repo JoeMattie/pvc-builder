@@ -1,12 +1,14 @@
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Sparkles, Trash2 } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
+import { EXAMPLES } from '../examples';
 import { useAppStore } from '../state/appStore';
 
-/** Project list screen (planfile §7): fast create / open / delete. The full
- * inspect + import/export lands in Phase 5. */
+/** Project list screen (planfile §7): fast create / open / delete, plus
+ * bundled examples. The full inspect + import/export lands in Phase 5. */
 export function ProjectList() {
   const projects = useAppStore((s) => s.projects);
   const createProject = useAppStore((s) => s.createProject);
+  const createFromExample = useAppStore((s) => s.createFromExample);
   const openProject = useAppStore((s) => s.openProject);
   const deleteProject = useAppStore((s) => s.deleteProject);
   const [name, setName] = useState('');
@@ -42,6 +44,26 @@ export function ProjectList() {
           <Plus size={16} /> Create
         </button>
       </form>
+
+      <section className="flex flex-col gap-2">
+        <h2 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+          Examples
+        </h2>
+        {EXAMPLES.map((ex) => (
+          <button
+            key={ex.id}
+            type="button"
+            onClick={() => void createFromExample(ex.id)}
+            className="border-border bg-card flex items-center gap-3 rounded-lg border px-4 py-3 text-left hover:bg-accent"
+          >
+            <Sparkles size={16} className="text-muted-foreground shrink-0" />
+            <span>
+              <span className="block text-sm font-medium">{ex.name}</span>
+              <span className="text-muted-foreground block text-xs">{ex.description}</span>
+            </span>
+          </button>
+        ))}
+      </section>
 
       <section className="flex flex-col gap-2">
         {projects.length === 0 ? (

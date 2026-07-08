@@ -1,7 +1,8 @@
 import { Html } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
 import { useThree } from '@react-three/fiber';
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { Raycaster, Vector2 } from 'three';
 import { memberById, nodeById } from '../../design/docOps';
 import { length, normalize, sub } from '../../geometry/math3';
 import { pipeSpec, type Vec3 } from '../../schema';
@@ -13,54 +14,69 @@ import { formatLength } from '../units';
 import { orientY } from './axis';
 import { rayToGround } from './ground';
 
-function useDragRig() {
+/**
+ * A ground-plane drag driven by WINDOW pointer listeners, not the handle
+ * mesh's own events. This is deliberate: r3f only sends a mesh pointermove/up
+ * while the ray intersects it, so a mesh-driven drag would stop — and its
+ * "re-enable OrbitControls" pointerup would never fire — the moment the cursor
+ * left the small handle, leaving the camera stuck. Listening on window keeps
+ * the drag alive anywhere and guarantees the pointerup runs. OrbitControls is
+ * suspended for the duration (no setPointerCapture, so nothing fights it).
+ */
+function useGroundDrag(onMove: (ground: Vec3, ev: PointerEvent) => void) {
   const gl = useThree((s) => s.gl);
+  const camera = useThree((s) => s.camera);
   const controls = useThree((s) => s.controls) as { enabled: boolean } | null;
-  const begin = (e: ThreeEvent<PointerEvent>) => {
-    e.stopPropagation();
-    gl.domElement.setPointerCapture(e.nativeEvent.pointerId);
+  const [dragging, setDragging] = useState(false);
+  const rc = useMemo(() => new Raycaster(), []);
+  const ndc = useMemo(() => new Vector2(), []);
+
+  const start = (e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation(); // keep the ground plane from also handling this pointer
     if (controls) controls.enabled = false;
     useAppStore.getState().beginGesture();
+    setDragging(true);
+    const el = gl.domElement;
+
+    const move = (ev: PointerEvent) => {
+      const rect = el.getBoundingClientRect();
+      ndc.set(
+        ((ev.clientX - rect.left) / rect.width) * 2 - 1,
+        -((ev.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      rc.setFromCamera(ndc, camera);
+      const g = rayToGround(rc.ray);
+      if (g) onMove(g, ev);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      if (controls) controls.enabled = true;
+      useAppStore.getState().endGesture();
+      setDragging(false);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
   };
-  const end = (e: ThreeEvent<PointerEvent>) => {
-    e.stopPropagation();
-    gl.domElement.releasePointerCapture(e.nativeEvent.pointerId);
-    if (controls) controls.enabled = true;
-    useAppStore.getState().endGesture();
-  };
-  return { begin, end };
+
+  return { start, dragging };
 }
 
 /** Endpoint grab sphere: free move of the junction on the ground, one undo
- * step, OrbitControls suspended. Hold Shift to lock the move to a world axis. */
+ * step. Hold Shift to lock the move to a world axis. */
 function MoveHandle({ nodeId, pos, radiusM }: { nodeId: string; pos: Vec3; radiusM: number }) {
-  const { begin, end } = useDragRig();
-  const [dragging, setDragging] = useState(false);
   const anchor = useRef<Vec3 | null>(null);
-
+  const { start, dragging } = useGroundDrag((g, ev) =>
+    dragNodeTo(nodeId, g, { lockAxis: ev.shiftKey, anchor: anchor.current ?? undefined }),
+  );
   return (
     <mesh
       position={[pos.x, pos.y, pos.z]}
       onPointerDown={(e) => {
-        begin(e);
         anchor.current = pos;
-        setDragging(true);
-      }}
-      onPointerMove={(e) => {
-        if (!dragging) return;
-        e.stopPropagation();
-        const g = rayToGround(e.ray);
-        if (g)
-          dragNodeTo(nodeId, g, {
-            lockAxis: e.nativeEvent.shiftKey,
-            anchor: anchor.current ?? undefined,
-          });
-      }}
-      onPointerUp={(e) => {
-        if (!dragging) return;
-        end(e);
-        setDragging(false);
-        anchor.current = null;
+        start(e);
       }}
     >
       <sphereGeometry args={[radiusM, 16, 12]} />
@@ -87,16 +103,16 @@ function LengthArrow({
   night: boolean;
   units: 'imperial' | 'metric';
 }) {
-  const { begin, end } = useDragRig();
-  const [dragging, setDragging] = useState(false);
   const fixed = useRef<Vec3>(fixedPos);
   const dir = useRef<Vec3>({ x: 1, y: 0, z: 0 });
+  const { start, dragging } = useGroundDrag((g) =>
+    dragMemberEndLength(movingNodeId, fixed.current, dir.current, g),
+  );
 
   const outward = normalize(sub(movingPos, fixedPos));
-  const gap = radiusGap(odR);
   const coneH = Math.max(odR * 3, 0.05);
   const coneR = Math.max(odR * 1.35, 0.018);
-  const base = gap + coneH / 2;
+  const base = Math.max(odR * 1.7, 0.02) + 0.012 + coneH / 2;
   const center: [number, number, number] = [
     movingPos.x + outward.x * base,
     movingPos.y + outward.y * base,
@@ -110,21 +126,9 @@ function LengthArrow({
         position={center}
         quaternion={orientY(outward)}
         onPointerDown={(e) => {
-          begin(e);
           fixed.current = fixedPos;
           dir.current = outward;
-          setDragging(true);
-        }}
-        onPointerMove={(e) => {
-          if (!dragging) return;
-          e.stopPropagation();
-          const g = rayToGround(e.ray);
-          if (g) dragMemberEndLength(movingNodeId, fixed.current, dir.current, g);
-        }}
-        onPointerUp={(e) => {
-          if (!dragging) return;
-          end(e);
-          setDragging(false);
+          start(e);
         }}
       >
         <coneGeometry args={[coneR, coneH, 18]} />
@@ -151,10 +155,6 @@ function LengthArrow({
       )}
     </group>
   );
-}
-
-function radiusGap(odR: number): number {
-  return Math.max(odR * 1.7, 0.02) + 0.012;
 }
 
 export function SelectionHandles() {

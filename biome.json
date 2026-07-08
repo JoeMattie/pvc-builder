@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!src/index.css"]
+    "includes": ["**", "!src/index.css", "!scripts", "!src/examples/*.json"]
   },
   "formatter": {
     "enabled": true,

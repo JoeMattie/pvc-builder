@@ -6,6 +6,9 @@ import {
   OrthographicCamera,
   PerspectiveCamera,
 } from '@react-three/drei';
+import { useThree } from '@react-three/fiber';
+import { useEffect } from 'react';
+import { Vector3 } from 'three';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
@@ -92,6 +95,36 @@ export function Scene() {
       <GizmoHelper alignment="bottom-right" margin={[64, 64]}>
         <GizmoViewport axisColors={['#d64545', '#3d9950', '#2a78d6']} labelColor="#fff" />
       </GizmoHelper>
+
+      <DebugBridge />
     </>
   );
+}
+
+/** Publishes camera / controls / projection seams onto window.__pvc so scripted
+ * checks can verify the viewport (e.g. that a handle drag doesn't leave
+ * OrbitControls disabled). No-op for real users. */
+function DebugBridge() {
+  const camera = useThree((s) => s.camera);
+  const gl = useThree((s) => s.gl);
+  const controls = useThree((s) => s.controls) as { enabled: boolean } | null;
+  useEffect(() => {
+    const w = window as unknown as { __pvc?: Record<string, unknown> };
+    if (!w.__pvc) w.__pvc = {};
+    w.__pvc.getCameraPos = () => ({
+      x: camera.position.x,
+      y: camera.position.y,
+      z: camera.position.z,
+    });
+    w.__pvc.isControlsEnabled = () => (controls ? controls.enabled : null);
+    w.__pvc.screenOf = (p: { x: number; y: number; z: number }) => {
+      const rect = gl.domElement.getBoundingClientRect();
+      const v = new Vector3(p.x, p.y, p.z).project(camera);
+      return {
+        x: rect.left + (v.x * 0.5 + 0.5) * rect.width,
+        y: rect.top + (-v.y * 0.5 + 0.5) * rect.height,
+      };
+    };
+  });
+  return null;
 }
