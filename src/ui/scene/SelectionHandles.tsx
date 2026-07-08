@@ -6,15 +6,16 @@ import { type Ray, Raycaster, Vector2, Vector3 } from 'three';
 import { memberById, nodeById } from '../../design/docOps';
 import { closestAxisPointToRay } from '../../design/dragMath';
 import { cross, dot, length, normalize, scale, sub } from '../../geometry/math3';
-import { type LengthDisplay, pipeSpec, type Vec3 } from '../../schema';
+import { type Design, type LengthDisplay, pipeSpec, type Vec3 } from '../../schema';
 import { easedPos, useAnim } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
 import {
+  detachMemberEnd,
   dragLocked,
   dragMemberEndLength,
   dragNodeTo,
-  rotateMemberBy,
-  translateMemberBy,
+  rotateMembersBy,
+  translateMembersBy,
 } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
@@ -100,25 +101,38 @@ function useGroundDrag(
 }
 
 /** Endpoint grab sphere: free move of the junction on the ground, one undo
- * step. Hold Shift to lock the move to a world axis. When lengths are locked,
- * the drag runs pivot IK instead (drag-to-rotate). */
+ * step. Hold Shift to lock the move to a world axis. Hold Ctrl to break the
+ * union — the SELECTED pipe's end (`memberId`) detaches to its own node and
+ * moves alone (snapping along a pipe under the cursor), leaving the others put.
+ * When lengths are locked, the drag runs pivot IK instead (drag-to-rotate). */
 function MoveHandle({
   nodeId,
+  memberId,
   pos,
   radiusM,
   locked,
 }: {
   nodeId: string;
+  memberId: string;
   pos: Vec3;
   radiusM: number;
   locked: boolean;
 }) {
   const anchor = useRef<Vec3 | null>(null);
+  const dragId = useRef<string>(nodeId);
+  const pendingDetach = useRef(false);
   const { start, dragging } = useGroundDrag(
-    (g, ev) =>
-      locked
-        ? dragLocked(nodeId, g)
-        : dragNodeTo(nodeId, g, { lockAxis: ev.shiftKey, anchor: anchor.current ?? undefined }),
+    (g, ev) => {
+      // detach on the first move frame, so it's inside the drag's single gesture
+      if (pendingDetach.current) {
+        dragId.current = detachMemberEnd(memberId, nodeId) ?? nodeId;
+        pendingDetach.current = false;
+      }
+      const id = dragId.current;
+      return locked
+        ? dragLocked(id, g)
+        : dragNodeTo(id, g, { lockAxis: ev.shiftKey, anchor: anchor.current ?? undefined });
+    },
     // free move rides a view-facing plane through the node so a floating node
     // keeps its height; locked-mode IK stays on the ground plane
     { viewPlaneOrigin: () => (locked ? null : pos) },
@@ -128,6 +142,8 @@ function MoveHandle({
       position={[pos.x, pos.y, pos.z]}
       onPointerDown={(e) => {
         anchor.current = pos;
+        dragId.current = nodeId;
+        pendingDetach.current = !locked && e.nativeEvent.ctrlKey;
         start(e);
       }}
     >
@@ -218,6 +234,37 @@ function LengthArrow({
   );
 }
 
+/** The centre + extent of the whole selection (all selected members' node +
+ * control points), so the move/rotate gizmos operate on the group as one. */
+function selectionFrame(
+  design: Design,
+  ids: string[],
+): { memberIds: string[]; centre: Vec3; extent: number } | null {
+  const pts: Vec3[] = [];
+  const memberIds: string[] = [];
+  for (const id of ids) {
+    const m = memberById(design, id);
+    if (!m) continue;
+    memberIds.push(m.id);
+    const a = nodeById(design, m.nodeA);
+    const b = nodeById(design, m.nodeB);
+    if (a) pts.push(easedPos(a.id) ?? a.position);
+    if (b) pts.push(easedPos(b.id) ?? b.position);
+    if (m.kind === 'formed') for (const cp of m.controlPoints) pts.push(cp);
+  }
+  if (!memberIds.length || !pts.length) return null;
+  const centre = pts.reduce((s, p) => ({ x: s.x + p.x, y: s.y + p.y, z: s.z + p.z }), {
+    x: 0,
+    y: 0,
+    z: 0,
+  });
+  centre.x /= pts.length;
+  centre.y /= pts.length;
+  centre.z /= pts.length;
+  const extent = pts.reduce((mx, p) => Math.max(mx, length(sub(p, centre))), 0);
+  return { memberIds, centre, extent };
+}
+
 // Gizmo colours match the axis triad (X red, Y green, Z blue).
 const AXIS_COLORS = { x: '#d64545', y: '#3d9950', z: '#2a78d6' } as const;
 const AXIS_DIRS: Record<'x' | 'y' | 'z', Vec3> = {
@@ -230,13 +277,13 @@ const AXIS_DIRS: Record<'x' | 'y' | 'z', Vec3> = {
  * along `axisKey` (grid-snapped), tracking the cursor's projection onto that
  * world axis so the vertical (Y) arrow works too. */
 function MoveArrow({
-  memberId,
+  memberIds,
   origin,
   axisKey,
   sizeM,
   gridStepM,
 }: {
-  memberId: string;
+  memberIds: string[];
   origin: Vec3;
   axisKey: 'x' | 'y' | 'z';
   sizeM: number;
@@ -260,7 +307,7 @@ function MoveArrow({
       const total = gridStepM > 0 ? Math.round(raw / gridStepM) * gridStepM : raw;
       const inc = total - lastDelta.current;
       if (inc !== 0) {
-        translateMemberBy(memberId, scale(axis, inc));
+        translateMembersBy(memberIds, scale(axis, inc));
         lastDelta.current = total;
       }
     },
@@ -299,33 +346,23 @@ function MoveArrow({
   );
 }
 
-/** The move tool's 3-axis translate gizmo, centred on the selected member. */
+/** The move tool's 3-axis translate gizmo, centred on the whole selection. */
 export function MoveGizmo() {
   useAnim((s) => s.v);
   const design = useAppStore((s) => s.current);
   const selectedIds = useEditorStore((s) => s.selectedIds);
   const gridStepM = useEditorStore((s) => s.snap.gridStepM);
   if (!design) return null;
-  const member = selectedIds[0] ? memberById(design, selectedIds[0]) : undefined;
-  if (!member) return null;
-  const a = nodeById(design, member.nodeA);
-  const b = nodeById(design, member.nodeB);
-  if (!a || !b) return null;
-  const aPos = easedPos(a.id) ?? a.position;
-  const bPos = easedPos(b.id) ?? b.position;
-  const origin: Vec3 = {
-    x: (aPos.x + bPos.x) / 2,
-    y: (aPos.y + bPos.y) / 2,
-    z: (aPos.z + bPos.z) / 2,
-  };
-  const sizeM = Math.max(0.06, Math.min(0.2, length(sub(bPos, aPos)) * 0.5));
+  const frame = selectionFrame(design, selectedIds);
+  if (!frame) return null;
+  const sizeM = Math.max(0.06, Math.min(0.2, Math.max(frame.extent, 0.05)));
   return (
     <group>
       {(['x', 'y', 'z'] as const).map((k) => (
         <MoveArrow
           key={k}
-          memberId={member.id}
-          origin={origin}
+          memberIds={frame.memberIds}
+          origin={frame.centre}
           axisKey={k}
           sizeM={sizeM}
           gridStepM={gridStepM}
@@ -339,12 +376,12 @@ export function MoveGizmo() {
  * `axisKey` through the member's midpoint, tracking the cursor's angle in the
  * ring's plane (so the drag reads as free rotation). */
 function RotateRing({
-  memberId,
+  memberIds,
   pivot,
   axisKey,
   ringR,
 }: {
-  memberId: string;
+  memberIds: string[];
   pivot: Vec3;
   axisKey: 'x' | 'y' | 'z';
   ringR: number;
@@ -367,7 +404,7 @@ function RotateRing({
         Math.cos(ang - lastAngle.current),
       );
       if (delta !== 0) {
-        rotateMemberBy(memberId, axis, delta, pivotRef.current);
+        rotateMembersBy(memberIds, axis, delta, pivotRef.current);
         lastAngle.current = ang;
       }
     },
@@ -390,29 +427,25 @@ function RotateRing({
   );
 }
 
-/** The rotate tool's 3-axis ring gizmo, centred on the selected member. */
+/** The rotate tool's 3-axis ring gizmo, centred on the whole selection. */
 export function RotateGizmo() {
   useAnim((s) => s.v);
   const design = useAppStore((s) => s.current);
   const selectedIds = useEditorStore((s) => s.selectedIds);
   if (!design) return null;
-  const member = selectedIds[0] ? memberById(design, selectedIds[0]) : undefined;
-  if (!member) return null;
-  const a = nodeById(design, member.nodeA);
-  const b = nodeById(design, member.nodeB);
-  if (!a || !b) return null;
-  const aPos = easedPos(a.id) ?? a.position;
-  const bPos = easedPos(b.id) ?? b.position;
-  const pivot: Vec3 = {
-    x: (aPos.x + bPos.x) / 2,
-    y: (aPos.y + bPos.y) / 2,
-    z: (aPos.z + bPos.z) / 2,
-  };
-  const ringR = Math.max(0.08, Math.min(0.28, length(sub(bPos, aPos)) * 0.6));
+  const frame = selectionFrame(design, selectedIds);
+  if (!frame) return null;
+  const ringR = Math.max(0.08, Math.min(0.28, Math.max(frame.extent * 1.1, 0.06)));
   return (
     <group>
       {(['x', 'y', 'z'] as const).map((k) => (
-        <RotateRing key={k} memberId={member.id} pivot={pivot} axisKey={k} ringR={ringR} />
+        <RotateRing
+          key={k}
+          memberIds={frame.memberIds}
+          pivot={frame.centre}
+          axisKey={k}
+          ringR={ringR}
+        />
       ))}
     </group>
   );
@@ -441,8 +474,8 @@ export function SelectionHandles() {
 
   return (
     <>
-      <MoveHandle nodeId={a.id} pos={aPos} radiusM={handleR} locked={locked} />
-      <MoveHandle nodeId={b.id} pos={bPos} radiusM={handleR} locked={locked} />
+      <MoveHandle nodeId={a.id} memberId={member.id} pos={aPos} radiusM={handleR} locked={locked} />
+      <MoveHandle nodeId={b.id} memberId={member.id} pos={bPos} radiusM={handleR} locked={locked} />
       {/* no length editing while locked (drag rotates pivots instead) */}
       {!locked && (
         <>
