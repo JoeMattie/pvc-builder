@@ -62,6 +62,8 @@ export interface EditorState {
   formedPoints: Vec3[];
   /** running the CrashCat rigid-body simulation (Play mode) */
   simulating: boolean;
+  /** the in-progress rubber-band selection rectangle (screen/client px), or null */
+  marquee: { x0: number; y0: number; x1: number; y1: number } | null;
   /** snapping configuration (the snap pill) */
   snap: SnapSettings;
   setTool(tool: Tool): void;
@@ -73,6 +75,7 @@ export interface EditorState {
   pushFormedPoint(p: Vec3): void;
   clearFormedPoints(): void;
   setSimulating(on: boolean): void;
+  setMarquee(m: { x0: number; y0: number; x1: number; y1: number } | null): void;
   setSnap(patch: Partial<SnapSettings>): void;
   /** reset everything transient (e.g. when switching designs) — keeps snap */
   resetTransient(): void;
@@ -86,6 +89,7 @@ const INITIAL = {
   drawingFromNodeId: null as string | null,
   formedPoints: [] as Vec3[],
   simulating: false,
+  marquee: null as { x0: number; y0: number; x1: number; y1: number } | null,
 };
 
 export const useEditorStore = create<EditorState>()((set, get) => ({
@@ -123,6 +127,9 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   setSimulating(on) {
     // leaving a drawing tool / selection isn't needed; just toggle the sim
     set({ simulating: on });
+  },
+  setMarquee(m) {
+    set({ marquee: m });
   },
   setSnap(patch) {
     const next = { ...get().snap, ...patch };

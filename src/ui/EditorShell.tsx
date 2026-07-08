@@ -52,6 +52,33 @@ import { SelectionPanel } from './SelectionPanel';
 import { SnapPill } from './SnapPill';
 import { Viewport } from './scene/Viewport';
 
+/** The rubber-band selection rectangle (screen overlay). Blue solid when
+ * dragging left→right (window / contained), green dashed right→left (crossing /
+ * touching) — CAD convention. */
+function MarqueeOverlay() {
+  const marquee = useEditorStore((s) => s.marquee);
+  if (!marquee) return null;
+  const { x0, y0, x1, y1 } = marquee;
+  const left = Math.min(x0, x1);
+  const top = Math.min(y0, y1);
+  const width = Math.abs(x1 - x0);
+  const height = Math.abs(y1 - y0);
+  const crossing = x1 < x0;
+  return (
+    <div
+      className="pointer-events-none absolute z-20"
+      style={{
+        left,
+        top,
+        width,
+        height,
+        border: `1.5px ${crossing ? 'dashed' : 'solid'} ${crossing ? '#3d9950' : '#2a78d6'}`,
+        background: crossing ? 'rgba(61,153,80,0.10)' : 'rgba(42,120,214,0.10)',
+      }}
+    />
+  );
+}
+
 /** The editor: the 3D viewport plus floating chrome — pillbox, selection
  * inspector, and the view / physics / theme toggles. */
 export function EditorShell() {
@@ -256,6 +283,7 @@ export function EditorShell() {
   return (
     <div className="relative h-full w-full overflow-hidden">
       <Viewport />
+      <MarqueeOverlay />
 
       {/* top-left: back + design name */}
       <div className="absolute top-4 left-4 flex items-center gap-2">

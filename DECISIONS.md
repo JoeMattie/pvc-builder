@@ -4,6 +4,24 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Marquee (rubber-band) select (2026-07-07)
+
+- **Drag on empty space in the select tool = a rubber-band selection.** The
+  drag is detected in `DrawController`'s window listeners (same rig as
+  click+drag); the rectangle is an HTML overlay in `EditorShell`
+  (`MarqueeOverlay`), fed by transient `editorStore.marquee` (client px). On
+  release, each member's screen polyline is hit-tested by the pure
+  `design/marquee.ts` and `setSelection` replaces the selection.
+- **CAD/SketchUp direction semantics:** drag **left→right = window** (select
+  members fully **contained**, blue solid rect); drag **right→left = crossing**
+  (select members that **touch**, green dashed rect). ⚠️ This is the *opposite*
+  of the user's first phrasing ("from the left select touching") but matches
+  their "same as SketchUp" — flagged for confirmation; it's a one-line flip in
+  `marqueeFromDrag` if they want it reversed. Seam `__pvc.marquee(x0,y0,x1,y1)`.
+- Multi-select highlights every matched pipe (PipeLayer already emissive-tints
+  the whole selection set); the single-member gizmos/inspector act on
+  `selectedIds[0]`.
+
 ## Rotate tool (2026-07-07)
 
 - **Rotate tool: a 3-axis ring gizmo on the selected member.** Rings in the

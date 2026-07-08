@@ -4,9 +4,11 @@ import { useThree } from '@react-three/fiber';
 import { useMemo, useState } from 'react';
 import { CatmullRomCurve3, type Ray, Raycaster, Vector2, Vector3 } from 'three';
 import { nodeById } from '../../design/docOps';
+import { marqueeFromDrag, memberSelectedBy, type Pt } from '../../design/marquee';
 import type { SnapResult } from '../../design/snapping';
 import { length, sub } from '../../geometry/math3';
-import { pipeSpec, type Vec3 } from '../../schema';
+import { type Member, pipeSpec, type Vec3 } from '../../schema';
+import { easedPos } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
 import {
   clearSelection,
@@ -68,6 +70,24 @@ export function DrawController() {
     );
   };
 
+  // Project a world point to client (screen) px — for the marquee hit-test.
+  const screenTmp = useMemo(() => new Vector3(), []);
+  const projectToScreen = (w: Vec3): Pt => {
+    const rect = gl.domElement.getBoundingClientRect();
+    const v = screenTmp.set(w.x, w.y, w.z).project(camera);
+    return { x: rect.left + (v.x * 0.5 + 0.5) * rect.width, y: rect.top + (-v.y * 0.5 + 0.5) * rect.height };
+  };
+  const memberScreenPts = (m: Member): Pt[] => {
+    const design = useAppStore.getState().current;
+    if (!design) return [];
+    const at = (id: string): Vec3 | undefined => easedPos(id) ?? nodeById(design, id)?.position;
+    const a = at(m.nodeA);
+    const b = at(m.nodeB);
+    if (!a || !b) return [];
+    const worlds = m.kind === 'formed' ? [a, ...m.controlPoints, b] : [a, b];
+    return worlds.map(projectToScreen);
+  };
+
   // A world point from raw client coords (window events carry no r3f ray).
   const targetFromClient = (clientX: number, clientY: number): Vec3 | null => {
     const rect = gl.domElement.getBoundingClientRect();
@@ -106,6 +126,13 @@ export function DrawController() {
       }
     }
     const move = (ev: PointerEvent) => {
+      // select tool: a drag on empty space is a rubber-band marquee
+      if (liveTool === 'select') {
+        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > CLICK_SLOP_PX) {
+          useEditorStore.getState().setMarquee({ x0: startX, y0: startY, x1: ev.clientX, y1: ev.clientY });
+        }
+        return;
+      }
       const g = targetFromClient(ev.clientX, ev.clientY);
       if (!g) return;
       if (liveTool === 'draw') setPreview(snapDrawPoint(g, ev.shiftKey));
@@ -117,15 +144,33 @@ export function DrawController() {
       window.removeEventListener('pointercancel', up);
       if (ev.button !== 0) return;
       const moved = Math.hypot(ev.clientX - startX, ev.clientY - startY);
+      if (liveTool === 'select') {
+        if (moved > CLICK_SLOP_PX) {
+          // rubber-band: left→right = contained, right→left = touching (CAD)
+          const { rect, mode } = marqueeFromDrag(startX, startY, ev.clientX, ev.clientY);
+          const design = useAppStore.getState().current;
+          if (design) {
+            const hits = design.members
+              .filter((m) => memberSelectedBy(memberScreenPts(m), rect, mode))
+              .map((m) => m.id);
+            useEditorStore.getState().setSelection(hits);
+          }
+        } else {
+          // a plain click on empty space clears the selection (a pipe click
+          // re-selects afterwards — its onClick fires after this window up)
+          clearSelection();
+        }
+        useEditorStore.getState().setMarquee(null);
+        return;
+      }
       const g = targetFromClient(ev.clientX, ev.clientY);
       if (!g) return;
       if (liveTool === 'draw') {
         // a drag ends the segment; a click that didn't start the path extends it
         // (two-click); a click that started the path leaves it open for click 2
         if (moved > CLICK_SLOP_PX || !startedPath) setPreview(placeDrawPoint(g, ev.shiftKey));
-      } else if (moved <= CLICK_SLOP_PX) {
-        if (liveTool === 'formed') setPreview(placeFormedPoint(g));
-        else if (liveTool === 'select') clearSelection();
+      } else if (moved <= CLICK_SLOP_PX && liveTool === 'formed') {
+        setPreview(placeFormedPoint(g));
       }
     };
     window.addEventListener('pointermove', move);

@@ -20,6 +20,8 @@ import {
   stepPhysics,
   stopPhysics,
 } from '../../solver/physics';
+import { nodeById } from '../../design/docOps';
+import { marqueeFromDrag, memberSelectedBy, type Pt } from '../../design/marquee';
 import { bumpAnim, easedPos, stepEasing } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
 import {
@@ -282,13 +284,34 @@ function DebugBridge() {
     w.__pvc.getEasedPos = (id: string) => easedPos(id) ?? null;
     // orthographic zoom factor (rises as you zoom in) — for verifying wheel zoom
     w.__pvc.getZoom = () => (camera as { zoom?: number }).zoom ?? null;
-    w.__pvc.screenOf = (p: { x: number; y: number; z: number }) => {
+    const toScreen = (p: { x: number; y: number; z: number }): Pt => {
       const rect = gl.domElement.getBoundingClientRect();
       const v = new Vector3(p.x, p.y, p.z).project(camera);
       return {
         x: rect.left + (v.x * 0.5 + 0.5) * rect.width,
         y: rect.top + (-v.y * 0.5 + 0.5) * rect.height,
       };
+    };
+    w.__pvc.screenOf = (p: { x: number; y: number; z: number }) => toScreen(p);
+    // rubber-band select: hit-test members against the screen rect, set the
+    // selection, and return the matched ids (left→right contained, right→left
+    // touching)
+    w.__pvc.marquee = (x0: number, y0: number, x1: number, y1: number) => {
+      const design = useAppStore.getState().current;
+      if (!design) return [];
+      const { rect, mode } = marqueeFromDrag(x0, y0, x1, y1);
+      const at = (id: string) => easedPos(id) ?? nodeById(design, id)?.position;
+      const hits = design.members
+        .filter((m) => {
+          const a = at(m.nodeA);
+          const b = at(m.nodeB);
+          if (!a || !b) return false;
+          const worlds = m.kind === 'formed' ? [a, ...m.controlPoints, b] : [a, b];
+          return memberSelectedBy(worlds.map(toScreen), rect, mode);
+        })
+        .map((m) => m.id);
+      useEditorStore.getState().setSelection(hits);
+      return hits;
     };
   });
   return null;
