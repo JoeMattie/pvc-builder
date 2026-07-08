@@ -2,7 +2,7 @@ import { Html } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
 import { useThree } from '@react-three/fiber';
 import { useMemo, useRef, useState } from 'react';
-import { Raycaster, Vector2 } from 'three';
+import { Raycaster, Vector2, Vector3 } from 'three';
 import { memberById, nodeById } from '../../design/docOps';
 import { dot, length, normalize, sub } from '../../geometry/math3';
 import { pipeSpec, type Vec3 } from '../../schema';
@@ -13,7 +13,7 @@ import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { formatLength } from '../units';
 import { orientY } from './axis';
-import { rayToGround } from './ground';
+import { dominantAxisNormal, rayToGround, rayToPlane } from './ground';
 
 /**
  * A ground-plane drag driven by WINDOW pointer listeners, not the handle
@@ -24,13 +24,20 @@ import { rayToGround } from './ground';
  * the drag alive anywhere and guarantees the pointerup runs. OrbitControls is
  * suspended for the duration (no setPointerCapture, so nothing fights it).
  */
-function useGroundDrag(onMove: (ground: Vec3, ev: PointerEvent) => void) {
+function useGroundDrag(
+  onMove: (point: Vec3, ev: PointerEvent) => void,
+  // when provided and it returns a point, the drag rides a view-facing plane
+  // through that point (Blender-style) instead of the y = 0 ground — so a
+  // floating node isn't dragged down to the floor
+  viewPlaneOrigin?: () => Vec3 | null,
+) {
   const gl = useThree((s) => s.gl);
   const camera = useThree((s) => s.camera);
   const controls = useThree((s) => s.controls) as { enabled: boolean } | null;
   const [dragging, setDragging] = useState(false);
   const rc = useMemo(() => new Raycaster(), []);
   const ndc = useMemo(() => new Vector2(), []);
+  const fwd = useMemo(() => new Vector3(), []);
 
   const start = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation(); // keep the ground plane from also handling this pointer
@@ -39,6 +46,14 @@ function useGroundDrag(onMove: (ground: Vec3, ev: PointerEvent) => void) {
     setDragging(true);
     const el = gl.domElement;
 
+    // fix the drag plane at grab time (the view axis + the node's start point)
+    const origin = viewPlaneOrigin?.() ?? null;
+    let plane: { point: Vec3; normal: Vec3 } | null = null;
+    if (origin) {
+      camera.getWorldDirection(fwd);
+      plane = { point: origin, normal: dominantAxisNormal({ x: fwd.x, y: fwd.y, z: fwd.z }) };
+    }
+
     const move = (ev: PointerEvent) => {
       const rect = el.getBoundingClientRect();
       ndc.set(
@@ -46,7 +61,7 @@ function useGroundDrag(onMove: (ground: Vec3, ev: PointerEvent) => void) {
         -((ev.clientY - rect.top) / rect.height) * 2 + 1,
       );
       rc.setFromCamera(ndc, camera);
-      const g = rayToGround(rc.ray);
+      const g = plane ? rayToPlane(rc.ray, plane.point, plane.normal) : rayToGround(rc.ray);
       if (g) onMove(g, ev);
     };
     const up = () => {
@@ -80,10 +95,14 @@ function MoveHandle({
   locked: boolean;
 }) {
   const anchor = useRef<Vec3 | null>(null);
-  const { start, dragging } = useGroundDrag((g, ev) =>
-    locked
-      ? dragLocked(nodeId, g)
-      : dragNodeTo(nodeId, g, { lockAxis: ev.shiftKey, anchor: anchor.current ?? undefined }),
+  const { start, dragging } = useGroundDrag(
+    (g, ev) =>
+      locked
+        ? dragLocked(nodeId, g)
+        : dragNodeTo(nodeId, g, { lockAxis: ev.shiftKey, anchor: anchor.current ?? undefined }),
+    // free move rides a view-facing plane through the node so a floating node
+    // keeps its height; locked-mode IK stays on the ground plane
+    () => (locked ? null : pos),
   );
   return (
     <mesh

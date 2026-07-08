@@ -4,6 +4,24 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Blender-style view-aware endpoint drag (2026-07-07)
+
+- **Dragging an endpoint no longer snaps a floating node to the floor.** The
+  endpoint grab previously raycast the fixed y = 0 ground plane, so any node
+  above the ground was yanked down to y = 0. The free move now rides a
+  view-facing plane fixed at grab time: `dominantAxisNormal` (pure, tested)
+  picks the world axis most aligned with the camera's view direction as the
+  plane normal, and `rayToPlane` intersects the cursor against that plane
+  through the node's start point. Iso / top-down views → the **horizontal (Y)**
+  plane, so the node keeps its height and slides in X/Z; a front/side view →
+  a **vertical** plane, so the node can be moved up/down. A small Y bias
+  resolves the iso view's exact three-axis tie toward horizontal (the common,
+  ground-oriented case) and absorbs camera floating-point noise.
+- **Scoped to the free (unlocked) move**; locked-mode pivot IK still targets the
+  ground plane. On-ground nodes are unaffected (their horizontal plane *is* the
+  ground). Shift axis-lock still applies on top. Verified in-browser: a floating
+  pipe's endpoint drags horizontally with its height preserved exactly.
+
 ## Heat-wrapped tees (branch onto a pipe body) (2026-07-07)
 
 - **A branch landing on a pipe's *body* (mid-span, not an end node) forms a
