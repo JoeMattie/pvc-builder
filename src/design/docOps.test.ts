@@ -2,16 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { createEmptyDesign, type Design, type Vec3 } from '../schema';
 import {
   addPivot,
+  addWrap,
   appendPipe,
   deleteMember,
   memberLengthM,
   nodeById,
   nodeDegrees,
+  removeWrap,
   resetPivots,
   setMemberLengthM,
   setNodePosition,
   setPivotAngle,
+  setWrapRigid,
+  splitMemberAt,
   startPath,
+  wrapsAtNode,
 } from './docOps';
 
 const V = (x: number, y: number, z: number): Vec3 => ({ x, y, z });
@@ -129,5 +134,81 @@ describe('pivots', () => {
     const posed = setPivotAngle(added.design, added.pivotId!, 1.2);
     expect(posed.pivots[0]!.angleRad).toBe(1.2);
     expect(resetPivots(posed).pivots[0]!.angleRad).toBe(0);
+  });
+});
+
+describe('splitMemberAt', () => {
+  it('replaces a straight member with two collinear members sharing a new node', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0)]);
+    const r = splitMemberAt(design, memberIds[0]!, V(0.4, 0, 0));
+    expect(r.nodeId).not.toBeNull();
+    expect(r.design.members).toHaveLength(2); // A–N and N–B
+    expect(r.design.nodes).toHaveLength(3);
+    // the two halves are collinear and meet at the split node
+    const split = nodeById(r.design, r.nodeId!)!;
+    expect(split.position).toEqual(V(0.4, 0, 0));
+    // the new node has degree 2 (the run passes through it)
+    expect(nodeDegrees(r.design).get(r.nodeId!)).toBe(2);
+  });
+
+  it('reuses an existing endpoint node instead of a zero-length stub', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0)]);
+    const endpoint = design.members[0]!.nodeB;
+    const r = splitMemberAt(design, memberIds[0]!, V(1, 0, 0));
+    expect(r.nodeId).toBe(endpoint);
+    expect(r.design.members).toHaveLength(1); // unchanged
+  });
+});
+
+describe('heat-wrapped tees', () => {
+  // a run pipe + a branch that ends partway along it (a wrap)
+  function runWithBranch() {
+    const run = drawPath([V(0, 0, 0), V(1, 0, 0)]); // through pipe
+    const throughId = run.memberIds[0]!;
+    // branch from (0.5, 0, 0.4) down to the run body at (0.5, 0, 0)
+    const started = startPath(run.design, V(0.5, 0, 0.4));
+    let d = started.design;
+    const step = appendPipe(d, started.nodeId, V(0.5, 0, 0), '3/4"');
+    d = step.design;
+    return { design: d, throughId, branchNode: step.nodeId };
+  }
+
+  it('addWrap records a rigid tee onto the intact run (no split)', () => {
+    const { design, throughId, branchNode } = runWithBranch();
+    const r = addWrap(design, throughId, branchNode);
+    expect(r.wrapId).not.toBeNull();
+    expect(r.design.wraps).toHaveLength(1);
+    expect(r.design.wraps[0]!.rigid).toBe(true); // screwed by default
+    expect(r.design.members).toHaveLength(2); // run NOT cut
+    expect(wrapsAtNode(r.design, branchNode)).toHaveLength(1);
+  });
+
+  it('refuses a duplicate wrap at the same branch node', () => {
+    const { design, throughId, branchNode } = runWithBranch();
+    const once = addWrap(design, throughId, branchNode).design;
+    expect(addWrap(once, throughId, branchNode).wrapId).toBeNull();
+  });
+
+  it('toggles rigid ⇄ pivot', () => {
+    const { design, throughId, branchNode } = runWithBranch();
+    const r = addWrap(design, throughId, branchNode);
+    const asPivot = setWrapRigid(r.design, r.wrapId!, false);
+    expect(asPivot.wraps[0]!.rigid).toBe(false);
+    expect(removeWrap(asPivot, r.wrapId!).wraps).toHaveLength(0);
+  });
+
+  it('deleting the through pipe drops its wraps', () => {
+    const { design, throughId, branchNode } = runWithBranch();
+    const withWrap = addWrap(design, throughId, branchNode).design;
+    expect(deleteMember(withWrap, throughId).wraps).toHaveLength(0);
+  });
+
+  it('deleting the branch pipe drops the wrap (orphaned branch node)', () => {
+    const { design, throughId, branchNode } = runWithBranch();
+    const withWrap = addWrap(design, throughId, branchNode).design;
+    const branchMember = withWrap.members.find(
+      (m) => m.nodeA === branchNode || m.nodeB === branchNode,
+    )!;
+    expect(deleteMember(withWrap, branchMember.id).wraps).toHaveLength(0);
   });
 });

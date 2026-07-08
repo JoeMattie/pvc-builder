@@ -20,6 +20,9 @@ export interface SnapNode {
 export interface SnapSegment {
   a: Vec3;
   b: Vec3;
+  /** the member this segment belongs to, so an on-pipe snap can name it (used to
+   * split the member and form a tee). Absent for anonymous segments. */
+  memberId?: string;
 }
 
 export interface SnapContext {
@@ -42,6 +45,9 @@ export interface SnapResult {
   kind: SnapKind;
   /** set when kind === 'node' */
   nodeId?: string;
+  /** set when kind === 'on-pipe' and the hit segment named its member — the
+   * member to split at `position` so a branch drawn here forms a tee */
+  onPipeMemberId?: string;
   /** inference guide to draw (axis line through the start point) */
   guide?: { axis: 'x' | 'y' | 'z'; from: Vec3; to: Vec3 };
 }
@@ -80,13 +86,14 @@ export function snapPoint(raw: Vec3, ctx: SnapContext): SnapResult {
   if (best) return { position: best.node.position, kind: 'node', nodeId: best.node.id };
 
   // 2. on-pipe point
-  let onPipe: { d: number; p: Vec3 } | null = null;
+  let onPipe: { d: number; p: Vec3; memberId?: string } | null = null;
   for (const s of ctx.segments) {
     const cp = closestPointOnSegment(raw, s.a, s.b);
     const d = length(sub(raw, cp));
-    if (d <= ctx.pointRadiusM && (!onPipe || d < onPipe.d)) onPipe = { d, p: cp };
+    if (d <= ctx.pointRadiusM && (!onPipe || d < onPipe.d))
+      onPipe = { d, p: cp, memberId: s.memberId };
   }
-  if (onPipe) return { position: onPipe.p, kind: 'on-pipe' };
+  if (onPipe) return { position: onPipe.p, kind: 'on-pipe', onPipeMemberId: onPipe.memberId };
 
   // 3. axis inference from the path start: project onto whichever world axis
   //    line (through fromNode) the cursor is closest to, if within the band.

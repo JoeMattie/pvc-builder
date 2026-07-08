@@ -48,6 +48,15 @@ describe('on-pipe snapping', () => {
     expect(r.position.x).toBeCloseTo(0.5, 9);
     expect(r.position.z).toBeCloseTo(0, 9);
   });
+
+  it('reports the hit segment member id (so a branch can wrap/split it)', () => {
+    const r = snapPoint(
+      V(0.5, 0, 0.01),
+      ctx({ segments: [{ a: V(0, 0, 0), b: V(1, 0, 0), memberId: 'm7' }] }),
+    );
+    expect(r.kind).toBe('on-pipe');
+    expect(r.onPipeMemberId).toBe('m7');
+  });
 });
 
 describe('axis inference from the path start', () => {

@@ -37,6 +37,7 @@ import {
   selectMember,
   setMemberLength,
   setPivotAngle,
+  setWrapRigid,
   snapDrawPoint,
 } from '../state/editorActions';
 import { useEditorStore } from '../state/editorStore';
@@ -217,6 +218,9 @@ export function EditorShell() {
       const m = d ? memberById(d, id) : undefined;
       return d && m && m.kind === 'formed' ? analyzeFormed(d, m) : null;
     };
+    // heat-wrapped tee seams
+    hook.getWraps = () => useAppStore.getState().current?.wraps ?? [];
+    hook.setWrapRigid = (wrapId: string, rigid: boolean) => setWrapRigid(wrapId, rigid);
     // pivots / solver seams
     hook.createPivotAt = (nodeId: string) => createPivotAt(nodeId);
     hook.setPivotAngle = (pivotId: string, angleRad: number) => setPivotAngle(pivotId, angleRad);

@@ -3,7 +3,7 @@
 // through appStore.updateCurrent so undo/autosave stay centralized. No
 // three.js / UI types here.
 import { cross, length, normalize, sub } from '../geometry/math3';
-import type { Design, Member, Node, NominalSize, Pivot, Vec3 } from '../schema';
+import type { Design, Member, Node, NominalSize, Pivot, Vec3, Wrap } from '../schema';
 import { makeId } from './ids';
 
 /** An existing node at (or very near) `pos`, for reusing a junction instead of
@@ -154,9 +154,39 @@ export function setMemberLengthM(design: Design, memberId: string, lengthM: numb
   return setNodePosition(design, member.nodeB, newB);
 }
 
+/** Split a straight member at `pos`: replace A–B with A–N and N–B (same size,
+ * new ids) where N is a new node at `pos`. Returns the new node id so a branch
+ * can connect there → the node now has two collinear run members + the branch =
+ * a tee (`resolveFittings` classifies it automatically). Formed members are not
+ * split (returns the design unchanged with `nodeId: null`); the caller falls
+ * back to a free point. */
+export function splitMemberAt(
+  design: Design,
+  memberId: string,
+  pos: Vec3,
+): { design: Design; nodeId: string | null } {
+  const member = memberById(design, memberId);
+  if (member?.kind !== 'straight') return { design, nodeId: null };
+  // reuse an existing node if the split point lands on one (e.g. an endpoint) —
+  // splitting there would make a zero-length stub
+  const existing = findNodeAt(design, pos, 1e-6);
+  if (existing) return { design, nodeId: existing };
+
+  const added = addNode(design, pos);
+  const nId = added.nodeId;
+  const a = addMember(added.design, member.nodeA, nId, member.size);
+  const b = addMember(a.design, nId, member.nodeB, member.size);
+  return {
+    design: { ...b.design, members: b.design.members.filter((m) => m.id !== memberId) },
+    nodeId: nId,
+  };
+}
+
 /** Delete a member and prune any node it leaves with no incident members
  * (Phase 1 nodes exist only as member endpoints). Pivots that referenced the
- * deleted member, or a node it orphaned, are removed too (no dangling pivots). */
+ * deleted member, or a node it orphaned, are removed too (no dangling pivots).
+ * Wraps whose through pipe was deleted, or whose branch node was orphaned, are
+ * removed as well. */
 export function deleteMember(design: Design, memberId: string): Design {
   const members = design.members.filter((m) => m.id !== memberId);
   const referenced = new Set<string>();
@@ -167,12 +197,55 @@ export function deleteMember(design: Design, memberId: string): Design {
   const pivots = design.pivots.filter(
     (p) => p.memberA !== memberId && p.memberB !== memberId && referenced.has(p.nodeId),
   );
+  const memberIds = new Set(members.map((m) => m.id));
+  const wraps = design.wraps.filter(
+    (w) => memberIds.has(w.throughMember) && referenced.has(w.branchNode),
+  );
   return {
     ...design,
     members,
     nodes: design.nodes.filter((n) => referenced.has(n.id)),
     pivots,
+    wraps,
   };
+}
+
+// ── heat-wrapped tees (planfile §4 fabrication) ─────────────────────────────
+
+/** All wraps whose branch end is `nodeId`. */
+export function wrapsAtNode(design: Design, nodeId: string): Wrap[] {
+  return design.wraps.filter((w) => w.branchNode === nodeId);
+}
+
+/** Add a heat-wrapped tee: the branch ending at `branchNode` wraps around the
+ * intact straight `throughMember`. Rigid (screwed) by default. Ignored (returns
+ * `wrapId: null`) if the members/node don't exist, the through member isn't
+ * straight, or that branch node already wraps something. */
+export function addWrap(
+  design: Design,
+  throughMember: string,
+  branchNode: string,
+  rigid = true,
+  id: string = makeId('wr'),
+): { design: Design; wrapId: string | null } {
+  const through = memberById(design, throughMember);
+  if (through?.kind !== 'straight') return { design, wrapId: null };
+  if (!nodeById(design, branchNode)) return { design, wrapId: null };
+  if (design.wraps.some((w) => w.branchNode === branchNode)) return { design, wrapId: null };
+  const wrap: Wrap = { id, throughMember, branchNode, rigid };
+  return { design: { ...design, wraps: [...design.wraps, wrap] }, wrapId: id };
+}
+
+/** Toggle a wrap between rigid (screwed) and a natural pivot. */
+export function setWrapRigid(design: Design, wrapId: string, rigid: boolean): Design {
+  return {
+    ...design,
+    wraps: design.wraps.map((w) => (w.id === wrapId ? { ...w, rigid } : w)),
+  };
+}
+
+export function removeWrap(design: Design, wrapId: string): Design {
+  return { ...design, wraps: design.wraps.filter((w) => w.id !== wrapId) };
 }
 
 /** Reset every pivot to its rest angle (0). */

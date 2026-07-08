@@ -86,4 +86,17 @@ describe('intersectingMembers', () => {
     );
     expect(intersectingMembers(d)).toEqual(new Set(['formed', 'straight']));
   });
+
+  it('does not flag a heat-wrapped branch against its through pipe', () => {
+    // a run + a branch whose end touches the run body (a T) but shares no node
+    const d = straightDesign([
+      { id: 'run', a: V(-0.25, 0, 0), b: V(0.25, 0, 0) },
+      { id: 'branch', a: V(0, 0, 0.2), b: V(0, 0, 0) },
+    ]);
+    // without a wrap the touching pair IS flagged
+    expect(intersectingMembers(d)).toEqual(new Set(['run', 'branch']));
+    // the branch's end node is n3 (straightDesign numbers nodes in order)
+    d.wraps.push({ id: 'w1', throughMember: 'run', branchNode: 'n3', rigid: true });
+    expect(intersectingMembers(d).size).toBe(0);
+  });
 });

@@ -4,6 +4,37 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Heat-wrapped tees (branch onto a pipe body) (2026-07-07)
+
+- **A branch landing on a pipe's *body* (mid-span, not an end node) forms a
+  heat-wrapped tee, not a socket-fitting split.** The run pipe stays **intact**;
+  the branch end is (conceptually) heated, flattened, and wrapped around it.
+  This is a new connection type — `wraps: Wrap[]` on the document (**schema v4**
+  + migration `3→4` adds `wraps:[]`). `Wrap = { id, throughMember, branchNode,
+  rigid, angleRad? }`; the branch node sits on the through pipe's centre-line.
+- **Rigid (screwed) by default; switchable to a natural pivot.** `rigid: true` =
+  flattened + screwed (a fixed joint); `rigid: false` = heat-wrapped revolute
+  pivot whose axis is the through pipe's own direction. Toggled from the
+  selection inspector (select the branch → Wrap: Screwed ⇄ Pivot) or
+  `__pvc.setWrapRigid`. **Articulation of the pivot in the locked-length solver
+  and Play-mode physics is deferred** (follow-up) — this pass ships the document
+  model, the fabrication geometry, and the toggle.
+- **Rendered as a flattened rectangular strip wrapped around the run**
+  (`ui/scene/wrapMesh.ts`, pure + tested; `WrapLayer.tsx`): a round tube of
+  circumference π·OD flattens to a strip ≈ π·OD/2 wide, modelled as a faceted
+  band of flat boxes (14 facets over a 240° wrap) bent around the through
+  cylinder — flattened PVC genuinely facets as it bends. Rigid wraps add two
+  **screw discs**; a pivot wrap tints the strap toward the accent (the hinge
+  barrel) and drops the screws. Placed at eased positions so it glides.
+- **Wrap-joined members are exempt from the intersection (red-overlap) check** —
+  a branch legitimately touches its through pipe, so that pair is skipped.
+- **`splitMemberAt` (pure) is kept for the *future* fitting-type option.** Per
+  the user: joint type will become configurable (rigid-wrap ⇄ pivot-wrap ⇄
+  split + manufactured socket fitting), with the split option gated to angles
+  where a real SCH 40 fitting exists (90°/45°). Not wired into the draw path
+  yet; the wrap is the default interior-landing behaviour. Socket tees via an
+  explicit shared-node join are unchanged.
+
 ## Interaction fixes — camera + length arrow (2026-07-07)
 
 - **Projection toggle preserves the camera** (`state/cameraStore.ts`, a

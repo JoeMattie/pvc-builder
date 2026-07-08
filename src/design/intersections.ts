@@ -1,10 +1,31 @@
 // Intersection highlighting (planfile §6): find members whose pipe volumes
 // overlap (a capsule-vs-capsule test over the members' segments). Members that
 // share a node meet legitimately at that joint and are never flagged against
-// each other. Pure; the UI outlines the returned member ids in red.
+// each other. A heat-wrapped tee is likewise legitimate — its branch touches
+// the through pipe by design — so those pairs are excluded too. Pure; the UI
+// outlines the returned member ids in red.
 import { add, dot, scale, sub } from '../geometry/math3';
 import { type Design, pipeSpec, type Vec3 } from '../schema';
 import { nodeById } from './docOps';
+
+/** An order-independent key for a member pair. */
+function pairKey(a: string, b: string): string {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+/** Member pairs joined by a heat-wrapped tee (branch ↔ through pipe): the
+ * branch legitimately meets the run, so their overlap must not be flagged. */
+function wrappedPairs(design: Design): Set<string> {
+  const out = new Set<string>();
+  for (const w of design.wraps) {
+    for (const m of design.members) {
+      if (m.nodeA === w.branchNode || m.nodeB === w.branchNode) {
+        out.add(pairKey(m.id, w.throughMember));
+      }
+    }
+  }
+  return out;
+}
 
 interface Segment {
   memberId: string;
@@ -84,6 +105,7 @@ export function intersectingMembers(design: Design): Set<string> {
   const byMember = memberSegments(design);
   const members = design.members;
   const nodesOf = new Map(members.map((m) => [m.id, [m.nodeA, m.nodeB]] as const));
+  const wrapped = wrappedPairs(design);
   const hits = new Set<string>();
 
   for (let i = 0; i < members.length; i++) {
@@ -94,6 +116,8 @@ export function intersectingMembers(design: Design): Set<string> {
       const [ai, bi] = nodesOf.get(mi.id)!;
       const [aj, bj] = nodesOf.get(mj.id)!;
       if (ai === aj || ai === bj || bi === aj || bi === bj) continue;
+      // a heat-wrapped branch legitimately touches its through pipe
+      if (wrapped.has(pairKey(mi.id, mj.id))) continue;
 
       const segsI = byMember.get(mi.id) ?? [];
       const segsJ = byMember.get(mj.id) ?? [];

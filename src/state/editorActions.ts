@@ -5,6 +5,7 @@
 import {
   addFormedMember,
   addPivot,
+  addWrap,
   appendPipe,
   connectPipe,
   memberEndpoints,
@@ -13,6 +14,7 @@ import {
   setMemberLengthM,
   setNodePosition,
   setPivotAngle as setPivotAngleOp,
+  setWrapRigid as setWrapRigidOp,
   startPath,
 } from '../design/docOps';
 import { lengthFromGrabDrag, lockToNearestAxis } from '../design/dragMath';
@@ -56,7 +58,10 @@ function segmentsOf(design: Design, excludeNode?: string): SnapContext['segments
   for (const m of design.members) {
     if (excludeNode && (m.nodeA === excludeNode || m.nodeB === excludeNode)) continue;
     const e = memberEndpoints(design, m);
-    if (e) out.push(e);
+    if (!e) continue;
+    // only straight members carry an id — an on-pipe hit on a straight can be
+    // split to form a tee; formed hits snap to the chord but don't split
+    out.push(m.kind === 'straight' ? { ...e, memberId: m.id } : e);
   }
   return out;
 }
@@ -99,6 +104,9 @@ export function placeDrawPoint(raw: Vec3, lockAxis = false): SnapResult {
   const snap = snapDrawPoint(raw, lockAxis);
   const size = editor.drawSize;
   const fromId = editor.drawingFromNodeId;
+  // landing on a pipe's body (not an end node) forms a heat-wrapped tee around
+  // that intact run — rigid/screwed by default, switchable to a pivot later
+  const wrapMember = snap.kind === 'on-pipe' ? snap.onPipeMemberId : undefined;
 
   if (!fromId) {
     if (snap.kind === 'node' && snap.nodeId) {
@@ -108,7 +116,7 @@ export function placeDrawPoint(raw: Vec3, lockAxis = false): SnapResult {
       app.updateCurrent((d) => {
         const s = startPath(d, snap.position);
         newId = s.nodeId;
-        return s.design;
+        return wrapMember ? addWrap(s.design, wrapMember, newId).design : s.design;
       });
       editor.setDrawingFrom(newId);
     }
@@ -125,7 +133,7 @@ export function placeDrawPoint(raw: Vec3, lockAxis = false): SnapResult {
     app.updateCurrent((d) => {
       const r = appendPipe(d, fromId, snap.position, size);
       nextId = r.nodeId;
-      return r.design;
+      return wrapMember ? addWrap(r.design, wrapMember, nextId).design : r.design;
     });
     editor.setDrawingFrom(nextId);
   }
@@ -262,6 +270,13 @@ export function setPivotAngle(pivotId: string, angleRad: number): void {
 /** Reset all pivots to their rest angle. */
 export function resetPivots(): void {
   useAppStore.getState().updateCurrent((d) => resetPivotsOp(d));
+}
+
+// ── heat-wrapped tees ───────────────────────────────────────────────────────
+
+/** Switch a wrap between rigid (screwed) and a natural pivot. */
+export function setWrapRigid(wrapId: string, rigid: boolean): void {
+  useAppStore.getState().updateCurrent((d) => setWrapRigidOp(d, wrapId, rigid));
 }
 
 /** Drag-to-rotate in locked mode: run IK so `nodeId` follows the ground point,

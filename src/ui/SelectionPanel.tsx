@@ -1,9 +1,9 @@
-import { AlertTriangle, Trash2 } from 'lucide-react';
+import { AlertTriangle, Lock, Rotate3d, Trash2 } from 'lucide-react';
 import { type FormEvent, useEffect, useState } from 'react';
 import { deleteMember, memberById, memberLengthM } from '../design/docOps';
 import { analyzeFormed } from '../design/formed';
 import { useAppStore } from '../state/appStore';
-import { clearSelection, setMemberLength } from '../state/editorActions';
+import { clearSelection, setMemberLength, setWrapRigid } from '../state/editorActions';
 import { useEditorStore } from '../state/editorStore';
 import { formatLength, lengthFromDisplay, lengthToDisplay, lengthUnit } from './units';
 
@@ -37,6 +37,11 @@ export function SelectionPanel() {
   };
 
   const formed = member.kind === 'formed' ? analyzeFormed(design, member) : null;
+  // the heat-wrapped tee this branch forms onto a run, if any (its joint type is
+  // configured here: screwed/rigid ⇄ natural pivot)
+  const wrap = design.wraps.find(
+    (w) => w.branchNode === member.nodeA || w.branchNode === member.nodeB,
+  );
 
   return (
     <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-2 shadow-sm">
@@ -79,6 +84,43 @@ export function SelectionPanel() {
             </span>
           )}
         </div>
+      )}
+
+      {wrap && (
+        <>
+          <div className="h-5 w-px bg-border" />
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className="text-muted-foreground">Wrap</span>
+            <div className="flex items-center gap-0.5 rounded-md border border-border p-0.5">
+              <button
+                type="button"
+                aria-pressed={wrap.rigid}
+                title="Flattened + screwed — rigid"
+                onClick={() => setWrapRigid(wrap.id, true)}
+                className={`flex items-center gap-1 rounded px-1.5 py-0.5 font-medium ${
+                  wrap.rigid
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                }`}
+              >
+                <Lock size={12} /> Screwed
+              </button>
+              <button
+                type="button"
+                aria-pressed={!wrap.rigid}
+                title="Heat-wrapped — natural pivot about the run"
+                onClick={() => setWrapRigid(wrap.id, false)}
+                className={`flex items-center gap-1 rounded px-1.5 py-0.5 font-medium ${
+                  !wrap.rigid
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                }`}
+              >
+                <Rotate3d size={12} /> Pivot
+              </button>
+            </div>
+          </div>
+        </>
       )}
 
       <div className="h-5 w-px bg-border" />

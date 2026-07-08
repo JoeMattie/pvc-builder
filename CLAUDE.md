@@ -63,9 +63,10 @@ physics logic can be tested and reasoned about without three.js/React/engine typ
 
 - **Domain doc (`Design`)** is the single source of truth, defined in **Zod** (`z.infer` for types),
   stored **SI internally** (metres, radians; imperial is display-only). A `Design` holds `nodes`,
-  `members` (a discriminated union of `straight` and heat-bent `formed` splines), and `pivots`
-  (revolute joints). Fitting dimensions live in a static **`PipeSpec`** constant table (ASTM SCH 40
-  values), **not** in the document.
+  `members` (a discriminated union of `straight` and heat-bent `formed` splines), `pivots`
+  (revolute joints), and `wraps` (heat-wrapped tees — a branch flattened + wrapped around an intact
+  pipe body, rigid/screwed or a natural pivot; **schema v4**). Fitting dimensions live in a static
+  **`PipeSpec`** constant table (ASTM SCH 40 values), **not** in the document.
 
 - **Fittings are never stored** — `resolveFittings(design)` is a **pure function** that classifies the
   pipe ends incident at each node into couplings / elbows / tees / crosses / reducers, or flags

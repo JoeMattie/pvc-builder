@@ -144,6 +144,26 @@ describe('snap settings + Shift-draw-lock', () => {
   });
 });
 
+describe('drawing a branch onto a pipe body forms a heat-wrapped tee', () => {
+  it('wraps the intact run (no split) with a rigid tee', () => {
+    // run pipe along X (grid-aligned so snapping leaves it unchanged)
+    placeDrawPoint(V(0, 0, 0));
+    placeDrawPoint(V(0.3048, 0, 0));
+    finishPath();
+    const runMember = design().members[0]!.id;
+    // a branch coming down onto the run body near x = 0.1524 (6")
+    placeDrawPoint(V(0.1524, 0, 0.1));
+    const landed = placeDrawPoint(V(0.1524, 0, 0.003)); // within the on-pipe radius
+    finishPath();
+    expect(landed.kind).toBe('on-pipe');
+    const d = design();
+    expect(d.members).toHaveLength(2); // the run is NOT cut — run + branch
+    expect(d.wraps).toHaveLength(1);
+    expect(d.wraps[0]!.rigid).toBe(true); // screwed by default
+    expect(d.wraps[0]!.throughMember).toBe(runMember);
+  });
+});
+
 describe('length arrows + Shift-lock', () => {
   it('resizes a pipe along its own axis via the end arrow (opposite end fixed)', () => {
     placeDrawPoint(V(0, 0, 0));

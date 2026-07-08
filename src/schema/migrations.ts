@@ -13,6 +13,8 @@ export const migrations: Record<number, Migration> = {
   1: (doc) => doc,
   // v2 → v3: added `pivots` (revolute joints); old docs get an empty array.
   2: (doc) => ({ ...doc, pivots: Array.isArray(doc.pivots) ? doc.pivots : [] }),
+  // v3 → v4: added `wraps` (heat-wrapped tees); old docs get an empty array.
+  3: (doc) => ({ ...doc, wraps: Array.isArray(doc.wraps) ? doc.wraps : [] }),
 };
 
 export class MigrationError extends Error {}

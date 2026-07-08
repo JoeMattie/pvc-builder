@@ -41,6 +41,7 @@ import { IntersectionLayer } from './IntersectionLayer';
 import { PipeLayer } from './PipeLayer';
 import { PivotLayer } from './PivotLayer';
 import { SelectionHandles } from './SelectionHandles';
+import { WrapLayer } from './WrapLayer';
 
 /** Everything inside the Canvas: camera, studio lighting, ground grid + shadow
  * catcher, pipe meshes, the draw controller, and selection drag handles. */
@@ -105,6 +106,7 @@ export function Scene() {
       <PipeLayer />
       <FormedLayer />
       <FittingLayer />
+      <WrapLayer />
       <IntersectionLayer />
 
       {/* ground-plane pointer target + shadow catcher + draw preview */}
