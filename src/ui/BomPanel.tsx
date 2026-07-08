@@ -58,16 +58,29 @@ export function BomPanel({ onClose }: { onClose: () => void }) {
                 </tr>
               </thead>
               <tbody>
-                {b.cuts.map((c, i) => (
-                  <tr key={c.memberId}>
-                    <td>
-                      P{i + 1}
-                      {c.kind === 'formed' ? ' ·bent' : ''}
-                    </td>
-                    <td>{c.size}</td>
-                    <td className="text-right">{fmt(c.cutLengthM)}</td>
-                  </tr>
-                ))}
+                {b.cuts.map((c, i) => {
+                  const extra = c.wrapAllowanceM + c.endCapM;
+                  const base = c.cutLengthM - extra;
+                  return (
+                    <tr key={c.memberId}>
+                      <td>
+                        P{i + 1}
+                        {c.kind === 'formed' ? ' ·bent' : ''}
+                      </td>
+                      <td>{c.size}</td>
+                      <td className="text-right">
+                        {extra > 1e-6 ? (
+                          // base + fabrication allowance = cut — write this on the pipe
+                          <span title="pipe + wrap/end-cap allowance">
+                            {fmt(base)} + {fmt(extra)} = <b>{fmt(c.cutLengthM)}</b>
+                          </span>
+                        ) : (
+                          fmt(c.cutLengthM)
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
 

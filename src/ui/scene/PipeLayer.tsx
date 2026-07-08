@@ -5,8 +5,10 @@
 import { type ThreeEvent, useThree } from '@react-three/fiber';
 import { useMemo } from 'react';
 import { Raycaster, Vector2, Vector3 } from 'three';
+import { endCapAllowanceM } from '../../design/bom';
 import { incidentMembers, memberById, nodeById } from '../../design/docOps';
-import { add, dot, length, scale, sub } from '../../geometry/math3';
+import { add, dot, length, normalize, scale, sub } from '../../geometry/math3';
+import { pipeSpec, type Vec3 } from '../../schema';
 import { easedPos, useAnim } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
 import { bendMemberAt, placeDrawPoint, selectMember } from '../../state/editorActions';
@@ -102,7 +104,7 @@ export function PipeLayer() {
   useAnim((s) => s.v);
   const color = scenePalette(night).pvc;
   const model = design ? buildPipeModel(design, easedPos) : null;
-  if (!model) return null;
+  if (!model || !design) return null;
   // click-to-select works in the select / move / rotate tools (so you can pick
   // the pipe to transform without leaving the gizmo)
   const editing = tool === 'select' || tool === 'move' || tool === 'rotate';
@@ -198,6 +200,30 @@ export function PipeLayer() {
       : undefined;
   const selected = new Set(selectedIds);
 
+  // GHOST end-cap extensions (BOM: a pipe whose END receives a wrap is cut 1" +
+  // 1 radius longer for an end cap) — shown translucent, real geometry unchanged
+  const at = (id: string): Vec3 | undefined => easedPos(id) ?? nodeById(design, id)?.position;
+  const ghostCaps = design.joints.flatMap((j) => {
+    if (j.mode !== 'wrapped') return [];
+    const recv = memberById(design, j.receiver);
+    if (recv?.kind !== 'straight' || (recv.nodeA !== j.nodeId && recv.nodeB !== j.nodeId))
+      return [];
+    const endPos = at(j.nodeId);
+    const otherPos = at(recv.nodeA === j.nodeId ? recv.nodeB : recv.nodeA);
+    if (!endPos || !otherPos) return [];
+    const d = sub(endPos, otherPos);
+    if (length(d) < 1e-9) return [];
+    const dir = normalize(d);
+    return [
+      {
+        id: `${j.id}-cap`,
+        a: endPos,
+        b: add(endPos, scale(dir, endCapAllowanceM(recv.size))),
+        r: pipeSpec(recv.size).odM / 2,
+      },
+    ];
+  });
+
   return (
     <>
       {model.cylinders.map((c) => (
@@ -215,7 +241,22 @@ export function PipeLayer() {
       {model.ends.map((e) => (
         <Bore key={e.nodeId} end={e} night={night} />
       ))}
+      {ghostCaps.map((c) => (
+        <GhostCap key={c.id} a={c.a} b={c.b} r={c.r} />
+      ))}
     </>
+  );
+}
+
+/** A translucent extension past a pipe end — the end-cap allowance ghost. */
+function GhostCap({ a, b, r }: { a: Vec3; b: Vec3; r: number }) {
+  const placed = placeAxis(a, b);
+  if (!placed) return null;
+  return (
+    <mesh position={placed.mid} quaternion={placed.quat}>
+      <cylinderGeometry args={[r, r, placed.len, RADIAL_SEGMENTS]} />
+      <meshBasicMaterial color="#2a78d6" transparent opacity={0.22} />
+    </mesh>
   );
 }
 

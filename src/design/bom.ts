@@ -7,7 +7,7 @@
 import { bendDihedralsRad } from '../geometry/pipe';
 import { type Design, type JointMode, type NominalSize, pipeSpec } from '../schema';
 import { formatLengthDisplay } from '../ui/units';
-import { memberLengthM } from './docOps';
+import { memberById, memberLengthM } from './docOps';
 import { type FittingType, resolveFittings } from './fittings';
 import { analyzeFormed, formedPoints } from './formed';
 
@@ -34,16 +34,38 @@ export function fittingTakeoffM(type: FittingType, size: NominalSize): number {
   return Math.max(0, factor * spec.odM - spec.socketDepthM);
 }
 
+// A wrapped union is FABRICATED: the mover pipe is heat-squished flat, wrapped
+// once around the receiver (≈ its circumference), returned, un-squished, and a
+// bolt is driven through both. That eats extra length of the MOVER pipe. These
+// are documented ESTIMATES, deliberately padded LONG (cut shorter if needed).
+const WRAP_BOLT_CLEARANCE_M = 0.0254; // ~1" for the through-bolt
+const WRAP_PAD = 1.15; // 15% longer than the bare estimate
+/** Extra mover-pipe length a wrapped union needs, given the RECEIVER it wraps. */
+export function wrapAllowanceM(receiverSize: NominalSize): number {
+  const od = pipeSpec(receiverSize).odM;
+  // squish + wrap-around (πD) + return/un-squish (~2D) + bolt clearance
+  return (Math.PI * od + 2 * od + WRAP_BOLT_CLEARANCE_M) * WRAP_PAD;
+}
+/** A pipe whose END receives a wrap is extended 1" + 1 radius for an end cap so
+ * the wrap can't slide off the end. */
+export function endCapAllowanceM(size: NominalSize): number {
+  return 0.0254 + pipeSpec(size).odM / 2;
+}
+
 export interface CutItem {
   memberId: string;
   size: NominalSize;
   kind: 'straight' | 'formed';
   /** centre-to-centre span (straight) or developed centre-line (formed), m */
   spanM: number;
-  /** span minus end fitting take-offs — the length to cut, m */
+  /** base + wrap allowance + end cap — the length to cut, m */
   cutLengthM: number;
   takeoffAM: number;
   takeoffBM: number;
+  /** extra length for wrapped-union fabrication (this pipe wraps a receiver), m */
+  wrapAllowanceM: number;
+  /** extra length for an end cap where this pipe's end receives a wrap, m */
+  endCapM: number;
   /** formed only: bend-plane rotations (fabrication schedule), radians */
   bendsRad?: number[];
 }
@@ -88,9 +110,25 @@ export function bom(design: Design): Bom {
     return fittingNode && freeNodes.has(fittingNode) ? EYE_BOLT_TAKEOFF_M : 0;
   };
 
+  // wrapped-union fabrication add-ons: the MOVER wraps the receiver (+ allowance),
+  // and a wrap at a RECEIVER's own endpoint needs an end cap on that receiver
+  const wrapAdd = new Map<string, number>();
+  const capAdd = new Map<string, number>();
+  for (const j of design.joints) {
+    if (j.mode !== 'wrapped') continue;
+    const recv = memberById(design, j.receiver);
+    if (recv?.kind !== 'straight' || !memberById(design, j.mover)) continue;
+    wrapAdd.set(j.mover, (wrapAdd.get(j.mover) ?? 0) + wrapAllowanceM(recv.size));
+    if (recv.nodeA === j.nodeId || recv.nodeB === j.nodeId) {
+      capAdd.set(j.receiver, (capAdd.get(j.receiver) ?? 0) + endCapAllowanceM(recv.size));
+    }
+  }
+
   for (const m of design.members) {
     const takeoffAM = endTakeoff(m.nodeA, m.size);
     const takeoffBM = endTakeoff(m.nodeB, m.size);
+    const wrapAllowance = wrapAdd.get(m.id) ?? 0;
+    const endCap = capAdd.get(m.id) ?? 0;
 
     let spanM: number;
     let bendsRad: number[] | undefined;
@@ -102,7 +140,7 @@ export function bom(design: Design): Bom {
     } else {
       spanM = memberLengthM(design, m);
     }
-    const cutLengthM = Math.max(0, spanM - takeoffAM - takeoffBM);
+    const cutLengthM = Math.max(0, spanM - takeoffAM - takeoffBM) + wrapAllowance + endCap;
     cuts.push({
       memberId: m.id,
       size: m.size,
@@ -111,6 +149,8 @@ export function bom(design: Design): Bom {
       cutLengthM,
       takeoffAM,
       takeoffBM,
+      wrapAllowanceM: wrapAllowance,
+      endCapM: endCap,
       bendsRad,
     });
     totalBySize[m.size] = (totalBySize[m.size] ?? 0) + cutLengthM;
@@ -166,7 +206,16 @@ export function bomToCsv(design: Design): string {
   const line = (...cells: Array<string | number>) => rows.push(cells.map(csvCell).join(','));
 
   line('Cut list');
-  line('Pipe', 'Size', 'Type', 'Span', 'Take-off A', 'Take-off B', 'Cut length');
+  line(
+    'Pipe',
+    'Size',
+    'Type',
+    'Span',
+    'Take-off A',
+    'Take-off B',
+    'Wrap/cap allowance',
+    'Cut length',
+  );
   b.cuts.forEach((c, i) => {
     line(
       `P${i + 1}`,
@@ -175,6 +224,7 @@ export function bomToCsv(design: Design): string {
       formatLengthDisplay(c.spanM, disp),
       formatLengthDisplay(c.takeoffAM, disp),
       formatLengthDisplay(c.takeoffBM, disp),
+      formatLengthDisplay(c.wrapAllowanceM + c.endCapM, disp),
       formatLengthDisplay(c.cutLengthM, disp),
     );
   });

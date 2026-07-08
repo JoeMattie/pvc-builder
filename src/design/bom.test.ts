@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { createEmptyDesign, type Design, type Vec3 } from '../schema';
-import { bom, bomToCsv, EYE_BOLT_TAKEOFF_M, fittingTakeoffM } from './bom';
+import {
+  bom,
+  bomToCsv,
+  EYE_BOLT_TAKEOFF_M,
+  endCapAllowanceM,
+  fittingTakeoffM,
+  wrapAllowanceM,
+} from './bom';
 import { addFormedMember, appendPipe, setJoinMode, startPath } from './docOps';
 
 const V = (x: number, y: number, z: number): Vec3 => ({ x, y, z });
@@ -109,6 +116,32 @@ describe('bom formed pipe', () => {
     expect(cut(b, 0).spanM).toBeLessThan(2);
     expect(cut(b, 0).spanM).toBeGreaterThan(0);
     expect(cut(b, 0).bendsRad).toHaveLength(1);
+  });
+});
+
+describe('wrapped-union fabrication allowances', () => {
+  it('adds a wrap allowance to the mover + an end cap to the receiver end', () => {
+    // an L: two 3/4" pipes meeting end-to-end; make it a wrapped pivot
+    let d = path([V(0, 0, 0), V(1, 0, 0), V(1, 0, 1)]);
+    const mid = d.nodes[1]!.id; // shared corner
+    const mB = d.members[1]!.id;
+    d = setJoinMode(d, mid, mB, 'wrapped'); // mB wraps the other pipe (receiver auto-picked)
+    const b = bom(d);
+    const j = d.joints.find((jj) => jj.mode === 'wrapped')!;
+    const mover = b.cuts.find((c) => c.memberId === j.mover)!;
+    const receiver = b.cuts.find((c) => c.memberId === j.receiver)!;
+    // mover carries the wrap allowance
+    expect(mover.wrapAllowanceM).toBeCloseTo(wrapAllowanceM('3/4"'), 9);
+    // the joint is at the receiver's own endpoint → it gets an end cap
+    expect(receiver.endCapM).toBeCloseTo(endCapAllowanceM('3/4"'), 9);
+    // cut length includes the allowance (base + extra)
+    expect(mover.cutLengthM).toBeGreaterThan(mover.spanM - mover.takeoffAM - mover.takeoffBM);
+  });
+
+  it('allowances are zero without a wrapped joint', () => {
+    const b = bom(path([V(0, 0, 0), V(1, 0, 0)]));
+    expect(b.cuts[0]!.wrapAllowanceM).toBe(0);
+    expect(b.cuts[0]!.endCapM).toBe(0);
   });
 });
 
