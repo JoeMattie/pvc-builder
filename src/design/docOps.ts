@@ -146,6 +146,52 @@ export function setNodePosition(design: Design, nodeId: string, position: Vec3):
   };
 }
 
+/** Change a member's nominal size (the right-click size switcher). Reducing
+ * tees are DERIVED from the receiver/mover sizes (see `resolveFittings`), so no
+ * joint record changes — the unions re-resolve automatically. */
+export function setMemberSize(design: Design, memberId: string, size: NominalSize): Design {
+  return {
+    ...design,
+    members: design.members.map((m) => (m.id === memberId ? { ...m, size } : m)),
+  };
+}
+
+/** Break the union at one member's endpoint: give `memberId`'s end at `nodeId`
+ * its own new (coincident) node so it can move independently of the other pipes
+ * that shared that junction, and drop any joint tied to `memberId` there. Returns
+ * the new node id (or the original `nodeId` unchanged when there was nothing to
+ * detach from — a lone end). This is the Ctrl-drag "break the union" op. */
+export function detachMemberEnd(
+  design: Design,
+  memberId: string,
+  nodeId: string,
+): { design: Design; nodeId: string } {
+  const m = memberById(design, memberId);
+  if (!m || (m.nodeA !== nodeId && m.nodeB !== nodeId)) return { design, nodeId };
+  // only meaningful if the node is actually shared with another member
+  if (incidentMembers(design, nodeId).length <= 1) return { design, nodeId };
+  const node = nodeById(design, nodeId);
+  if (!node) return { design, nodeId };
+  const newId = makeId('n');
+  const newNode: Node = { id: newId, position: { ...node.position } };
+  const members = design.members.map((mm) =>
+    mm.id === memberId
+      ? {
+          ...mm,
+          nodeA: mm.nodeA === nodeId ? newId : mm.nodeA,
+          nodeB: mm.nodeB === nodeId ? newId : mm.nodeB,
+        }
+      : mm,
+  );
+  const joints = design.joints.filter(
+    (j) => !(j.nodeId === nodeId && (j.receiver === memberId || j.mover === memberId)),
+  );
+  return {
+    design: { ...design, nodes: [...design.nodes, newNode], members, joints },
+    nodeId: newId,
+  };
+}
+
 /** Translate a whole member by `delta` (the move tool): both endpoint nodes —
  * and, for a formed pipe, its control points — shift together, so lengths and
  * bends are preserved. Shared endpoints move any incident members with them. */

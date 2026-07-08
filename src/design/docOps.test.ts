@@ -5,6 +5,7 @@ import {
   appendPipe,
   dedupeJoints,
   deleteMember,
+  detachMemberEnd,
   healBodyJoints,
   joinContext,
   jointsAtNode,
@@ -18,6 +19,7 @@ import {
   setJoinMode,
   setJointAngle,
   setMemberLengthM,
+  setMemberSize,
   setNodePosition,
   splitMemberAt,
   startPath,
@@ -489,5 +491,66 @@ describe('dedupeJoints (swapped / duplicate joint pairs)', () => {
     };
     const healed = reconcileBodyJoints(reported);
     expect(healed.joints).toHaveLength(1);
+  });
+});
+
+describe('setMemberSize', () => {
+  it('changes only the target member size', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0), V(2, 0, 0)], '3/4"');
+    const out = setMemberSize(design, memberIds[0]!, '1/2"');
+    expect(out.members.find((m) => m.id === memberIds[0])?.size).toBe('1/2"');
+    expect(out.members.find((m) => m.id === memberIds[1])?.size).toBe('3/4"');
+  });
+
+  it('is a no-op for an unknown member id', () => {
+    const { design } = drawPath([V(0, 0, 0), V(1, 0, 0)]);
+    expect(setMemberSize(design, 'nope', '1/2"')).toEqual(design);
+  });
+});
+
+describe('detachMemberEnd', () => {
+  it('splits a shared node so one member moves independently', () => {
+    // two members meeting at a shared middle node
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0), V(2, 0, 0)]);
+    const shared = design.members.find((m) => m.id === memberIds[0])!.nodeB;
+    const before = design.nodes.length;
+    const r = detachMemberEnd(design, memberIds[0]!, shared);
+    expect(r.nodeId).not.toBe(shared);
+    expect(r.design.nodes).toHaveLength(before + 1);
+    // member 0 now ends at the new node; member 1 still on the original
+    const m0 = r.design.members.find((m) => m.id === memberIds[0])!;
+    const m1 = r.design.members.find((m) => m.id === memberIds[1])!;
+    expect(m0.nodeB).toBe(r.nodeId);
+    expect(m1.nodeA).toBe(shared);
+    // the new node is coincident with the old one (drag moves it afterward)
+    expect(nodeById(r.design, r.nodeId)?.position).toEqual(nodeById(design, shared)?.position);
+  });
+
+  it('drops a joint tied to the detached member at that node', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0), V(2, 0, 0)]);
+    const shared = design.members.find((m) => m.id === memberIds[0])!.nodeB;
+    const withJoint: Design = {
+      ...design,
+      joints: [
+        {
+          id: 'jt',
+          nodeId: shared,
+          receiver: memberIds[1]!,
+          mover: memberIds[0]!,
+          onBody: false,
+          mode: 'wrapped',
+        },
+      ],
+    };
+    const r = detachMemberEnd(withJoint, memberIds[0]!, shared);
+    expect(r.design.joints).toHaveLength(0);
+  });
+
+  it('is a no-op at a lone (unshared) end', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0)]);
+    const loneEnd = design.members.find((m) => m.id === memberIds[0])!.nodeB;
+    const r = detachMemberEnd(design, memberIds[0]!, loneEnd);
+    expect(r.nodeId).toBe(loneEnd);
+    expect(r.design).toEqual(design);
   });
 });

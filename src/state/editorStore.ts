@@ -53,6 +53,9 @@ export interface EditorState {
   tool: Tool;
   projection: Projection;
   selectedIds: string[];
+  /** a first-class selected joint (its hardware is highlighted, not a pipe) —
+   * mutually exclusive with `selectedIds` */
+  selectedJointId: string | null;
   /** the size the draw tool lays pipe at (from the pillbox) */
   drawSize: NominalSize;
   /** while drawing a path, the node the next segment extends from (null = the
@@ -69,12 +72,15 @@ export interface EditorState {
   marquee: { x0: number; y0: number; x1: number; y1: number } | null;
   /** an open right-click join menu: the pipe end being edited + screen anchor */
   joinMenu: { nodeId: string; moverId: string; x: number; y: number } | null;
+  /** an open right-click size switcher: the pipes to resize + screen anchor */
+  sizeMenu: { memberIds: string[]; x: number; y: number } | null;
   /** snapping configuration (the snap pill) */
   snap: SnapSettings;
   setTool(tool: Tool): void;
   setProjection(projection: Projection): void;
   toggleProjection(): void;
   setSelection(ids: string[]): void;
+  selectJoint(jointId: string | null): void;
   setDrawSize(size: NominalSize): void;
   setDrawingFrom(nodeId: string | null): void;
   setDrawStartWrap(memberId: string | null): void;
@@ -84,6 +90,8 @@ export interface EditorState {
   setMarquee(m: { x0: number; y0: number; x1: number; y1: number } | null): void;
   openJoinMenu(menu: { nodeId: string; moverId: string; x: number; y: number }): void;
   closeJoinMenu(): void;
+  openSizeMenu(menu: { memberIds: string[]; x: number; y: number }): void;
+  closeSizeMenu(): void;
   setSnap(patch: Partial<SnapSettings>): void;
   /** reset everything transient (e.g. when switching designs) — keeps snap */
   resetTransient(): void;
@@ -93,6 +101,7 @@ const INITIAL = {
   tool: 'select' as Tool,
   projection: 'ortho' as Projection,
   selectedIds: [] as string[],
+  selectedJointId: null as string | null,
   drawSize: '3/4"' as NominalSize,
   drawingFromNodeId: null as string | null,
   drawStartWrapMember: null as string | null,
@@ -100,6 +109,7 @@ const INITIAL = {
   simulating: false,
   marquee: null as { x0: number; y0: number; x1: number; y1: number } | null,
   joinMenu: null as { nodeId: string; moverId: string; x: number; y: number } | null,
+  sizeMenu: null as { memberIds: string[]; x: number; y: number } | null,
 };
 
 export const useEditorStore = create<EditorState>()((set, get) => ({
@@ -121,7 +131,10 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     set({ projection: get().projection === 'ortho' ? 'perspective' : 'ortho' });
   },
   setSelection(ids) {
-    set({ selectedIds: ids });
+    set({ selectedIds: ids, selectedJointId: null });
+  },
+  selectJoint(jointId) {
+    set({ selectedJointId: jointId, selectedIds: [] });
   },
   setDrawSize(size) {
     set({ drawSize: size });
@@ -146,10 +159,16 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     set({ marquee: m });
   },
   openJoinMenu(menu) {
-    set({ joinMenu: menu });
+    set({ joinMenu: menu, sizeMenu: null });
   },
   closeJoinMenu() {
     set({ joinMenu: null });
+  },
+  openSizeMenu(menu) {
+    set({ sizeMenu: menu, joinMenu: null });
+  },
+  closeSizeMenu() {
+    set({ sizeMenu: null });
   },
   setSnap(patch) {
     const next = { ...get().snap, ...patch };

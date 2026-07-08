@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { bom } from '../design/bom';
-import { deleteMember, memberById, memberLengthM } from '../design/docOps';
+import { memberById, memberLengthM } from '../design/docOps';
 import { resolveFittings } from '../design/fittings';
 import { analyzeFormed } from '../design/formed';
 import { intersectingMembers } from '../design/intersections';
@@ -26,6 +26,8 @@ import { physicsNodePositions } from '../solver/physics';
 import { useAppStore } from '../state/appStore';
 import {
   clearSelection,
+  deleteMembers,
+  detachMemberEnd,
   dragNodeTo,
   finishFormed,
   finishPath,
@@ -37,7 +39,10 @@ import {
   rotateMemberBy,
   selectMember,
   setJoinMode,
+  setLengthDisplay,
   setMemberLength,
+  setMemberSize,
+  setMembersSize,
   setPivotAngle,
   snapDrawPoint,
   swapJointReceiver,
@@ -166,9 +171,9 @@ export function EditorShell() {
       } else if (e.key === 'r' || e.key === 'R') {
         resetPivots();
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
-        const id = editor.selectedIds[0];
-        if (id) {
-          updateCurrent((d) => deleteMember(d, id));
+        const ids = editor.selectedIds;
+        if (ids.length) {
+          deleteMembers(ids);
           clearSelection();
         }
       }
@@ -190,7 +195,7 @@ export function EditorShell() {
       window.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('contextmenu', onContextMenu);
     };
-  }, [undo, redo, updateCurrent]);
+  }, [undo, redo]);
 
   // test/debug hook (planfile §7): drives exactly what the tools drive, so a
   // scripted check can draw a path and assert the resulting geometry. Merged,
@@ -206,6 +211,7 @@ export function EditorShell() {
         tool: s.tool,
         projection: s.projection,
         selectedIds: s.selectedIds,
+        selectedJointId: s.selectedJointId,
         drawSize: s.drawSize,
         drawingFromNodeId: s.drawingFromNodeId,
         snap: s.snap,
@@ -243,8 +249,14 @@ export function EditorShell() {
     hook.drawFormed = (raw: Vec3) => placeFormedPoint(raw);
     hook.finishFormed = () => finishFormed();
     hook.selectMember = (id: string) => selectMember(id);
+    hook.selectJoint = (id: string | null) => useEditorStore.getState().selectJoint(id);
     hook.clearSelection = () => clearSelection();
+    hook.deleteMembers = (ids: string[]) => deleteMembers(ids);
     hook.setMemberLength = (id: string, lengthM: number) => setMemberLength(id, lengthM);
+    hook.setMemberSize = (id: string, size: '1/2"' | '3/4"') => setMemberSize(id, size);
+    hook.setMembersSize = (ids: string[], size: '1/2"' | '3/4"') => setMembersSize(ids, size);
+    hook.setLengthDisplay = (d: 'mm' | 'cm' | 'in' | 'in-frac') => setLengthDisplay(d);
+    hook.detachMemberEnd = (memberId: string, nodeId: string) => detachMemberEnd(memberId, nodeId);
     hook.dragNode = (id: string, raw: Vec3) => dragNodeTo(id, raw);
     hook.moveMember = (id: string, delta: Vec3) => translateMemberBy(id, delta);
     hook.rotateMember = (id: string, axis: Vec3, angleRad: number, pivot: Vec3) =>

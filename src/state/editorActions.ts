@@ -7,6 +7,8 @@ import {
   addFormedMember,
   appendPipe,
   connectPipe,
+  deleteMember,
+  detachMemberEnd as detachMemberEndOp,
   incidentMembers,
   memberEndpoints,
   nodeById,
@@ -16,6 +18,7 @@ import {
   setJoinMode as setJoinModeOp,
   setJointAngle as setJointAngleOp,
   setMemberLengthM,
+  setMemberSize as setMemberSizeOp,
   setNodePosition,
   startPath,
   swapReceiver as swapReceiverOp,
@@ -36,7 +39,7 @@ import {
   snapPoint,
 } from '../design/snapping';
 import { dot, length, normalize, scale, sub } from '../geometry/math3';
-import type { Design, JointMode, Quaternion, Vec3 } from '../schema';
+import type { Design, JointMode, LengthDisplay, NominalSize, Quaternion, Vec3 } from '../schema';
 import { pipeSpec } from '../schema';
 import { solve } from '../solver';
 import { useAppStore } from './appStore';
@@ -331,6 +334,63 @@ export function translateMemberBy(memberId: string, delta: Vec3): void {
 /** Rotate a whole member about `pivot` around `axis` by `angleRad` (rotate tool). */
 export function rotateMemberBy(memberId: string, axis: Vec3, angleRad: number, pivot: Vec3): void {
   updateReconciled((d) => rotateMember(d, memberId, axis, angleRad, pivot));
+}
+
+/** Translate several members together by `delta` in one undo step (multi-select
+ * move). Shared endpoints move once; distinct members each shift. */
+export function translateMembersBy(memberIds: string[], delta: Vec3): void {
+  updateReconciled((d) => memberIds.reduce((acc, id) => translateMember(acc, id, delta), d));
+}
+
+/** Rotate several members together about a common `pivot`/`axis` (multi-select
+ * rotate), one undo step. */
+export function rotateMembersBy(
+  memberIds: string[],
+  axis: Vec3,
+  angleRad: number,
+  pivot: Vec3,
+): void {
+  updateReconciled((d) =>
+    memberIds.reduce((acc, id) => rotateMember(acc, id, axis, angleRad, pivot), d),
+  );
+}
+
+/** Delete every selected member in one undo step (multi-select delete). */
+export function deleteMembers(memberIds: string[]): void {
+  if (memberIds.length === 0) return;
+  useAppStore
+    .getState()
+    .updateCurrent((d) => memberIds.reduce((acc, id) => deleteMember(acc, id), d));
+}
+
+/** Switch a pipe's nominal size (right-click size switcher). */
+export function setMemberSize(memberId: string, size: NominalSize): void {
+  useAppStore.getState().updateCurrent((d) => setMemberSizeOp(d, memberId, size));
+}
+
+/** Switch every selected pipe's size in one undo step. */
+export function setMembersSize(memberIds: string[], size: NominalSize): void {
+  if (memberIds.length === 0) return;
+  useAppStore
+    .getState()
+    .updateCurrent((d) => memberIds.reduce((acc, id) => setMemberSizeOp(acc, id, size), d));
+}
+
+/** Break the union at `memberId`'s end at `nodeId` (Ctrl-drag): the end gets its
+ * own coincident node so it can move independently. Returns the new node id to
+ * drag, or null if nothing detached. Call inside an open gesture. */
+export function detachMemberEnd(memberId: string, nodeId: string): string | null {
+  const design = useAppStore.getState().current;
+  if (!design) return null;
+  const r = detachMemberEndOp(design, memberId, nodeId);
+  if (r.nodeId === nodeId) return null;
+  useAppStore.getState().updateCurrent(() => r.design);
+  return r.nodeId;
+}
+
+/** Set the display-only length format (the units pill). Never changes stored SI. */
+export function setLengthDisplay(display: LengthDisplay): void {
+  useAppStore.getState().updateCurrent((d) => ({ ...d, lengthDisplay: display }));
 }
 
 // ── joints (right-click a pipe join → wrapped / free / anchor) ──────────────
