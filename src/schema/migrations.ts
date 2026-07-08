@@ -6,9 +6,12 @@ import { type Design, designSchema, SCHEMA_VERSION } from './design';
 export type Migration = (doc: Record<string, unknown>) => Record<string, unknown>;
 
 /** Keyed by the version the migration upgrades FROM; every SCHEMA_VERSION bump
- * adds an entry (enforced by migrations.test). v1 is the first release, so the
- * registry is empty until the first schema change (formed members, Phase 3). */
-export const migrations: Record<number, Migration> = {};
+ * adds an entry (enforced by migrations.test). */
+export const migrations: Record<number, Migration> = {
+  // v1 → v2: added the `formed` member variant. Existing v1 documents (straight
+  // members only) are already valid v2 documents — stamp only.
+  1: (doc) => doc,
+};
 
 export class MigrationError extends Error {}
 

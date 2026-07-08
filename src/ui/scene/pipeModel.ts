@@ -38,14 +38,19 @@ export function buildPipeModel(
   const maxRadiusAtNode = new Map<string, number>();
 
   for (const m of design.members) {
-    const a = at(m.nodeA);
-    const b = at(m.nodeB);
-    if (!a || !b) continue;
     const radiusM = pipeSpec(m.size).odM / 2;
-    cylinders.push({ a, b, radiusM, memberId: m.id, size: m.size });
+    // register the OD at both endpoints so joints size to the thickest member
+    // (both straight and formed)
     for (const id of [m.nodeA, m.nodeB]) {
       maxRadiusAtNode.set(id, Math.max(maxRadiusAtNode.get(id) ?? 0, radiusM));
     }
+    // formed members are swept tubes, rendered by FormedLayer — only straight
+    // members become cylinders here
+    if (m.kind !== 'straight') continue;
+    const a = at(m.nodeA);
+    const b = at(m.nodeB);
+    if (!a || !b) continue;
+    cylinders.push({ a, b, radiusM, memberId: m.id, size: m.size });
   }
 
   // one rounding sphere at every node that carries pipe, sized to the largest

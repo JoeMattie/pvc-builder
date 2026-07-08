@@ -5,7 +5,7 @@
 // boundary; the output feeds both rendering (§6) and the BOM (§8).
 import { dot, length, normalize, sub } from '../geometry/math3';
 import type { Design, NominalSize, Vec3 } from '../schema';
-import { memberEndpoints } from './docOps';
+import { nodeById } from './docOps';
 
 /** Angle tolerance for classifying joint geometry (planfile §4). */
 export const ANGLE_TOL_DEG = 3;
@@ -63,13 +63,18 @@ export function incidentEnds(design: Design): Map<string, FittingEnd[]> {
     else byNode.set(nodeId, [end]);
   };
   for (const m of design.members) {
-    const e = memberEndpoints(design, m);
-    if (!e) continue;
-    const ab = sub(e.b, e.a);
-    if (length(ab) < 1e-9) continue;
-    const dir = normalize(ab);
-    push(m.nodeA, { memberId: m.id, dir, size: m.size });
-    push(m.nodeB, { memberId: m.id, dir: { x: -dir.x, y: -dir.y, z: -dir.z }, size: m.size });
+    const a = nodeById(design, m.nodeA)?.position;
+    const b = nodeById(design, m.nodeB)?.position;
+    if (!a || !b) continue;
+    // the incident direction is the pipe's tangent leaving the node — the whole
+    // member for straight, the first/last spline segment for formed
+    const towardA = m.kind === 'formed' ? (m.controlPoints[0] ?? b) : b;
+    const towardB = m.kind === 'formed' ? (m.controlPoints[m.controlPoints.length - 1] ?? a) : a;
+    const dirA = sub(towardA, a);
+    const dirB = sub(towardB, b);
+    if (length(dirA) < 1e-9 || length(dirB) < 1e-9) continue;
+    push(m.nodeA, { memberId: m.id, dir: normalize(dirA), size: m.size });
+    push(m.nodeB, { memberId: m.id, dir: normalize(dirB), size: m.size });
   }
   return byNode;
 }

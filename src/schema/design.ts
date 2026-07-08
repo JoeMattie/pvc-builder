@@ -2,10 +2,10 @@ import { z } from 'zod';
 import { idSchema, nominalSizeSchema, unitsPreferenceSchema, vec3Schema } from './common';
 
 /** Bump on every schema change and add a migration keyed by the version it
- * upgrades FROM (planfile §3, enforced by migrations.test). v1 is the first
- * release: nodes + straight members. Formed members (Phase 3) and pivots
- * (Phase 4) each land as a version bump + migration. */
-export const SCHEMA_VERSION = 1;
+ * upgrades FROM (planfile §3, enforced by migrations.test).
+ * v1: nodes + straight members.
+ * v2: `formed` (heat-bent spline) member variant. */
+export const SCHEMA_VERSION = 2;
 
 /** A junction where pipe ends meet. Position is SI metres. */
 export const nodeSchema = z.object({
@@ -24,9 +24,25 @@ export const straightMemberSchema = z.object({
   size: nominalSizeSchema,
 });
 
-/** Discriminated union on `kind`. v1 has only straight members; `formed`
- * (heat-bent spline) is added in Phase 3 as a new variant + migration. */
-export const memberSchema = z.discriminatedUnion('kind', [straightMemberSchema]);
+/** A heat-bent pipe (planfile §3): a smooth spline swept through
+ * nodeA → controlPoints → nodeB (Catmull-Rom). Each control point is a bend
+ * vertex; `filletRadiiM[i]` is the bend radius at controlPoints[i] (absent =
+ * sharp / not yet specified), used for developed-length + min-bend-radius. */
+export const formedMemberSchema = z.object({
+  id: idSchema,
+  kind: z.literal('formed'),
+  nodeA: idSchema,
+  nodeB: idSchema,
+  controlPoints: z.array(vec3Schema),
+  size: nominalSizeSchema,
+  filletRadiiM: z.array(z.number().nonnegative()).optional(),
+});
+
+/** Discriminated union on `kind` (straight | formed). */
+export const memberSchema = z.discriminatedUnion('kind', [
+  straightMemberSchema,
+  formedMemberSchema,
+]);
 
 /** The top-level design document — the single source of truth for the file
  * format. Resolved fittings are NOT stored (planfile §3): they are a pure
@@ -47,6 +63,7 @@ export const designSchema = z.object({
 
 export type Node = z.infer<typeof nodeSchema>;
 export type StraightMember = z.infer<typeof straightMemberSchema>;
+export type FormedMember = z.infer<typeof formedMemberSchema>;
 export type Member = z.infer<typeof memberSchema>;
 export type Design = z.infer<typeof designSchema>;
 

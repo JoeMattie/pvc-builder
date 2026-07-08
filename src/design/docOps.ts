@@ -106,7 +106,7 @@ export function setNodePosition(design: Design, nodeId: string, position: Vec3):
  * +X so the edit is still well-defined. */
 export function setMemberLengthM(design: Design, memberId: string, lengthM: number): Design {
   const member = memberById(design, memberId);
-  if (!member) return design;
+  if (!member || member.kind !== 'straight') return design; // formed length is derived
   const e = memberEndpoints(design, member);
   if (!e) return design;
   const d = sub(e.b, e.a);
