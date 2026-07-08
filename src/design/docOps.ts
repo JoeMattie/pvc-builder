@@ -2,7 +2,7 @@
 // docOps): every editing action is a pure `Design → Design` transform, applied
 // through appStore.updateCurrent so undo/autosave stay centralized. No
 // three.js / UI types here.
-import { cross, length, normalize, sub } from '../geometry/math3';
+import { add, cross, length, normalize, sub } from '../geometry/math3';
 import type { Design, Member, Node, NominalSize, Pivot, Vec3, Wrap } from '../schema';
 import { makeId } from './ids';
 
@@ -134,6 +134,27 @@ export function setNodePosition(design: Design, nodeId: string, position: Vec3):
     ...design,
     nodes: design.nodes.map((n) => (n.id === nodeId ? { ...n, position } : n)),
   };
+}
+
+/** Translate a whole member by `delta` (the move tool): both endpoint nodes —
+ * and, for a formed pipe, its control points — shift together, so lengths and
+ * bends are preserved. Shared endpoints move any incident members with them. */
+export function translateMember(design: Design, memberId: string, delta: Vec3): Design {
+  const m = memberById(design, memberId);
+  if (!m) return design;
+  const move = (p: Vec3): Vec3 => add(p, delta);
+  const nodes = design.nodes.map((n) =>
+    n.id === m.nodeA || n.id === m.nodeB ? { ...n, position: move(n.position) } : n,
+  );
+  const members =
+    m.kind === 'formed'
+      ? design.members.map((mm) =>
+          mm.id === memberId && mm.kind === 'formed'
+            ? { ...mm, controlPoints: mm.controlPoints.map(move) }
+            : mm,
+        )
+      : design.members;
+  return { ...design, nodes, members };
 }
 
 /** Set a straight member's exact length by moving nodeB along the current

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { Vec3 } from '../schema';
-import { lengthFromGrabDrag, lockToNearestAxis, projectLengthOnAxis } from './dragMath';
+import {
+  closestAxisPointToRay,
+  lengthFromGrabDrag,
+  lockToNearestAxis,
+  projectLengthOnAxis,
+} from './dragMath';
 
 const V = (x: number, y: number, z: number): Vec3 => ({ x, y, z });
 const X: Vec3 = V(1, 0, 0);
@@ -57,6 +62,29 @@ describe('lengthFromGrabDrag (length arrow grab offset)', () => {
     // never collapses below the minimum
     const clamped = lengthFromGrabDrag(fixed, X, V(-5, 0, 0), 0.3, 0.36, 0, 0.0254);
     expect(clamped.lengthM).toBe(0.0254);
+  });
+});
+
+describe('closestAxisPointToRay (move-tool arrows)', () => {
+  it('projects a downward ray onto the X axis', () => {
+    // vertical ray at x=2 → closest point on the X axis is (2,0,0)
+    const p = closestAxisPointToRay(V(0, 0, 0), X, V(2, 5, 0), V(0, -1, 0));
+    expect(p.x).toBeCloseTo(2, 9);
+    expect(p.y).toBeCloseTo(0, 9);
+    expect(p.z).toBeCloseTo(0, 9);
+  });
+
+  it('projects onto the vertical Y axis (a ground raycast could not)', () => {
+    const Y = V(0, 1, 0);
+    // a ray aimed horizontally toward the Y axis at height 1.5
+    const p = closestAxisPointToRay(V(0, 0, 0), Y, V(4, 1.5, 0), V(-1, 0, 0));
+    expect(p.y).toBeCloseTo(1.5, 9);
+    expect(p.x).toBeCloseTo(0, 9);
+  });
+
+  it('falls back to the origin when the ray is parallel to the axis', () => {
+    const p = closestAxisPointToRay(V(1, 0, 0), X, V(0, 3, 0), X);
+    expect(p).toEqual(V(1, 0, 0));
   });
 });
 

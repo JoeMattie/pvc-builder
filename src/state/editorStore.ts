@@ -35,8 +35,9 @@ function initialSnap(): SnapSettings {
 // also be cached here from Phase 2 on.
 
 /** Active editing tool. `formed` draws a heat-bent spline; `pivot` turns a
- * junction into a heat-formed revolute joint. */
-export type Tool = 'select' | 'draw' | 'formed' | 'pivot';
+ * junction into a heat-formed revolute joint; `move` translates the selected
+ * member along a world axis via arrow handles. */
+export type Tool = 'select' | 'draw' | 'formed' | 'pivot' | 'move';
 
 /** Camera projection: orthographic isometric by default, one-toggle
  * perspective (planfile §1). */

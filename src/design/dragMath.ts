@@ -44,6 +44,28 @@ export function lengthFromGrabDrag(
   return { lengthM, position: add(fixedEnd, scale(axisDir, lengthM)) };
 }
 
+/** The point on the infinite line `origin + t·axisDir` closest to the picking
+ * ray `rayOrigin + s·rayDir`. Used by the move-tool axis arrows: the cursor's
+ * projection onto a world axis, which works for the vertical (Y) axis too — a
+ * ground raycast can't. Falls back to `origin` when the ray is parallel to the
+ * axis. */
+export function closestAxisPointToRay(
+  origin: Vec3,
+  axisDir: Vec3,
+  rayOrigin: Vec3,
+  rayDir: Vec3,
+): Vec3 {
+  const w0 = sub(origin, rayOrigin);
+  const a = dot(axisDir, axisDir);
+  const b = dot(axisDir, rayDir);
+  const c = dot(rayDir, rayDir);
+  const d = dot(axisDir, w0);
+  const e = dot(rayDir, w0);
+  const denom = a * c - b * b;
+  const t = Math.abs(denom) < 1e-12 ? 0 : (b * e - c * d) / denom;
+  return add(origin, scale(axisDir, t));
+}
+
 const AXES: Array<{ key: 'x' | 'y' | 'z'; dir: Vec3 }> = [
   { key: 'x', dir: { x: 1, y: 0, z: 0 } },
   { key: 'y', dir: { x: 0, y: 1, z: 0 } },

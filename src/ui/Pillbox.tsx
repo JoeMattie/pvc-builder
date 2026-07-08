@@ -1,4 +1,4 @@
-import { MousePointer2, Pencil, Rotate3d, Spline } from 'lucide-react';
+import { MousePointer2, Move3d, Pencil, Rotate3d, Spline } from 'lucide-react';
 import type { NominalSize } from '../schema';
 import { useEditorStore } from '../state/editorStore';
 
@@ -31,7 +31,7 @@ export function Pillbox() {
         type="button"
         aria-pressed={tool === 'draw'}
         onClick={() => setTool('draw')}
-        title="Draw pipe (B)"
+        title="Draw pipe (D)"
         className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium ${
           tool === 'draw'
             ? 'bg-primary text-primary-foreground'
@@ -42,9 +42,22 @@ export function Pillbox() {
       </button>
       <button
         type="button"
+        aria-pressed={tool === 'move'}
+        onClick={() => setTool('move')}
+        title="Move pipe — axis arrows (M)"
+        className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium ${
+          tool === 'move'
+            ? 'bg-primary text-primary-foreground'
+            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+        }`}
+      >
+        <Move3d size={15} /> Move
+      </button>
+      <button
+        type="button"
         aria-pressed={tool === 'formed'}
         onClick={() => setTool('formed')}
-        title="Bend pipe — heat-formed spline (H)"
+        title="Bend pipe — heat-formed spline (B)"
         className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium ${
           tool === 'formed'
             ? 'bg-primary text-primary-foreground'

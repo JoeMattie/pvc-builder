@@ -16,6 +16,7 @@ import {
   setWrapRigid,
   splitMemberAt,
   startPath,
+  translateMember,
   wrapsAtNode,
 } from './docOps';
 
@@ -134,6 +135,20 @@ describe('pivots', () => {
     const posed = setPivotAngle(added.design, added.pivotId!, 1.2);
     expect(posed.pivots[0]!.angleRad).toBe(1.2);
     expect(resetPivots(posed).pivots[0]!.angleRad).toBe(0);
+  });
+});
+
+describe('translateMember', () => {
+  it('moves both endpoints by delta, preserving length', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(0.3, 0, 0)]);
+    const before = memberLengthM(design, design.members[0]!);
+    const out = translateMember(design, memberIds[0]!, V(0.1, 0.5, -0.2));
+    const m = out.members[0]!;
+    const a = nodeById(out, m.nodeA)!;
+    const b = nodeById(out, m.nodeB)!;
+    expect(a.position).toEqual(V(0.1, 0.5, -0.2));
+    expect(b.position).toEqual(V(0.4, 0.5, -0.2));
+    expect(memberLengthM(out, m)).toBeCloseTo(before, 9);
   });
 });
 

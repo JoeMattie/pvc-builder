@@ -4,6 +4,21 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Move tool + hotkey changes (2026-07-07)
+
+- **Move tool (M): a 3-axis translate gizmo on the selected member.** Arrows in
+  the axis-triad colours (X red / Y green / Z blue) at the member's midpoint;
+  dragging one slides the whole member (both endpoints, and a formed pipe's
+  control points) along that world axis, grid-snapped, one undo step. The drag
+  projects the cursor onto the axis via `closestAxisPointToRay` (pure, tested)
+  so the **vertical Y arrow works** — a ground raycast can't give vertical
+  motion. `translateMember` (pure, tested) does the shift; `useGroundDrag` grew
+  a `project` option for the axis projection. Click-to-select also works in the
+  move tool. Seam `__pvc.moveMember(id, delta)`.
+- **Hotkeys: D = draw, B = bend (formed), M = move** (was B = draw, H = bend; H
+  kept as a bend alias). Delete/Backspace (delete selection) and Esc/Enter or
+  right-click (end a draw path) already existed — verified still working.
+
 ## Blender-style view-aware endpoint drag (2026-07-07)
 
 - **Dragging an endpoint no longer snaps a floating node to the floor.** The

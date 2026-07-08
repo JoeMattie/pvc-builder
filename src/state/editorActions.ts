@@ -16,6 +16,7 @@ import {
   setPivotAngle as setPivotAngleOp,
   setWrapRigid as setWrapRigidOp,
   startPath,
+  translateMember,
 } from '../design/docOps';
 import { lengthFromGrabDrag, lockToNearestAxis } from '../design/dragMath';
 import { MIN_BEND_RADIUS_FACTOR } from '../design/formed';
@@ -253,6 +254,11 @@ export function dragMemberEndLength(
 /** Set an exact length on a member (length editor). */
 export function setMemberLength(memberId: string, lengthM: number): void {
   useAppStore.getState().updateCurrent((d) => setMemberLengthM(d, memberId, lengthM));
+}
+
+/** Translate a whole member by `delta` (the move tool's axis arrows). */
+export function translateMemberBy(memberId: string, delta: Vec3): void {
+  useAppStore.getState().updateCurrent((d) => translateMember(d, memberId, delta));
 }
 
 // ── pivots (Phase 4) ────────────────────────────────────────────────────────

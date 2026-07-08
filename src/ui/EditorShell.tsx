@@ -39,6 +39,7 @@ import {
   setPivotAngle,
   setWrapRigid,
   snapDrawPoint,
+  translateMemberBy,
 } from '../state/editorActions';
 import { useEditorStore } from '../state/editorStore';
 import { useThemeStore } from '../state/themeStore';
@@ -120,9 +121,11 @@ export function EditorShell() {
         editor.setTool('select');
       } else if (e.key === 'v' || e.key === 'V') {
         editor.setTool('select');
-      } else if (e.key === 'b' || e.key === 'B') {
+      } else if (e.key === 'd' || e.key === 'D') {
         editor.setTool('draw');
-      } else if (e.key === 'h' || e.key === 'H') {
+      } else if (e.key === 'm' || e.key === 'M') {
+        editor.setTool('move');
+      } else if (e.key === 'b' || e.key === 'B' || e.key === 'h' || e.key === 'H') {
         editor.setTool('formed');
       } else if (e.key === 'p' || e.key === 'P') {
         editor.setTool('pivot');
@@ -192,7 +195,7 @@ export function EditorShell() {
         lengthM: memberLengthM(d, m),
       }));
     };
-    hook.setTool = (tool: 'select' | 'draw' | 'formed' | 'pivot') =>
+    hook.setTool = (tool: 'select' | 'draw' | 'formed' | 'pivot' | 'move') =>
       useEditorStore.getState().setTool(tool);
     hook.setProjection = (p: 'ortho' | 'perspective') => useEditorStore.getState().setProjection(p);
     hook.setDrawSize = (size: '1/2"' | '3/4"') => useEditorStore.getState().setDrawSize(size);
@@ -209,6 +212,7 @@ export function EditorShell() {
     hook.clearSelection = () => clearSelection();
     hook.setMemberLength = (id: string, lengthM: number) => setMemberLength(id, lengthM);
     hook.dragNode = (id: string, raw: Vec3) => dragNodeTo(id, raw);
+    hook.moveMember = (id: string, delta: Vec3) => translateMemberBy(id, delta);
     hook.getIntersections = () => {
       const d = useAppStore.getState().current;
       return d ? [...intersectingMembers(d)] : [];

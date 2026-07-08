@@ -2,13 +2,19 @@ import { Html } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
 import { useThree } from '@react-three/fiber';
 import { useMemo, useRef, useState } from 'react';
-import { Raycaster, Vector2, Vector3 } from 'three';
+import { type Ray, Raycaster, Vector2, Vector3 } from 'three';
 import { memberById, nodeById } from '../../design/docOps';
-import { dot, length, normalize, sub } from '../../geometry/math3';
+import { closestAxisPointToRay } from '../../design/dragMath';
+import { dot, length, normalize, scale, sub } from '../../geometry/math3';
 import { pipeSpec, type Vec3 } from '../../schema';
 import { easedPos, useAnim } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
-import { dragLocked, dragMemberEndLength, dragNodeTo } from '../../state/editorActions';
+import {
+  dragLocked,
+  dragMemberEndLength,
+  dragNodeTo,
+  translateMemberBy,
+} from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { formatLength } from '../units';
@@ -26,10 +32,17 @@ import { dominantAxisNormal, rayToGround, rayToPlane } from './ground';
  */
 function useGroundDrag(
   onMove: (point: Vec3, ev: PointerEvent) => void,
-  // when provided and it returns a point, the drag rides a view-facing plane
-  // through that point (Blender-style) instead of the y = 0 ground — so a
-  // floating node isn't dragged down to the floor
-  viewPlaneOrigin?: () => Vec3 | null,
+  opts?: {
+    // when it returns a point, the drag rides a view-facing plane through that
+    // point (Blender-style) instead of the y = 0 ground — so a floating node
+    // isn't dragged down to the floor
+    viewPlaneOrigin?: () => Vec3 | null;
+    // a fully custom projection of the picking ray to a world point, captured
+    // at grab time (used by the move-tool axis arrows: closest point on the axis
+    // to the ray, which the vertical axis needs — a ground raycast can't give
+    // it). Takes precedence over viewPlaneOrigin / ground.
+    project?: (ray: Ray) => Vec3 | null;
+  },
 ) {
   const gl = useThree((s) => s.gl);
   const camera = useThree((s) => s.camera);
@@ -46,8 +59,9 @@ function useGroundDrag(
     setDragging(true);
     const el = gl.domElement;
 
-    // fix the drag plane at grab time (the view axis + the node's start point)
-    const origin = viewPlaneOrigin?.() ?? null;
+    // fix the projection at grab time
+    const project = opts?.project ?? null;
+    const origin = project ? null : (opts?.viewPlaneOrigin?.() ?? null);
     let plane: { point: Vec3; normal: Vec3 } | null = null;
     if (origin) {
       camera.getWorldDirection(fwd);
@@ -61,7 +75,11 @@ function useGroundDrag(
         -((ev.clientY - rect.top) / rect.height) * 2 + 1,
       );
       rc.setFromCamera(ndc, camera);
-      const g = plane ? rayToPlane(rc.ray, plane.point, plane.normal) : rayToGround(rc.ray);
+      const g = project
+        ? project(rc.ray)
+        : plane
+          ? rayToPlane(rc.ray, plane.point, plane.normal)
+          : rayToGround(rc.ray);
       if (g) onMove(g, ev);
     };
     const up = () => {
@@ -102,7 +120,7 @@ function MoveHandle({
         : dragNodeTo(nodeId, g, { lockAxis: ev.shiftKey, anchor: anchor.current ?? undefined }),
     // free move rides a view-facing plane through the node so a floating node
     // keeps its height; locked-mode IK stays on the ground plane
-    () => (locked ? null : pos),
+    { viewPlaneOrigin: () => (locked ? null : pos) },
   );
   return (
     <mesh
@@ -194,6 +212,123 @@ function LengthArrow({
           </div>
         </Html>
       )}
+    </group>
+  );
+}
+
+// Gizmo colours match the axis triad (X red, Y green, Z blue).
+const AXIS_COLORS = { x: '#d64545', y: '#3d9950', z: '#2a78d6' } as const;
+const AXIS_DIRS: Record<'x' | 'y' | 'z', Vec3> = {
+  x: { x: 1, y: 0, z: 0 },
+  y: { x: 0, y: 1, z: 0 },
+  z: { x: 0, y: 0, z: 1 },
+};
+
+/** One translate arrow of the move gizmo: dragging it slides the whole member
+ * along `axisKey` (grid-snapped), tracking the cursor's projection onto that
+ * world axis so the vertical (Y) arrow works too. */
+function MoveArrow({
+  memberId,
+  origin,
+  axisKey,
+  sizeM,
+  gridStepM,
+}: {
+  memberId: string;
+  origin: Vec3;
+  axisKey: 'x' | 'y' | 'z';
+  sizeM: number;
+  gridStepM: number;
+}) {
+  const axis = AXIS_DIRS[axisKey];
+  const originRef = useRef<Vec3>(origin);
+  const grabT = useRef(0);
+  const lastDelta = useRef(0);
+  const rayPoint = (ray: Ray): Vec3 =>
+    closestAxisPointToRay(
+      originRef.current,
+      axis,
+      { x: ray.origin.x, y: ray.origin.y, z: ray.origin.z },
+      { x: ray.direction.x, y: ray.direction.y, z: ray.direction.z },
+    );
+  const { start, dragging } = useGroundDrag(
+    (g) => {
+      const t = dot(sub(g, originRef.current), axis);
+      const raw = t - grabT.current;
+      const total = gridStepM > 0 ? Math.round(raw / gridStepM) * gridStepM : raw;
+      const inc = total - lastDelta.current;
+      if (inc !== 0) {
+        translateMemberBy(memberId, scale(axis, inc));
+        lastDelta.current = total;
+      }
+    },
+    { project: rayPoint },
+  );
+
+  const shaftLen = sizeM * 0.8;
+  const shaftR = Math.max(sizeM * 0.05, 0.004);
+  const coneH = sizeM * 0.34;
+  const coneR = Math.max(sizeM * 0.16, 0.012);
+  const quat = orientY(axis);
+  const at = (d: number): [number, number, number] => [
+    origin.x + axis.x * d,
+    origin.y + axis.y * d,
+    origin.z + axis.z * d,
+  ];
+  const color = AXIS_COLORS[axisKey];
+  const onDown = (e: ThreeEvent<PointerEvent>) => {
+    originRef.current = origin;
+    grabT.current = dot(sub(rayPoint(e.ray), origin), axis);
+    lastDelta.current = 0;
+    start(e);
+  };
+
+  return (
+    <group onPointerDown={onDown}>
+      <mesh position={at(shaftLen / 2)} quaternion={quat}>
+        <cylinderGeometry args={[shaftR, shaftR, shaftLen, 12]} />
+        <meshBasicMaterial color={color} opacity={dragging ? 1 : 0.9} transparent />
+      </mesh>
+      <mesh position={at(shaftLen + coneH / 2)} quaternion={quat}>
+        <coneGeometry args={[coneR, coneH, 16]} />
+        <meshBasicMaterial color={color} />
+      </mesh>
+    </group>
+  );
+}
+
+/** The move tool's 3-axis translate gizmo, centred on the selected member. */
+export function MoveGizmo() {
+  useAnim((s) => s.v);
+  const design = useAppStore((s) => s.current);
+  const selectedIds = useEditorStore((s) => s.selectedIds);
+  const gridStepM = useEditorStore((s) => s.snap.gridStepM);
+  if (!design) return null;
+  const member = selectedIds[0] ? memberById(design, selectedIds[0]) : undefined;
+  if (!member) return null;
+  const a = nodeById(design, member.nodeA);
+  const b = nodeById(design, member.nodeB);
+  if (!a || !b) return null;
+  const aPos = easedPos(a.id) ?? a.position;
+  const bPos = easedPos(b.id) ?? b.position;
+  const origin: Vec3 = {
+    x: (aPos.x + bPos.x) / 2,
+    y: (aPos.y + bPos.y) / 2,
+    z: (aPos.z + bPos.z) / 2,
+  };
+  const sizeM = Math.max(0.06, Math.min(0.2, length(sub(bPos, aPos)) * 0.5));
+  return (
+    <group>
+      {(['x', 'y', 'z'] as const).map((k) => (
+        <MoveArrow
+          key={k}
+          memberId={member.id}
+          origin={origin}
+          axisKey={k}
+          sizeM={sizeM}
+          gridStepM={gridStepM}
+        />
+      ))}
     </group>
   );
 }
