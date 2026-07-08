@@ -7,7 +7,7 @@ import {
   PerspectiveCamera,
 } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { MOUSE, Vector3 } from 'three';
 import { nodeById } from '../../design/docOps';
 import { marqueeFromDrag, memberSelectedBy, type Pt } from '../../design/marquee';
@@ -27,6 +27,7 @@ import { bumpAnim, easedPos, stepEasing } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
 import {
   getCameraPose,
+  getPoseVersion,
   orthoInit,
   PERSP_FOV,
   perspInit,
@@ -154,6 +155,7 @@ export function Scene() {
         mouseButtons={{ MIDDLE: MOUSE.PAN, RIGHT: MOUSE.ROTATE }}
       />
       <CameraPoseSync />
+      <ViewController />
 
       <GizmoHelper alignment="bottom-right" margin={[64, 64]}>
         <GizmoViewport axisColors={['#d64545', '#3d9950', '#2a78d6']} labelColor="#fff" />
@@ -213,6 +215,7 @@ function CameraPoseSync() {
   const projection = useEditorStore((s) => s.projection);
   useEffect(() => {
     if (!controls) return;
+    let persistTimer: ReturnType<typeof setTimeout> | undefined;
     const onChange = () => {
       const p = camera.position;
       const t = controls.target;
@@ -223,11 +226,55 @@ function CameraPoseSync() {
         (camera as { zoom?: number }).zoom ?? 1,
         height,
       );
+      // persist the RESTING pose to the document (debounced), so it isn't written
+      // — and the scene isn't re-rendered — on every orbit frame
+      clearTimeout(persistTimer);
+      persistTimer = setTimeout(() => {
+        const pose = getCameraPose();
+        useAppStore.getState().setViewport({
+          camera: {
+            position: { x: pose.position[0], y: pose.position[1], z: pose.position[2] },
+            target: { x: pose.target[0], y: pose.target[1], z: pose.target[2] },
+            zoom: pose.zoom,
+          },
+        });
+      }, 600);
     };
     onChange(); // capture the initial pose too (so the first toggle is clean)
     controls.addEventListener('change', onChange);
-    return () => controls.removeEventListener('change', onChange);
+    return () => {
+      clearTimeout(persistTimer);
+      controls.removeEventListener('change', onChange);
+    };
   }, [controls, camera, height, projection]);
+  return null;
+}
+
+/** Applies an imperatively-requested pose (view preset / document restore) to
+ * the live camera + controls when cameraStore's pose version changes. */
+function ViewController() {
+  const camera = useThree((s) => s.camera);
+  const controls = useThree((s) => s.controls) as {
+    target: { set: (x: number, y: number, z: number) => void };
+    update: () => void;
+  } | null;
+  const applied = useRef(getPoseVersion());
+  useFrame(() => {
+    const v = getPoseVersion();
+    if (v === applied.current) return;
+    applied.current = v;
+    const p = getCameraPose();
+    camera.position.set(p.position[0], p.position[1], p.position[2]);
+    const c = camera as { zoom?: number; updateProjectionMatrix?: () => void };
+    if (typeof c.zoom === 'number') {
+      c.zoom = p.zoom;
+      c.updateProjectionMatrix?.();
+    }
+    if (controls) {
+      controls.target.set(p.target[0], p.target[1], p.target[2]);
+      controls.update();
+    }
+  });
   return null;
 }
 

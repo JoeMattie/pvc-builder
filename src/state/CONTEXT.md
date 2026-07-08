@@ -8,11 +8,11 @@ transient UI. `editorActions.ts` is the **single bridge** both the pointer tools
 
 | File | Responsibility | Key exports |
 |---|---|---|
-| `appStore.ts` (189) | Persisted/undoable document; the only write path | `useAppStore`, `createAppStore(store?)`, `updateCurrent(fn)`, `undo`/`redo`, `beginGesture`/`endGesture`, project lifecycle (`createProject`, `openProject`, `importAndOpen`, …) |
-| `editorStore.ts` (161) | Transient viewport/editing state (never persisted/undone) | `useEditorStore`, `Tool` (`select`\|`draw`\|`formed`\|`move`\|`rotate`), `Projection`, tool/selection/marquee/joinMenu/snap actions |
+| `appStore.ts` (189) | Persisted/undoable document; the only write path | `useAppStore`, `createAppStore(store?)`, `updateCurrent(fn)`, `setViewport(patch)` (non-undoable doc-stored UI state), `undo`/`redo`, `beginGesture`/`endGesture`, project lifecycle (`createProject`, `openProject`, `importAndOpen`, …) |
+| `editorStore.ts` (161) | Transient viewport/editing state (never persisted/undone) | `useEditorStore`, `Tool` (`select`\|`draw`\|`formed`\|`move`\|`rotate`), `Projection`, `selectedJointId` (first-class joint selection), `sizeMenu`, tool/selection/marquee/joinMenu/snap actions |
 | `editorActions.ts` (397) | **The one action layer** — composes pure snapping + docOps, commits via `updateCurrent` | `placeDrawPoint`, `snapDrawPoint`, `finishPath`, `dragNodeTo`, `dragMemberEndLength`, `setMemberLength`, `translateMemberBy`, `rotateMemberBy`, `setJoinMode`, `swapJointReceiver`, `setPivotAngle`, `dragLocked`, `pivotAnglesOf`, `jointOrientationsOf` |
 | `animStore.ts` (64) | Eased render positions so grid snaps glide (module-global map, outside React) | `useAnim`, `easedPos(id)`, `stepEasing`, `bumpAnim` |
-| `cameraStore.ts` (99) | Camera pose across ortho⇄perspective toggle (module singleton) | `getCameraPose`, `recordPose`, `orthoInit`, `perspInit`, `PERSP_FOV` |
+| `cameraStore.ts` (99) | Camera pose across ortho⇄perspective toggle + view presets + imperative pose requests (module singleton) | `getCameraPose`, `recordPose`, `orthoInit`, `perspInit`, `PERSP_FOV`, `requestPose`/`getPoseVersion`/`resetPose`, `setView`/`VIEW_PRESETS`/`ViewName` |
 | `themeStore.ts` (23) | Day/night preference (localStorage) | `useThemeStore` (`night`, `setNight`, `toggleNight`) |
 
 ## Depends on
@@ -26,6 +26,15 @@ transient UI. `editorActions.ts` is the **single bridge** both the pointer tools
   `temporal.clear()` on create/open/close so history never leaks across projects.
 - **editorStore = transient UI.** Only the `snap` field is persisted (localStorage workspace pref,
   excluded from `resetTransient`). `setTool` clears in-progress draw/formed state on tool change.
+
+## Doc-stored viewport state (schema v6)
+Opening a document restores its own camera pose + tool + projection + drawSize
+(`design.viewport`) and resets transient state — it does NOT inherit the previous
+document's view. `EditorShell` runs the restore effect (keyed on the doc id) and a
+persist effect (tool/projection/drawSize → `setViewport`); `Scene.CameraPoseSync`
+debounces the resting camera pose to `setViewport` (600 ms) so orbiting doesn't
+churn the doc; `Scene.ViewController` applies `cameraStore.requestPose`/`setView`
+to the live camera. `setViewport` is **non-undoable** (temporal paused).
 
 ## `window.__pvc` — the scripted automation contract
 The hook is **defined in `../ui/EditorShell.tsx`** and merged (not replaced) onto `window`;

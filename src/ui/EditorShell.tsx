@@ -24,6 +24,7 @@ import type { Vec3 } from '../schema';
 import { solve } from '../solver';
 import { physicsNodePositions } from '../solver/physics';
 import { useAppStore } from '../state/appStore';
+import { requestPose, resetPose, setView, type ViewName } from '../state/cameraStore';
 import {
   clearSelection,
   deleteMembers,
@@ -60,6 +61,7 @@ import { SizeMenu } from './SizeMenu';
 import { SnapPill } from './SnapPill';
 import { Viewport } from './scene/Viewport';
 import { UnitsPill } from './UnitsPill';
+import { ViewMenu } from './ViewMenu';
 
 /** The rubber-band selection rectangle (screen overlay). Blue solid when
  * dragging left→right (window / contained), green dashed right→left (crossing /
@@ -118,8 +120,42 @@ export function EditorShell() {
 
   const projection = useEditorStore((s) => s.projection);
   const toggleProjection = useEditorStore((s) => s.toggleProjection);
+  const tool = useEditorStore((s) => s.tool);
+  const drawSize = useEditorStore((s) => s.drawSize);
   const simulating = useEditorStore((s) => s.simulating);
   const setSimulating = useEditorStore((s) => s.setSimulating);
+
+  // Restore doc-stored view + tool state on open (schema v6 `viewport`), and
+  // reset transient state — so a document opens exactly as it was saved and does
+  // NOT inherit the previous document's camera / tool / size.
+  const designId = useAppStore((s) => s.current?.id);
+  useEffect(() => {
+    const doc = useAppStore.getState().current;
+    if (!doc) return;
+    const ed = useEditorStore.getState();
+    ed.resetTransient();
+    const vp = doc.viewport;
+    if (vp?.projection === 'perspective' || vp?.projection === 'ortho')
+      ed.setProjection(vp.projection);
+    const TOOLS = ['select', 'draw', 'formed', 'move', 'rotate'];
+    if (vp?.tool && TOOLS.includes(vp.tool)) ed.setTool(vp.tool as never);
+    if (vp?.drawSize) ed.setDrawSize(vp.drawSize);
+    const cam = vp?.camera;
+    if (cam)
+      requestPose(
+        [cam.position.x, cam.position.y, cam.position.z],
+        [cam.target.x, cam.target.y, cam.target.z],
+        cam.zoom,
+      );
+    else resetPose();
+  }, [designId]);
+
+  // Persist tool / projection / draw-size changes into the document (non-undoable).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: designId re-persists after a restore
+  useEffect(() => {
+    if (!useAppStore.getState().current) return;
+    useAppStore.getState().setViewport({ tool, projection, drawSize });
+  }, [tool, projection, drawSize, designId]);
 
   const night = useThemeStore((s) => s.night);
   const toggleNight = useThemeStore((s) => s.toggleNight);
@@ -241,6 +277,7 @@ export function EditorShell() {
     hook.setTool = (tool: 'select' | 'draw' | 'formed' | 'move' | 'rotate') =>
       useEditorStore.getState().setTool(tool);
     hook.setProjection = (p: 'ortho' | 'perspective') => useEditorStore.getState().setProjection(p);
+    hook.setView = (name: ViewName) => setView(name);
     hook.setDrawSize = (size: '1/2"' | '3/4"') => useEditorStore.getState().setDrawSize(size);
     hook.setLengthsLocked = (locked: boolean) =>
       useAppStore.getState().updateCurrent((doc) => ({ ...doc, lengthsLocked: locked }));
@@ -430,6 +467,7 @@ export function EditorShell() {
           <Redo2 size={16} />
         </button>
         <div className="mx-0.5 h-5 w-px bg-border" />
+        <ViewMenu />
         <button
           type="button"
           onClick={toggleProjection}

@@ -28,6 +28,10 @@ export interface AppState {
   deleteProject(id: string): Promise<void>;
   /** Apply a document change; persisted via debounced autosave. */
   updateCurrent(update: (doc: Design) => Design): void;
+  /** Persist doc-stored viewport/UI state (camera, tool, projection, drawSize)
+   * WITHOUT creating an undo entry — camera moves and tool switches must not be
+   * undoable. Autosaved. */
+  setViewport(patch: Partial<NonNullable<Design['viewport']>>): void;
   importProject(fileText: string): Promise<void>;
   /** Import a design file and open it as a new project. */
   importAndOpen(fileText: string): Promise<void>;
@@ -116,6 +120,18 @@ export function createAppStore(store: ProjectStore = new ProjectStore()) {
             if (!cur) return;
             const next = update(cur);
             set({ current: next, saveState: 'saving' });
+            autosaver.schedule(next);
+          },
+
+          setViewport(patch) {
+            const cur = get().current;
+            if (!cur) return;
+            const next: Design = { ...cur, viewport: { ...cur.viewport, ...patch } };
+            // paused → this change is NOT recorded in undo history
+            const t = useStore.temporal.getState();
+            t.pause();
+            set({ current: next, saveState: 'saving' });
+            t.resume();
             autosaver.schedule(next);
           },
 
