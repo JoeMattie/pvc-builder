@@ -1,0 +1,110 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Current state
+
+**Phase 0 (scaffold) is complete.** The Vite/React/TS app is up: schema, persistence, state stores,
+pure math, and an empty 3D viewport all build/typecheck/lint/test green. The next work is **Phase 1**
+(draw straight pipe + realistic render). The authoritative spec is
+`docs/planfiles/PLANFILE-pvc-builder.md` — read the relevant section before each phase; it defines the
+product, domain model, phased build plan, and acceptance criteria. `DECISIONS.md` logs choices already
+made (newest first) — check it before revisiting a decision.
+
+The sibling project **riglab** (`/home/joe/dev/riglab`, readable from here) is the reference
+codebase: this app deliberately mirrors its stack and copies its pure math, schema/migration runner,
+solver boundary, persistence, and state patterns. When implementing, prefer copying and adapting
+riglab's proven code over writing from scratch (specific files are cited throughout the planfile).
+Note riglab uses konva (2D) + rapier/planck (physics); PVC Builder drops those — it is three.js-only
+and its physics is CrashCat (Phase 4).
+
+## What this app is
+
+PVC Builder is a **3D-first, isometric PVC design studio** (SketchUp-for-PVC): draw pipe runs in a 3D
+viewport, and the correct SCH 40 fittings are **inferred and drawn automatically** as members join.
+It complements riglab (a rigorous test-first PVC rig engineering tool) by trading full TDD for speed
+and visual polish, keeping tests focused on the pure math. Scope is 1/2" and 3/4" SCH 40 PVC only;
+no backend, no network, static assets only.
+
+## Commands
+
+```
+npm run dev          # Vite dev server
+npm run build        # production build
+npm run preview      # serve the production build (Playwright smoke runs against this)
+npm run typecheck    # tsc --noEmit
+npm run lint         # biome check .
+npm run lint:fix     # biome check --write .
+npm run test         # vitest run
+npm run test:watch
+npm run e2e          # playwright test (deferred to Phase 5; no e2e tests/config yet)
+```
+
+Run a single Vitest file: `npx vitest run src/path/to/file.test.ts`.
+
+**Node is provided by nvm and is not on the default PATH.** Prefix commands (or source once per
+shell): `export NVM_DIR="$HOME/.config/nvm"; . "$NVM_DIR/nvm.sh"` (Node 26 / npm 11).
+Definition of done for any task: `npm run typecheck`, `npm run lint`, and `npm run test` all green,
+`npm run build` succeeds and the built app works, and DECISIONS.md + the planfile are updated for
+anything decided or changed.
+
+## Architecture — the boundaries that matter
+
+The design is organized around **pure cores behind narrow interfaces**, so the geometry, fitting, and
+physics logic can be tested and reasoned about without three.js/React/engine types leaking in.
+
+- **Domain doc (`Design`)** is the single source of truth, defined in **Zod** (`z.infer` for types),
+  stored **SI internally** (metres, radians; imperial is display-only). A `Design` holds `nodes`,
+  `members` (a discriminated union of `straight` and heat-bent `formed` splines), and `pivots`
+  (revolute joints). Fitting dimensions live in a static **`PipeSpec`** constant table (ASTM SCH 40
+  values), **not** in the document.
+
+- **Fittings are never stored** — `resolveFittings(design)` is a **pure function** that classifies the
+  pipe ends incident at each node into couplings / elbows / tees / crosses / reducers, or flags
+  conflicts (§4 of the planfile has the full classification table). Its signature contains no
+  three/UI/physics types. Output feeds both rendering and BOM. This is the core feature and **must be
+  tested** across every classification case.
+
+- **Solver behind `solve(design, inputs, mode)`** (`src/solver/index.ts`) — **no three/UI/physics
+  (CrashCat) types cross this interface** (see the exact types in §5). Design/unlocked mode is *not*
+  physics: direct manipulation edits node positions and `solve()` returns positions unchanged. Only
+  when `lengthsLocked` is true does pose mode build a CrashCat world (members → rigid bodies, pivots →
+  hinge constraints, non-pivot joints → fixed constraints) inside `src/solver/crashcat/`. Because the
+  engine's determinism is untested, the **pivot math is acceptance-tested against closed-form**
+  (single hinge traces a fixed-radius arc; slider angle ⇒ analytic end position; drag preserves every
+  member length) with tolerance bands — trust the tests, not the engine.
+
+- **BOM (`bom(design)`)** is pure: per-pipe cut length = centre-to-centre span minus each end's fitting
+  take-off, plus fitting counts and (for formed pipe) developed length + bend schedule. Take-off and
+  developed-length math **must be covered by Vitest**.
+
+- **Rendering** (three.js + @react-three/fiber + drei) is the impure outer layer: orthographic iso
+  camera by default with a perspective toggle, procedural fitting meshes generated from `PipeSpec`,
+  PBR pipe at true OD. Keep a `FittingMesh` interface as the seam for swapping in real CAD later.
+
+- **State**: `zustand` + `zundo` (temporal undo, limit 100) + `immer`. Mirror riglab's split:
+  `appStore` = the persisted/undoable document with a single `updateCurrent` mutation path and gesture
+  batching for drags; `editorStore` = transient tool/selection/view state (resolved fittings cached
+  here), never persisted or undone.
+
+- **Persistence**: Dexie (IndexedDB) project store + autosave + JSON export/import (`<slug>.pvc.json`),
+  mirroring `riglab/src/persistence/*`.
+
+## Conventions to hold
+
+- **Solver stays pure**: no three/UI/CrashCat types in `solve()`'s interface. Same for
+  `resolveFittings` and `bom`.
+- **Zod is the single source of truth**: every schema change bumps `schemaVersion` and adds a
+  migration (copy the migration runner from `riglab/src/schema/migrations.ts` + `common.ts`).
+- **Pin exact dependency versions** (no `^`/`~`); match riglab's pins unless a newer stable exists,
+  and record any bump in DECISIONS.md.
+- **Biome zero-diagnostics**; 2-space, single quotes, width 100. No runtime network; static assets only.
+- Solver + BOM + fitting math are covered by **Vitest** (the primary loop). **Playwright** stays a
+  tiny smoke suite against the built app, not part of the dev loop.
+- **Browser verification is scripted, not driven**: assert state through the `window.__pvc` debug hook
+  in a single `page.evaluate` (seams: `getDoc`, `getEditor`, `resolveFittings`, `getSolve`,
+  `getConflicts`, `setTool`, `setSize`, `setLengthsLocked`, `setPivotAngle`, `loadExample`).
+  Interactive driving only for gesture-feel checks (drag/snap).
+- **No creature-specific identifiers or UI strings** — generic examples only (e.g. "camera tripod",
+  "cube frame", "articulated arm"), carrying riglab's rule.
+- Log the already-made architectural decisions in **DECISIONS.md** at Phase 0 (see planfile §10).
