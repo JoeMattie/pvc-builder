@@ -12,6 +12,7 @@ import {
   Square,
   Sun,
   Undo2,
+  Wrench,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { bom } from '../design/bom';
@@ -111,6 +112,8 @@ export function EditorShell() {
   const toggleProjection = useEditorStore((s) => s.toggleProjection);
   const simulating = useEditorStore((s) => s.simulating);
   const setSimulating = useEditorStore((s) => s.setSimulating);
+  const fabricationSolved = useEditorStore((s) => s.fabricationSolved);
+  const setFabricationSolved = useEditorStore((s) => s.setFabricationSolved);
 
   const night = useThemeStore((s) => s.night);
   const toggleNight = useThemeStore((s) => s.toggleNight);
@@ -273,6 +276,8 @@ export function EditorShell() {
       return d ? exportDesignJson(d) : null;
     };
     hook.importJson = (text: string) => useAppStore.getState().importAndOpen(text);
+    hook.setFabricationSolved = (on: boolean) =>
+      useEditorStore.getState().setFabricationSolved(on);
     // physics seams
     hook.setSimulating = (on: boolean) => useEditorStore.getState().setSimulating(on);
     hook.getPhysics = () => physicsNodePositions();
@@ -406,6 +411,20 @@ export function EditorShell() {
         >
           {lengthsLocked ? <Lock size={14} /> : <LockOpen size={14} />}
           Lengths
+        </button>
+        <button
+          type="button"
+          onClick={() => setFabricationSolved(!fabricationSolved)}
+          aria-pressed={fabricationSolved}
+          title="Solve — show pivot fabrication detail (1 inch pipe extension + endcap)"
+          className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium ${
+            fabricationSolved
+              ? 'bg-accent text-accent-foreground'
+              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+          }`}
+        >
+          <Wrench size={14} />
+          Solve
         </button>
         <div className="mx-0.5 h-5 w-px bg-border" />
         <button

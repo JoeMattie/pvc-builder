@@ -4,6 +4,23 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Pivots render as heat-wrapped swivels + Solve fabrication (2026-07-07)
+
+- **Every pivot now renders as a heat-wrap collar** (the accent-tinted smooth
+  helix from `buildWrapMesh`, via the shared `WrapStrip`) around the receiving
+  pipe at the joint, replacing the old hinge-cylinder glyph — so a pivot reads
+  as a wrapped swivel. The receiving pipe = `pivot.memberA`, the wrapper =
+  `memberB`; a non-straight receiver falls back to the small glyph.
+- **A "Solve" toggle** (toolbar, transient `editorStore.fabricationSolved`,
+  `__pvc.setFabricationSolved`) reveals the fabrication detail: the receiving
+  pipe **extended 1" past the endpoint pivot** + a **PVC endcap retaining ring**
+  at the stub end, so the wrap can't slide off. Off by default.
+- **Kinematics unchanged:** the wrap is a *visual* treatment; the pivot axis
+  stays the joint-plane normal (what makes a planar 4-bar flex), not the
+  receiving-pipe axis — changing it would break the square articulation just
+  fixed. The physical heat-wrap-swivel axis nuance is a modelling follow-up.
+  `WrapLayer`'s renderer was extracted into `WrapStrip` and shared here.
+
 ## Smooth heat-wrapped tee — helical strip (2026-07-07)
 
 - **The wrap is now a smooth strip swept once around the through pipe** instead

@@ -62,6 +62,9 @@ export interface EditorState {
   formedPoints: Vec3[];
   /** running the CrashCat rigid-body simulation (Play mode) */
   simulating: boolean;
+  /** show the fabrication detail on pivots: the receiving pipe extended 1" past
+   * an endpoint pivot + a PVC endcap retaining ring (the "Solve" toggle) */
+  fabricationSolved: boolean;
   /** the in-progress rubber-band selection rectangle (screen/client px), or null */
   marquee: { x0: number; y0: number; x1: number; y1: number } | null;
   /** snapping configuration (the snap pill) */
@@ -75,6 +78,7 @@ export interface EditorState {
   pushFormedPoint(p: Vec3): void;
   clearFormedPoints(): void;
   setSimulating(on: boolean): void;
+  setFabricationSolved(on: boolean): void;
   setMarquee(m: { x0: number; y0: number; x1: number; y1: number } | null): void;
   setSnap(patch: Partial<SnapSettings>): void;
   /** reset everything transient (e.g. when switching designs) — keeps snap */
@@ -89,6 +93,7 @@ const INITIAL = {
   drawingFromNodeId: null as string | null,
   formedPoints: [] as Vec3[],
   simulating: false,
+  fabricationSolved: false,
   marquee: null as { x0: number; y0: number; x1: number; y1: number } | null,
 };
 
@@ -127,6 +132,9 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   setSimulating(on) {
     // leaving a drawing tool / selection isn't needed; just toggle the sim
     set({ simulating: on });
+  },
+  setFabricationSolved(on) {
+    set({ fabricationSolved: on });
   },
   setMarquee(m) {
     set({ marquee: m });
