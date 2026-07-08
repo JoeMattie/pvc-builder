@@ -17,7 +17,12 @@ import { SelectionHandles } from './SelectionHandles';
 
 // Looking down the (1,1,1) diagonal gives the classic isometric three-quarter
 // view. Same heading for both cameras so toggling projection doesn't jump.
-const ISO_DIR: [number, number, number] = [10, 10, 10];
+// Distance + ortho zoom are tuned to frame ~4 m of ground on a typical
+// viewport — pipe-scale work (0.3–2 m) reads clearly without zooming in, and
+// the perspective camera's framing at this distance matches the ortho zoom so
+// the projection toggle doesn't jump scale.
+const ISO_DIR: [number, number, number] = [3.2, 3.2, 3.2];
+const ORTHO_ZOOM = 230;
 
 /** Everything inside the Canvas: camera, studio lighting, ground grid + shadow
  * catcher, pipe meshes, the draw controller, and selection drag handles. */
@@ -34,7 +39,13 @@ export function Scene() {
       <color attach="background" args={[pal.viewport]} />
 
       {projection === 'ortho' ? (
-        <OrthographicCamera makeDefault position={ISO_DIR} zoom={90} near={-100} far={100} />
+        <OrthographicCamera
+          makeDefault
+          position={ISO_DIR}
+          zoom={ORTHO_ZOOM}
+          near={-100}
+          far={100}
+        />
       ) : (
         <PerspectiveCamera makeDefault position={ISO_DIR} fov={40} near={0.01} far={1000} />
       )}
