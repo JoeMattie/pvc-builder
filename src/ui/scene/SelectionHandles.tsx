@@ -100,6 +100,38 @@ function useGroundDrag(
   return { start, dragging };
 }
 
+/** A small floating "↥ height above ground" pill, shown while a point is being
+ * moved vertically (planfile: show distance from ground on a Y move). */
+function HeightPill({
+  pos,
+  night,
+  display,
+}: {
+  pos: Vec3;
+  night: boolean;
+  display: LengthDisplay | undefined;
+}) {
+  return (
+    <Html position={[pos.x, pos.y, pos.z]} center zIndexRange={[100, 0]}>
+      <div
+        style={{
+          padding: '2px 6px',
+          borderRadius: 6,
+          font: "500 12px 'IBM Plex Mono', monospace",
+          background: night ? '#1e2128' : '#fff',
+          color: night ? '#e8eaf0' : '#1a1d24',
+          border: `1px solid ${night ? '#33363f' : '#e4e4e7'}`,
+          whiteSpace: 'nowrap',
+          pointerEvents: 'none',
+          transform: 'translate(14px, -14px)',
+        }}
+      >
+        ↥ {formatLengthDisplay(pos.y, display)}
+      </div>
+    </Html>
+  );
+}
+
 /** Endpoint grab sphere: free move of the junction on the ground, one undo
  * step. Hold Shift to lock the move to a world axis. Hold Ctrl to break the
  * union — the SELECTED pipe's end (`memberId`) detaches to its own node and
@@ -111,12 +143,16 @@ function MoveHandle({
   pos,
   radiusM,
   locked,
+  night,
+  display,
 }: {
   nodeId: string;
   memberId: string;
   pos: Vec3;
   radiusM: number;
   locked: boolean;
+  night: boolean;
+  display: LengthDisplay | undefined;
 }) {
   const anchor = useRef<Vec3 | null>(null);
   const dragId = useRef<string>(nodeId);
@@ -138,19 +174,25 @@ function MoveHandle({
     { viewPlaneOrigin: () => (locked ? null : pos) },
   );
   return (
-    <mesh
-      position={[pos.x, pos.y, pos.z]}
-      onPointerDown={(e) => {
-        anchor.current = pos;
-        dragId.current = nodeId;
-        pendingDetach.current = !locked && e.nativeEvent.ctrlKey;
-        start(e);
-      }}
-    >
-      {/* slightly smaller than the hit radius + partially transparent */}
-      <sphereGeometry args={[radiusM * 0.82, 16, 12]} />
-      <meshBasicMaterial color={dragging ? '#1d5fb8' : '#2a78d6'} transparent opacity={0.6} />
-    </mesh>
+    <>
+      <mesh
+        position={[pos.x, pos.y, pos.z]}
+        onPointerDown={(e) => {
+          anchor.current = pos;
+          dragId.current = nodeId;
+          pendingDetach.current = !locked && e.nativeEvent.ctrlKey;
+          start(e);
+        }}
+      >
+        {/* slightly smaller than the hit radius + partially transparent */}
+        <sphereGeometry args={[radiusM * 0.82, 16, 12]} />
+        <meshBasicMaterial color={dragging ? '#1d5fb8' : '#2a78d6'} transparent opacity={0.6} />
+      </mesh>
+      {/* show the height above the ground while lifting a point off the floor */}
+      {dragging && !locked && pos.y > 1e-4 && (
+        <HeightPill pos={pos} night={night} display={display} />
+      )}
+    </>
   );
 }
 
@@ -282,12 +324,16 @@ function MoveArrow({
   axisKey,
   sizeM,
   gridStepM,
+  night,
+  display,
 }: {
   memberIds: string[];
   origin: Vec3;
   axisKey: 'x' | 'y' | 'z';
   sizeM: number;
   gridStepM: number;
+  night: boolean;
+  display: LengthDisplay | undefined;
 }) {
   const axis = AXIS_DIRS[axisKey];
   const originRef = useRef<Vec3>(origin);
@@ -342,6 +388,8 @@ function MoveArrow({
         <coneGeometry args={[coneR, coneH, 16]} />
         <meshBasicMaterial color={color} />
       </mesh>
+      {/* dragging the vertical arrow shows the selection's height off the ground */}
+      {axisKey === 'y' && dragging && <HeightPill pos={origin} night={night} display={display} />}
     </group>
   );
 }
@@ -352,6 +400,7 @@ export function MoveGizmo() {
   const design = useAppStore((s) => s.current);
   const selectedIds = useEditorStore((s) => s.selectedIds);
   const gridStepM = useEditorStore((s) => s.snap.gridStepM);
+  const night = useThemeStore((s) => s.night);
   if (!design) return null;
   const frame = selectionFrame(design, selectedIds);
   if (!frame) return null;
@@ -366,6 +415,8 @@ export function MoveGizmo() {
           axisKey={k}
           sizeM={sizeM}
           gridStepM={gridStepM}
+          night={night}
+          display={design.lengthDisplay}
         />
       ))}
     </group>
@@ -474,8 +525,24 @@ export function SelectionHandles() {
 
   return (
     <>
-      <MoveHandle nodeId={a.id} memberId={member.id} pos={aPos} radiusM={handleR} locked={locked} />
-      <MoveHandle nodeId={b.id} memberId={member.id} pos={bPos} radiusM={handleR} locked={locked} />
+      <MoveHandle
+        nodeId={a.id}
+        memberId={member.id}
+        pos={aPos}
+        radiusM={handleR}
+        locked={locked}
+        night={night}
+        display={display}
+      />
+      <MoveHandle
+        nodeId={b.id}
+        memberId={member.id}
+        pos={bPos}
+        radiusM={handleR}
+        locked={locked}
+        night={night}
+        display={display}
+      />
       {/* no length editing while locked (drag rotates pivots instead) */}
       {!locked && (
         <>
