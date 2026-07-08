@@ -11,6 +11,7 @@ import {
   healBodyJoints,
   joinContext,
   jointsAtNode,
+  makeFreeHub,
   makeManufacturedJoint,
   measurementLengthM,
   measurePerp,
@@ -35,6 +36,7 @@ import {
   translateMember,
   weldNodes,
 } from './docOps';
+import { resolveFittings } from './fittings';
 
 const V = (x: number, y: number, z: number): Vec3 => ({ x, y, z });
 
@@ -306,6 +308,63 @@ describe('joints — end-to-end pivots', () => {
     const posed = setJointAngle(added, added.joints[0]!.id, 1.2);
     expect(posed.joints[0]!.angleRad).toBe(1.2);
     expect(resetJoints(posed).joints[0]!.angleRad).toBe(0);
+  });
+});
+
+describe('makeFreeHub (shared ball joint, N pipes at one point)', () => {
+  /** A star of pipes radiating from a shared centre node 'c'. The first pipe is
+   * the longest, so it is the auto-picked common receiver. */
+  function star(dirs: Vec3[]): Design {
+    const d = createEmptyDesign('d', 'star');
+    d.nodes.push({ id: 'c', position: V(0, 0, 0) });
+    dirs.forEach((dir, i) => {
+      const s = i === 0 ? 2 : 1; // pipe 0 is longest → the common receiver
+      d.nodes.push({ id: `o${i}`, position: V(dir.x * s, dir.y * s, dir.z * s) });
+      d.members.push({ id: `m${i}`, kind: 'straight', nodeA: 'c', nodeB: `o${i}`, size: '3/4"' });
+    });
+    return d;
+  }
+  const X = V(1, 0, 0);
+  const NX = V(-1, 0, 0);
+  const Y = V(0, 1, 0);
+  const Z = V(0, 0, 1);
+  const NZ = V(0, 0, -1);
+
+  it('binds every incident pipe as a free joint sharing one receiver', () => {
+    const out = makeFreeHub(star([X, NX, Z, NZ, Y]), 'c'); // 5 pipes
+    const at = jointsAtNode(out, 'c');
+    expect(at).toHaveLength(4); // one per pipe beyond the receiver
+    expect(at.every((j) => j.mode === 'free' && !j.onBody)).toBe(true);
+    expect(at.every((j) => j.receiver === 'm0')).toBe(true); // longest pipe
+    expect(new Set(at.map((j) => j.mover))).toEqual(new Set(['m1', 'm2', 'm3', 'm4']));
+  });
+
+  it('exempts the hub node from fitting classification (no conflict for 5 pipes)', () => {
+    const design = star([X, NX, Z, NZ, Y]);
+    // without the hub, five pipes at one node is an unresolved conflict
+    expect(resolveFittings(design).conflicts.some((c) => c.nodeId === 'c')).toBe(true);
+    const hub = makeFreeHub(design, 'c');
+    const res = resolveFittings(hub);
+    expect(res.conflicts.some((c) => c.nodeId === 'c')).toBe(false);
+    expect(res.fittings.some((f) => f.nodeId === 'c')).toBe(false); // the joint IS the fitting
+  });
+
+  it('is idempotent and preserves a mover free orientation', () => {
+    const once = makeFreeHub(star([X, NX, Z, Y]), 'c');
+    const j = once.joints.find((x) => x.mover === 'm2')!;
+    const q = { x: 0, y: 0, z: 0.3826834, w: 0.9238795 };
+    const posed = {
+      ...once,
+      joints: once.joints.map((x) => (x.id === j.id ? { ...x, orientation: q } : x)),
+    };
+    const twice = makeFreeHub(posed, 'c');
+    expect(jointsAtNode(twice, 'c')).toHaveLength(3);
+    expect(twice.joints.find((x) => x.mover === 'm2')?.orientation).toEqual(q);
+  });
+
+  it('is a no-op when fewer than two pipes end at the node', () => {
+    const one = makeFreeHub(star([X]), 'c');
+    expect(jointsAtNode(one, 'c')).toHaveLength(0);
   });
 });
 

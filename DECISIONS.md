@@ -6,6 +6,18 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 
 ## Post-batch fixes (2026-07-08)
 
+- **Free ball-joint HUB for N pipes at one point** (`makeFreeHub`). A free pivot can now bind
+  any number of pipes meeting at a node as a single shared ball. **No schema change** — a shared
+  hub is kinematically identical to PAIRWISE free records all referencing one common receiver
+  (the longest incident pipe): every pipe end is held coincident at the node yet free to orient.
+  So storage stays pairwise (reusing the solver, dedupe, and reconcile paths), but it *presents*
+  as one hub: the join menu's "Free" becomes "Free hub" for ≥3 pipes and frees them all in one
+  action; `JointLayer` draws ONE ball per free node (`FreeHub`) with an eye-bolt + cord per
+  incident pipe instead of N-1 overlapping balls; BOM counts one ball per free node. A node with
+  a free joint is already exempt from standard-fitting classification, so a 5-way hub no longer
+  flags a conflict. Scoped to **free** joints (per request); on-body free branches keep the
+  pairwise `setJoinMode('free')` path. New `__pvc.makeFreeHub` seam. The swap gizmo is now
+  restricted to WRAPPED joints (it only ever meant "which pipe wraps which").
 - **3-way (side-outlet) corner elbow** added to the fitting library (`FittingType 'elbow3way'`).
   A node with three **mutually perpendicular** pipe ends (the classic cube-frame corner)
   previously flagged a conflict (`'three pipes with no straight run'`); it now resolves to a

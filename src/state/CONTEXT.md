@@ -42,7 +42,8 @@ The hook is **defined in `../ui/EditorShell.tsx`** and merged (not replaced) ont
 Read seams: `getDoc`, `getEditor`, `getFittings` (`{fittings, conflicts}`), `getMembers`,
 `getJoints`, `getSolve`, `getBom`, `getPhysics`, `exportJson`. Command seams: `setTool`,
 `setDrawSize`, `setProjection`, `setLengthsLocked`, `draw`/`finishPath`, `drawFormed`, `dragNode`,
-`moveMember`, `rotateMember`, `setJoinMode`, `setPivotAngle`, `importJson`, `setSimulating`.
+`moveMember`, `rotateMember`, `setJoinMode`, `makeManufacturedJoint`, `makeFreeHub`,
+`setPivotAngle`, `importJson`, `setSimulating`.
 (Examples load via `appStore.createFromExample`, not a `__pvc` seam.)
 
 ## Read before editing

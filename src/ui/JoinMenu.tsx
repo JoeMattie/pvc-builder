@@ -7,7 +7,7 @@
 import { Circle, Factory, Lock, Rotate3d } from 'lucide-react';
 import { joinContext } from '../design/docOps';
 import { useAppStore } from '../state/appStore';
-import { makeManufacturedJoint, setJoinMode } from '../state/editorActions';
+import { makeFreeHub, makeManufacturedJoint, setJoinMode } from '../state/editorActions';
 import { useEditorStore } from '../state/editorStore';
 
 export function JoinMenu() {
@@ -97,10 +97,16 @@ export function JoinMenu() {
         {ctx.canFree && (
           <Item
             icon={<Circle size={14} />}
-            label="Free pivot"
-            hint="eye-bolt + cord ball joint"
+            label={!ctx.onBody && ctx.candidates.length >= 2 ? 'Free hub' : 'Free pivot'}
+            hint={
+              !ctx.onBody && ctx.candidates.length >= 2
+                ? 'all pipes here share one ball joint'
+                : 'eye-bolt + cord ball joint'
+            }
             active={current === 'free'}
-            onClick={() => setJoinMode(menu.nodeId, menu.moverId, 'free')}
+            onClick={() =>
+              ctx.onBody ? setJoinMode(menu.nodeId, menu.moverId, 'free') : makeFreeHub(menu.nodeId)
+            }
           />
         )}
         {ctx.canWrap && !ctx.onBody && (

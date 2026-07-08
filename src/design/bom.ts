@@ -167,9 +167,18 @@ export function bom(design: Design): Bom {
     else lines.set(key, { type: f.type, sizes, reducing: f.reducing, count: 1 });
   }
 
-  // joint hardware counts by mode (wrapped / free / anchor)
+  // joint hardware counts by mode (wrapped / free / anchor). Free joints at one
+  // node are a single shared BALL hub (backed by pairwise records — see
+  // `makeFreeHub`), so count one ball per free node, not one per record.
   const jointCounts = new Map<JointMode, number>();
-  for (const j of design.joints) jointCounts.set(j.mode, (jointCounts.get(j.mode) ?? 0) + 1);
+  const freeNodesCounted = new Set<string>();
+  for (const j of design.joints) {
+    if (j.mode === 'free') {
+      if (freeNodesCounted.has(j.nodeId)) continue;
+      freeNodesCounted.add(j.nodeId);
+    }
+    jointCounts.set(j.mode, (jointCounts.get(j.mode) ?? 0) + 1);
+  }
   const joints: JointLine[] = [...jointCounts.entries()]
     .map(([mode, count]) => ({ mode, count }))
     .sort((a, b) => a.mode.localeCompare(b.mode));
@@ -190,7 +199,7 @@ export const JOINT_LABEL: Record<JointMode, string> = {
 };
 export const JOINT_HARDWARE: Record<JointMode, string> = {
   wrapped: 'heat-wrap',
-  free: '2 eye bolts + ball + cord',
+  free: 'ball + an eye bolt & cord per pipe',
   anchor: 'heat-wrap + set screws',
 };
 

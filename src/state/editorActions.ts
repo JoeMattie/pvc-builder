@@ -12,6 +12,7 @@ import {
   deleteMember,
   detachMemberEnd as detachMemberEndOp,
   incidentMembers,
+  makeFreeHub as makeFreeHubOp,
   makeManufacturedJoint as makeManufacturedJointOp,
   measurementEndPos,
   measurePerp,
@@ -657,6 +658,12 @@ export function swapJointReceiver(jointId: string): void {
  * standard angle + drop the pivot record (the join menu's "Manufactured"). */
 export function makeManufacturedJoint(nodeId: string, moverId: string): void {
   updateReconciled((d) => makeManufacturedJointOp(d, nodeId, moverId));
+}
+
+/** Make `nodeId` a shared FREE (ball) hub: every straight pipe ending there
+ * pivots about the one point (the join menu's "Free hub" / multi-pipe "Free"). */
+export function makeFreeHub(nodeId: string): void {
+  updateReconciled((d) => makeFreeHubOp(d, nodeId));
 }
 
 /** Set a wrapped pivot's angle (the angle slider). In a locked mechanism with

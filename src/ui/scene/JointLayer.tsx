@@ -13,7 +13,7 @@ import { Html } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
 import { ArrowLeftRight } from 'lucide-react';
 import { CatmullRomCurve3, Vector3 } from 'three';
-import { memberById, nodeById } from '../../design/docOps';
+import { incidentMembers, memberById, nodeById } from '../../design/docOps';
 import { add, normalize, scale, sub } from '../../geometry/math3';
 import { type Joint, pipeSpec, type Vec3 } from '../../schema';
 import { easedPos, useAnim } from '../../state/animStore';
@@ -292,6 +292,86 @@ function FreeJoint({
   );
 }
 
+/** A shared FREE (ball) hub: ONE ball at `nodeId` that every straight pipe
+ * meeting end-to-end there pivots about, with an eye bolt + knotted cord per
+ * incident pipe end. Stored as pairwise free records (see `makeFreeHub`); this
+ * draws them as the single hub they represent instead of N-1 overlapping balls. */
+function FreeHub({
+  nodeId,
+  jointId,
+  selectable,
+  selected,
+  ball,
+  onContext,
+}: {
+  nodeId: string;
+  jointId: string;
+  selectable: boolean;
+  selected: boolean;
+  ball: string;
+  onContext?: (e: ThreeEvent<MouseEvent>) => void;
+}) {
+  const design = useAppStore.getState().current;
+  if (!design) return null;
+  const eased = (id: string): Vec3 =>
+    easedPos(id) ?? nodeById(design, id)?.position ?? { x: 0, y: 0, z: 0 };
+  const node = eased(nodeId);
+  const incident = incidentMembers(design, nodeId).filter((m) => m.kind === 'straight');
+  if (incident.length < 2) return null;
+
+  const odMax = Math.max(...incident.map((m) => pipeSpec(m.size).odM));
+  const ballR = odMax * 0.55;
+  const eyeR = odMax * 0.42;
+  const ends = incident.map((m) => {
+    const far = m.nodeA === nodeId ? m.nodeB : m.nodeA;
+    const dir = normalize(sub(eased(far), node));
+    return { end: add(node, scale(dir, FREE_JOINT_GAP_M)), dir };
+  });
+
+  const onSelect = selectable
+    ? (e: ThreeEvent<MouseEvent>) => {
+        e.stopPropagation();
+        useEditorStore.getState().selectJoint(jointId);
+      }
+    : undefined;
+
+  return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: r3f group is a scene node
+    <group onClick={onSelect} onContextMenu={onContext}>
+      {ends.map((e, i) => {
+        const cord = placeAxis(e.end, node);
+        return (
+          // biome-ignore lint/suspicious/noArrayIndexKey: positional per incident pipe
+          <group key={i}>
+            {/* eye-bolt ring at the pipe end */}
+            <mesh position={[e.end.x, e.end.y, e.end.z]} quaternion={orientZ(e.dir)}>
+              <torusGeometry args={[eyeR, eyeR * 0.28, 12, 20]} />
+              <meshStandardMaterial color={EYE_COLOR} roughness={0.35} metalness={0.85} />
+            </mesh>
+            {/* knotted cord from the eye to the ball */}
+            {cord && (
+              <mesh position={cord.mid} quaternion={cord.quat}>
+                <cylinderGeometry args={[odMax * 0.09, odMax * 0.09, cord.len, 8]} />
+                <meshStandardMaterial color={CORD_COLOR} roughness={0.9} metalness={0} />
+              </mesh>
+            )}
+          </group>
+        );
+      })}
+      {/* the single shared ball at the hub */}
+      <mesh position={[node.x, node.y, node.z]} castShadow>
+        <sphereGeometry args={[ballR, 20, 16]} />
+        <meshPhysicalMaterial
+          color={selected ? SELECT_BLUE : ball}
+          roughness={0.3}
+          metalness={0.1}
+          clearcoat={0.6}
+        />
+      </mesh>
+    </group>
+  );
+}
+
 export function JointLayer() {
   useAnim((s) => s.v); // re-render while easing so joints track the pipe
   const design = useAppStore((s) => s.current);
@@ -306,10 +386,18 @@ export function JointLayer() {
   // ONLY (not the pipe), and swap/switch acts on it while it stays selected
   const isSelected = (j: Joint) => selectedJointId === j.id;
   const selectedJoint = design.joints.find((j) => j.id === selectedJointId);
+  // the swap gizmo only makes sense for a WRAPPED end-to-end pivot ("which pipe
+  // wraps which") — not for a free ball or a rigid tee
   const swapNode =
-    selectable && selectedJoint && !selectedJoint.onBody
+    selectable && selectedJoint && !selectedJoint.onBody && selectedJoint.mode === 'wrapped'
       ? (easedPos(selectedJoint.nodeId) ?? nodeById(design, selectedJoint.nodeId)?.position)
       : undefined;
+  // free end-to-end joints at one node are ONE shared ball hub — render it once
+  // per node (the pairwise records back it). On-body frees stay per-joint.
+  const freeHubNodes = new Map<string, Joint>();
+  for (const j of design.joints)
+    if (j.mode === 'free' && !j.onBody && !freeHubNodes.has(j.nodeId))
+      freeHubNodes.set(j.nodeId, j);
   // right-clicking the joint hardware (the collar / ball) re-opens its menu —
   // the pipe ends are pulled back at a free pivot, so the pipe alone can't catch
   // a click on the ball. Uses the joint's own node + mover (not a raycast guess).
@@ -326,7 +414,26 @@ export function JointLayer() {
 
   return (
     <>
+      {/* one shared ball per free-hub node (backed by its pairwise records) */}
+      {[...freeHubNodes.entries()].map(([nodeId, rep]) => (
+        <FreeHub
+          key={`hub-${nodeId}`}
+          nodeId={nodeId}
+          jointId={rep.id}
+          selectable={selectable}
+          selected={
+            !!selectedJoint &&
+            selectedJoint.nodeId === nodeId &&
+            selectedJoint.mode === 'free' &&
+            !selectedJoint.onBody
+          }
+          ball={pal.accent}
+          onContext={onContext(rep)}
+        />
+      ))}
       {design.joints.map((j) => {
+        // end-to-end frees are drawn by the FreeHub above; skip them here
+        if (j.mode === 'free' && !j.onBody) return null;
         if (j.mode === 'free')
           return (
             <FreeJoint

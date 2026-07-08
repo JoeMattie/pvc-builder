@@ -36,6 +36,7 @@ import {
   finishFormed,
   finishPath,
   jointOrientationsOf,
+  makeFreeHub,
   makeManufacturedJoint,
   moveFormedControlPoint,
   pivotAnglesOf,
@@ -387,6 +388,7 @@ export function EditorShell() {
     hook.swapJointReceiver = (jointId: string) => swapJointReceiver(jointId);
     hook.makeManufacturedJoint = (nodeId: string, moverId: string) =>
       makeManufacturedJoint(nodeId, moverId);
+    hook.makeFreeHub = (nodeId: string) => makeFreeHub(nodeId);
     // pivots / solver seams
     hook.setPivotAngle = (jointId: string, angleRad: number) => setPivotAngle(jointId, angleRad);
     hook.getSolve = () => {

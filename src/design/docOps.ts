@@ -627,6 +627,40 @@ export function makeManufacturedJoint(design: Design, nodeId: string, moverId: s
   return existing ? removeJoint(moved, existing.id) : moved;
 }
 
+/** Turn the connection point `nodeId` into a shared FREE (ball) hub: every
+ * straight pipe that ends there pivots freely about the one point. Stored as
+ * PAIRWISE free records (kinematically a shared ball — every pipe end is held
+ * coincident at the node yet free to orient), with the longest incident pipe as
+ * the common receiver and one free joint per OTHER incident pipe. Any other
+ * joints at the node are dropped; an existing free orientation for a mover is
+ * preserved. No-op if fewer than two straight pipes end at the node (an on-body
+ * branch, whose run only passes through, uses the pairwise `setJoinMode('free')`
+ * path instead). */
+export function makeFreeHub(design: Design, nodeId: string): Design {
+  const incident = incidentMembers(design, nodeId).filter((m) => m.kind === 'straight');
+  if (incident.length < 2) return design;
+  const receiver = [...incident].sort(
+    (a, b) => straightLength(design, b) - straightLength(design, a),
+  )[0]!;
+  const others = design.joints.filter((j) => j.nodeId !== nodeId);
+  const hub: Joint[] = [];
+  for (const m of incident) {
+    if (m.id === receiver.id) continue;
+    const prev = jointForMover(design, nodeId, m.id);
+    const joint: Joint = {
+      id: prev?.id ?? makeId('jt'),
+      nodeId,
+      receiver: receiver.id,
+      mover: m.id,
+      onBody: false,
+      mode: 'free',
+    };
+    if (prev?.mode === 'free' && prev.orientation) joint.orientation = prev.orientation;
+    hub.push(joint);
+  }
+  return { ...design, joints: [...others, ...hub] };
+}
+
 /** Set member `moverId`'s connection mode at `nodeId`, creating / updating /
  * removing the joint record. `receiverId` overrides the auto-picked receiver
  * (must be one of `joinContext.candidates`). A plain end-to-end anchor is the
