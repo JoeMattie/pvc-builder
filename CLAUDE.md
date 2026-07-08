@@ -4,10 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-**Phases 0–1 are complete.** The Vite/React/TS app scaffold is up, and you can draw straight pipe:
-click-to-lay runs with SketchUp-style snapping/inference, PBR pipe at true OD, select + drag endpoints,
-and edit exact lengths. The next work is **Phase 2** (fitting auto-solve + procedural meshes). The
-authoritative spec is
+**Phases 0–2 are complete.** The Vite/React/TS app scaffold is up; you can draw straight pipe
+(SketchUp-style snapping/inference, PBR pipe at true OD, select + drag endpoints, edit exact lengths),
+and the correct SCH 40 fitting is inferred and drawn at each joint (`resolveFittings` + procedural
+meshes), with conflicts flagged. The next work is **Phase 3** (formed/spline pipe + intersection
+highlighting). The authoritative spec is
 `docs/planfiles/PLANFILE-pvc-builder.md` — read the relevant section before each phase; it defines the
 product, domain model, phased build plan, and acceptance criteria. `DECISIONS.md` logs choices already
 made (newest first) — check it before revisiting a decision.

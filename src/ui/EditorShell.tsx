@@ -1,6 +1,7 @@
 import { Box, ChevronLeft, Lock, LockOpen, Moon, Redo2, Sun, Undo2 } from 'lucide-react';
 import { useEffect } from 'react';
 import { deleteMember, memberLengthM } from '../design/docOps';
+import { resolveFittings } from '../design/fittings';
 import type { Vec3 } from '../schema';
 import { useAppStore } from '../state/appStore';
 import {
@@ -119,6 +120,10 @@ export function EditorShell() {
     };
     hook.setSnap = (patch: Record<string, unknown>) =>
       useEditorStore.getState().setSnap(patch as never);
+    hook.getFittings = () => {
+      const d = useAppStore.getState().current;
+      return d ? resolveFittings(d) : { fittings: [], conflicts: [] };
+    };
     hook.getMembers = () => {
       const d = useAppStore.getState().current;
       if (!d) return [];

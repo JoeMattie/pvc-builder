@@ -15,6 +15,7 @@ import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
 import { DrawController } from './DrawController';
+import { FittingLayer } from './FittingLayer';
 import { PipeLayer } from './PipeLayer';
 import { SelectionHandles } from './SelectionHandles';
 
@@ -85,6 +86,7 @@ export function Scene() {
       />
 
       <PipeLayer />
+      <FittingLayer />
 
       {/* ground-plane pointer target + shadow catcher + draw preview */}
       <DrawController />

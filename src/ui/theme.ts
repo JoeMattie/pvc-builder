@@ -14,6 +14,8 @@ const SCENE = {
     gridCell: '#d9dbe2',
     gridSection: '#b9bcc7',
     pvc: '#e7e9ee',
+    fitting: '#c6cad3',
+    conflict: '#d64545',
     accent: '#2a78d6',
   },
   night: {
@@ -21,6 +23,8 @@ const SCENE = {
     gridCell: '#2a2d38',
     gridSection: '#3a3f4b',
     pvc: '#c6cbd7',
+    fitting: '#9aa0ad',
+    conflict: '#e0554a',
     accent: '#3d8ae0',
   },
 } as const satisfies Record<ThemeName, Record<string, string>>;

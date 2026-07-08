@@ -4,6 +4,30 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Phase 2 — Fitting auto-solve + procedural meshes (2026-07-07)
+
+- **`resolveFittings(design)` is pure and the single source of fitting truth**
+  (`design/fittings.ts`) — no three/UI/physics types. Per node it gathers
+  incident pipe ends (outgoing unit dir + size) and classifies within a ±3°
+  tolerance: coupling/reducer (collinear same/mixed size), 90°/45° elbow, tee
+  (collinear run + perpendicular branch, reducing if the branch differs), cross
+  (two perpendicular runs); everything else is a **conflict** with a reason.
+  Open ends get no auto fitting (caps are opt-in, not applied). Exhaustively
+  tested.
+- **Elbows are same-size only** (mixed → conflict); tees/crosses allow a
+  reducing branch/leg. Reducer take-off dimensions (centre-to-face) are NOT yet
+  in `PipeSpec` — added in Phase 5 for the BOM; meshes use proportional sizing.
+- **Fitting meshes are procedural + composed** (`ui/scene/fittingMesh.ts`, the
+  CAD-swap seam): each incident end → a socket hub (sleeve 1.28× pipe OD) + a
+  bell lip; elbows/tees/crosses add a blend sphere. Pure/tested (primitive
+  counts + radii). `FittingLayer` renders them in fitting-gray and marks
+  conflicts with a translucent red sphere.
+- **Types from the doc, geometry from eased positions.** FittingLayer takes the
+  fitting TYPE from the snapped document (stable — no flicker mid-drag) but
+  recomputes each fitting's position + end directions from the eased render
+  positions, so fittings glide with the pipe. Skipped entirely past 200 members
+  (the T-rex wireframe stays connector-free).
+
 ## Phase 1 — interaction polish (2026-07-07)
 
 - **Snapping is configurable via a floating pill** (`SnapPill`, bottom-left):
