@@ -361,7 +361,10 @@ function RotateRing({
     (g) => {
       const ang = angleAt(g);
       // shortest signed step since the last frame, applied incrementally
-      const delta = Math.atan2(Math.sin(ang - lastAngle.current), Math.cos(ang - lastAngle.current));
+      const delta = Math.atan2(
+        Math.sin(ang - lastAngle.current),
+        Math.cos(ang - lastAngle.current),
+      );
       if (delta !== 0) {
         rotateMemberBy(memberId, axis, delta, pivotRef.current);
         lastAngle.current = ang;

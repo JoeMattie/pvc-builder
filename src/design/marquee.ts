@@ -21,12 +21,22 @@ export interface Rect {
 export type MarqueeMode = 'window' | 'crossing';
 
 /** Rectangle + mode from the drag's start/end screen points. */
-export function marqueeFromDrag(x0: number, y0: number, x1: number, y1: number): {
+export function marqueeFromDrag(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+): {
   rect: Rect;
   mode: MarqueeMode;
 } {
   return {
-    rect: { minX: Math.min(x0, x1), minY: Math.min(y0, y1), maxX: Math.max(x0, x1), maxY: Math.max(y0, y1) },
+    rect: {
+      minX: Math.min(x0, x1),
+      minY: Math.min(y0, y1),
+      maxX: Math.max(x0, x1),
+      maxY: Math.max(y0, y1),
+    },
     mode: x1 >= x0 ? 'window' : 'crossing',
   };
 }

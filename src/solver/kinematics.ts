@@ -237,8 +237,201 @@ export interface PoseResult {
   converged: boolean;
 }
 
-/** Grübler-style spatial mobility, summed per connected component:
- * 6·(bodies − 1) − 5·(revolute pivots). */
+// ── closed loops (planfile §5: the tree FK can't close a 4-bar) ──────────────
+
+function quatConj(q: Quaternion): Quaternion {
+  return { x: -q.x, y: -q.y, z: -q.z, w: q.w };
+}
+
+/** Signed angle of the relative rotation (B relative to A) about `axis`. */
+function relAngleAbout(TA: Transform, TB: Transform, axis: Vec3): number {
+  const rel = mulQ(TB.r, quatConj(TA.r));
+  const u = normalize(axis);
+  return 2 * Math.atan2(rel.x * u.x + rel.y * u.y + rel.z * u.z, rel.w);
+}
+
+/** Solve a small dense linear system A·x = b (Gaussian elimination + partial
+ * pivoting). Returns null if singular. */
+function solveLinear(A: number[][], b: number[]): number[] | null {
+  const n = b.length;
+  const M = A.map((row, i) => [...row, b[i]!]);
+  for (let c = 0; c < n; c++) {
+    let piv = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(M[r]![c]!) > Math.abs(M[piv]![c]!)) piv = r;
+    if (Math.abs(M[piv]![c]!) < 1e-12) return null;
+    [M[c], M[piv]] = [M[piv]!, M[c]!];
+    for (let r = 0; r < n; r++) {
+      if (r === c) continue;
+      const f = M[r]![c]! / M[c]![c]!;
+      for (let k = c; k <= n; k++) M[r]![k]! -= f * M[c]![k]!;
+    }
+  }
+  return M.map((row, i) => row[n]! / row[i]!);
+}
+
+function sumSq(v: number[]): number {
+  let s = 0;
+  for (const x of v) s += x * x;
+  return s;
+}
+
+/** Loop-closure solver. The spanning-tree pivots (`treeIds`) are the free
+ * variables; a damped Gauss-Newton (Levenberg-Marquardt) drives:
+ *   • closure — each loop-closing pivot's node must agree between its two bodies
+ *     (this is what keeps every member length exact around the loop),
+ *   • regularization — tree angles stay near their slider targets,
+ *   • drag (optional) — the dragged node reaches its target.
+ * Returns resolved angles for ALL pivots (tree from the solve; loop pivots
+ * measured from the closed geometry) + the final FK. */
+function solveLoops(
+  ctx: Ctx,
+  design: Design,
+  targets: Record<string, number>,
+  loopPivots: Pivot[],
+  treeIds: string[],
+  dragTarget?: { nodeId: string; position: Vec3 },
+): { angles: Record<string, number>; converged: boolean; fk: FKResult } {
+  const n = treeIds.length;
+  // closure must dominate so every member length stays exact; the angle/​drag
+  // pulls only pick WHERE on the (reduced-DOF) loop manifold to settle
+  const W_CLOSE = 40;
+  const W_REG = 0.05;
+  const W_DRAG = 2;
+  const x = treeIds.map((id) => targets[id] ?? 0);
+
+  const anglesFrom = (xv: number[]): Record<string, number> => {
+    const a = { ...targets };
+    treeIds.forEach((id, i) => {
+      a[id] = xv[i]!;
+    });
+    return a;
+  };
+  const residual = (xv: number[]): number[] => {
+    const fk = runFK(ctx, anglesFrom(xv));
+    const r: number[] = [];
+    for (const p of loopPivots) {
+      const nd = ctx.nodePos.get(p.nodeId);
+      const ba = ctx.bodyOfMember.get(p.memberA);
+      const bb = ctx.bodyOfMember.get(p.memberB);
+      const ta = ba ? fk.T.get(ba) : undefined;
+      const tb = bb ? fk.T.get(bb) : undefined;
+      if (!nd || !ta || !tb) continue;
+      const na = applyT(ta, nd);
+      const nb = applyT(tb, nd);
+      r.push((na.x - nb.x) * W_CLOSE, (na.y - nb.y) * W_CLOSE, (na.z - nb.z) * W_CLOSE);
+    }
+    for (let i = 0; i < n; i++) r.push((xv[i]! - (targets[treeIds[i]!] ?? 0)) * W_REG);
+    // loop pivots have no tree variable — pull their *measured* angle toward the
+    // slider target so driving ANY pivot (not just tree ones) moves the loop
+    for (const p of loopPivots) {
+      const ba = ctx.bodyOfMember.get(p.memberA);
+      const bb = ctx.bodyOfMember.get(p.memberB);
+      const ta = ba ? fk.T.get(ba) : undefined;
+      const tb = bb ? fk.T.get(bb) : undefined;
+      if (!ta || !tb) continue;
+      const cur = relAngleAbout(ta, tb, normalize(rotate(ta.r, p.axis)));
+      const diff = cur - (targets[p.id] ?? 0);
+      r.push(Math.atan2(Math.sin(diff), Math.cos(diff)) * W_REG);
+    }
+    if (dragTarget) {
+      const e = worldNodePos(dragTarget.nodeId, ctx, fk.T);
+      r.push(
+        (e.x - dragTarget.position.x) * W_DRAG,
+        (e.y - dragTarget.position.y) * W_DRAG,
+        (e.z - dragTarget.position.z) * W_DRAG,
+      );
+    }
+    return r;
+  };
+
+  let r = residual(x);
+  let cost = sumSq(r);
+  let lambda = 1e-3;
+  const EPS = 1e-6;
+  for (let it = 0; it < 30 && cost > 1e-14; it++) {
+    const m = r.length;
+    // numerical Jacobian (m × n)
+    const J: number[][] = Array.from({ length: m }, () => new Array(n).fill(0));
+    for (let j = 0; j < n; j++) {
+      const xj = x.slice();
+      xj[j]! += EPS;
+      const rj = residual(xj);
+      for (let i = 0; i < m; i++) J[i]![j] = (rj[i]! - r[i]!) / EPS;
+    }
+    // normal equations JᵀJ (n × n) and Jᵀr (n)
+    const JtJ: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
+    const Jtr = new Array(n).fill(0);
+    for (let a = 0; a < n; a++) {
+      for (let b = 0; b < n; b++) {
+        let s = 0;
+        for (let i = 0; i < m; i++) s += J[i]![a]! * J[i]![b]!;
+        JtJ[a]![b] = s;
+      }
+      let s = 0;
+      for (let i = 0; i < m; i++) s += J[i]![a]! * r[i]!;
+      Jtr[a] = s;
+    }
+    let stepped = false;
+    for (let tries = 0; tries < 6; tries++) {
+      const damped = JtJ.map((row, i) =>
+        row.map((v, k) => (k === i ? v + lambda * (Math.abs(v) || 1) : v)),
+      );
+      const dx = solveLinear(
+        damped,
+        Jtr.map((v) => -v),
+      );
+      if (dx) {
+        const xn = x.map((v, i) => v + dx[i]!);
+        const rn = residual(xn);
+        const cn = sumSq(rn);
+        if (cn < cost) {
+          for (let i = 0; i < n; i++) x[i] = xn[i]!;
+          r = rn;
+          cost = cn;
+          lambda = Math.max(lambda * 0.5, 1e-10);
+          stepped = true;
+          break;
+        }
+      }
+      lambda *= 3;
+    }
+    if (!stepped) break;
+  }
+
+  const fk = runFK(ctx, anglesFrom(x));
+  const angles: Record<string, number> = {};
+  const treeSet = new Set(treeIds);
+  for (const p of design.pivots) {
+    if (treeSet.has(p.id)) {
+      angles[p.id] = x[treeIds.indexOf(p.id)]!;
+      continue;
+    }
+    const ba = ctx.bodyOfMember.get(p.memberA);
+    const bb = ctx.bodyOfMember.get(p.memberB);
+    const ta = ba ? fk.T.get(ba) : undefined;
+    const tb = bb ? fk.T.get(bb) : undefined;
+    angles[p.id] =
+      ta && tb ? relAngleAbout(ta, tb, normalize(rotate(ta.r, p.axis))) : (targets[p.id] ?? 0);
+  }
+  return { angles, converged: cost < 1e-8, fk };
+}
+
+/** Whether every axis in the list is parallel (‖a×b‖ ≈ 0) — i.e. the component
+ * is a planar mechanism, whose loops need the planar Grübler count. */
+function allParallel(axes: Vec3[]): boolean {
+  if (axes.length < 2) return true;
+  const a0 = normalize(axes[0]!);
+  for (let i = 1; i < axes.length; i++) {
+    if (length(cross(a0, normalize(axes[i]!))) > 1e-3) return false;
+  }
+  return true;
+}
+
+/** Grübler mobility per connected component. A component whose pivot axes are
+ * all parallel is a PLANAR mechanism — its loops are over-counted by the spatial
+ * formula (a planar 4-bar reads as −2 DOF), so it uses the planar count
+ * 3·(b−1) − 2·j; otherwise the spatial 6·(b−1) − 5·j. Over-constrained means the
+ * (correct) DOF is negative, not merely "has a loop". */
 function mobility(ctx: Ctx): { dof: number; overConstrained: boolean } {
   const seen = new Set<string>();
   let dof = 0;
@@ -246,17 +439,17 @@ function mobility(ctx: Ctx): { dof: number; overConstrained: boolean } {
   for (const start of ctx.bodies) {
     if (seen.has(start)) continue;
     let b = 0;
-    let j = 0;
     const stack = [start];
     seen.add(start);
     const pivotSeen = new Set<string>();
+    const axes: Vec3[] = [];
     while (stack.length) {
       const cur = stack.pop()!;
       b++;
       for (const e of ctx.adj.get(cur) ?? []) {
         if (!pivotSeen.has(e.pivot.id)) {
           pivotSeen.add(e.pivot.id);
-          j++;
+          axes.push(e.pivot.axis);
         }
         if (!seen.has(e.other)) {
           seen.add(e.other);
@@ -264,8 +457,11 @@ function mobility(ctx: Ctx): { dof: number; overConstrained: boolean } {
         }
       }
     }
-    dof += 6 * (b - 1) - 5 * j;
-    if (j > b - 1) over = true; // a redundant loop
+    const j = pivotSeen.size;
+    const planar = allParallel(axes);
+    const compDof = planar ? 3 * (b - 1) - 2 * j : 6 * (b - 1) - 5 * j;
+    dof += compDof;
+    if (compDof < 0) over = true;
   }
   return { dof, overConstrained: over };
 }
@@ -275,14 +471,33 @@ export function solvePose(
   inputs: { pivotAngles: Record<string, number>; dragTarget?: { nodeId: string; position: Vec3 } },
 ): PoseResult {
   const ctx = buildCtx(design);
+  // which pivots are spanning-tree edges vs loop-closing (back) edges
+  const refFK = runFK(ctx, inputs.pivotAngles);
+  const treeIds = [...refFK.frames.keys()];
+  const loopPivots = design.pivots.filter((p) => {
+    const ba = ctx.bodyOfMember.get(p.memberA);
+    const bb = ctx.bodyOfMember.get(p.memberB);
+    return !!ba && !!bb && ba !== bb && !refFK.frames.has(p.id);
+  });
+
   let angles = { ...inputs.pivotAngles };
   let converged = true;
-  if (inputs.dragTarget) {
-    const r = ccd(ctx, angles, inputs.dragTarget.nodeId, inputs.dragTarget.position);
+  let fk: FKResult;
+  if (loopPivots.length > 0) {
+    // closed loops: tree FK can't keep them shut — run loop closure so every
+    // member length stays exact and driving one pivot pushes the others
+    const r = solveLoops(ctx, design, inputs.pivotAngles, loopPivots, treeIds, inputs.dragTarget);
     angles = r.angles;
     converged = r.converged;
+    fk = r.fk;
+  } else {
+    if (inputs.dragTarget) {
+      const r = ccd(ctx, angles, inputs.dragTarget.nodeId, inputs.dragTarget.position);
+      angles = r.angles;
+      converged = r.converged;
+    }
+    fk = runFK(ctx, angles);
   }
-  const fk = runFK(ctx, angles);
   const nodePositions: Record<string, Vec3> = {};
   for (const n of design.nodes) nodePositions[n.id] = worldNodePos(n.id, ctx, fk.T);
   const memberTransforms: Record<string, { position: Vec3; quaternion: Quaternion }> = {};
@@ -303,7 +518,9 @@ export function solvePose(
     memberTransforms,
     pivotAngles: resolvedAngles,
     mobilityDof: mob.dof,
-    overConstrained: mob.overConstrained || fk.overConstrained,
+    // a closed loop (fk.overConstrained) is NOT over-constrained on its own —
+    // only a negative-mobility mechanism is (mobility() decides, planar-aware)
+    overConstrained: mob.overConstrained,
     converged,
   };
 }

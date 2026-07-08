@@ -4,6 +4,34 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Closed-loop kinematics — squares now articulate (2026-07-07)
+
+- **Locked-length mechanisms with closed loops now close correctly.** The tree
+  FK alone leaves a 4-bar's loop-closing joint open, so driving a pivot broke
+  member lengths and only some pivots did anything. `solvePose` now detects
+  loop-closing (back-edge) pivots and runs a **damped Gauss-Newton (Levenberg-
+  Marquardt) loop closure** in `kinematics.ts`: the spanning-tree pivot angles
+  are the variables; residuals are **closure** (each loop pivot's node must
+  agree between its two bodies — weighted high so every member length stays
+  exact), a soft **angle** pull toward each slider target (tree + loop pivots'
+  measured angle, so driving ANY pivot moves the loop), and the **drag** target
+  when dragging. Open chains keep the exact tree FK / CCD path unchanged.
+- **`setPivotAngle` writes back the pushed-around pivots:** after setting the
+  driven angle, in a locked looped mechanism it solves and writes every OTHER
+  pivot's resolved angle back to the document (the driven one stays put), so the
+  passive sliders track. No-op for open chains (solve is identity there).
+- **Mobility readout is planar-aware.** Grübler per component now uses the
+  **planar** count `3(b−1) − 2j` when a component's pivot axes are all parallel
+  (else spatial `6(b−1) − 5j`); a planar 4-bar reads **1 DOF** instead of the
+  spatial formula's −2. Over-constrained now means *negative* mobility, not
+  merely "has a loop" (the old `fk.overConstrained` back-edge flag no longer
+  marks the result over-constrained). Verified in-browser: a square of 4 pipes +
+  4 pivots reads 1 DOF, and driving one pivot flexes it into a closed rhombus
+  with all four side lengths preserved and the other three sliders moving.
+- **Deferred:** the CrashCat Play-mode physics already handled loops; this brings
+  the *kinematic* locked-pose path to parity for planar loops. General 3D
+  spatial loops solve too (least-squares) but aren't separately tuned.
+
 ## Marquee (rubber-band) select (2026-07-07)
 
 - **Drag on empty space in the select tool = a rubber-band selection.** The

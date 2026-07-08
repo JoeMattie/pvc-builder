@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type Pt, marqueeFromDrag, memberSelectedBy, segmentsIntersect } from './marquee';
+import { marqueeFromDrag, memberSelectedBy, type Pt, segmentsIntersect } from './marquee';
 
 const P = (x: number, y: number): Pt => ({ x, y });
 

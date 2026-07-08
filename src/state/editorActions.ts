@@ -11,10 +11,10 @@ import {
   memberEndpoints,
   nodeById,
   resetPivots as resetPivotsOp,
+  rotateMember,
   setMemberLengthM,
   setNodePosition,
   setPivotAngle as setPivotAngleOp,
-  rotateMember,
   setWrapRigid as setWrapRigidOp,
   startPath,
   translateMember,
@@ -265,12 +265,7 @@ export function translateMemberBy(memberId: string, delta: Vec3): void {
 }
 
 /** Rotate a whole member about `pivot` around `axis` by `angleRad` (rotate tool). */
-export function rotateMemberBy(
-  memberId: string,
-  axis: Vec3,
-  angleRad: number,
-  pivot: Vec3,
-): void {
+export function rotateMemberBy(memberId: string, axis: Vec3, angleRad: number, pivot: Vec3): void {
   useAppStore.getState().updateCurrent((d) => rotateMember(d, memberId, axis, angleRad, pivot));
 }
 
@@ -281,9 +276,23 @@ export function createPivotAt(nodeId: string): void {
   useAppStore.getState().updateCurrent((d) => addPivot(d, nodeId).design);
 }
 
-/** Set a pivot's angle (the angle slider). */
+/** Set a pivot's angle (the angle slider). In a locked mechanism with closed
+ * loops, driving one pivot pushes the others: after setting the driven angle we
+ * solve and write back every OTHER pivot's resolved angle (the driven one stays
+ * where the user put it), so the loop stays closed and the passive sliders
+ * track. For open chains the solve is an identity, so this is a no-op there. */
 export function setPivotAngle(pivotId: string, angleRad: number): void {
-  useAppStore.getState().updateCurrent((d) => setPivotAngleOp(d, pivotId, angleRad));
+  useAppStore.getState().updateCurrent((d) => {
+    const next = setPivotAngleOp(d, pivotId, angleRad);
+    if (!next.lengthsLocked || next.pivots.length < 2) return next;
+    const r = solve(next, { lengthsLocked: true, pivotAngles: pivotAnglesOf(next) }, 'pose');
+    return {
+      ...next,
+      pivots: next.pivots.map((p) =>
+        p.id === pivotId ? p : { ...p, angleRad: r.pivotAngles[p.id] ?? p.angleRad ?? 0 },
+      ),
+    };
+  });
 }
 
 /** Reset all pivots to their rest angle. */

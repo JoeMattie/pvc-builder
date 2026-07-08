@@ -147,6 +147,50 @@ describe('solve — multi-pivot chain', () => {
   });
 });
 
+describe('solve — closed 4-bar loop (a square with 4 pivots)', () => {
+  function square(): Design {
+    const d = createEmptyDesign('d', 'square');
+    d.nodes.push(
+      { id: 'n0', position: V(0, 0, 0) },
+      { id: 'n1', position: V(1, 0, 0) },
+      { id: 'n2', position: V(1, 0, 1) },
+      { id: 'n3', position: V(0, 0, 1) },
+    );
+    d.members.push(
+      { id: 'm0', kind: 'straight', nodeA: 'n0', nodeB: 'n1', size: '3/4"' },
+      { id: 'm1', kind: 'straight', nodeA: 'n1', nodeB: 'n2', size: '3/4"' },
+      { id: 'm2', kind: 'straight', nodeA: 'n2', nodeB: 'n3', size: '3/4"' },
+      { id: 'm3', kind: 'straight', nodeA: 'n3', nodeB: 'n0', size: '3/4"' },
+    );
+    d.pivots.push(
+      { id: 'pv1', nodeId: 'n1', memberA: 'm0', memberB: 'm1', axis: V(0, 1, 0) },
+      { id: 'pv2', nodeId: 'n2', memberA: 'm1', memberB: 'm2', axis: V(0, 1, 0) },
+      { id: 'pv3', nodeId: 'n3', memberA: 'm2', memberB: 'm3', axis: V(0, 1, 0) },
+      { id: 'pv0', nodeId: 'n0', memberA: 'm3', memberB: 'm0', axis: V(0, 1, 0) },
+    );
+    return d;
+  }
+
+  it('reports planar mobility 1, not over-constrained (was spatial −2)', () => {
+    const r = solve(square(), { lengthsLocked: true, pivotAngles: {} }, 'pose');
+    expect(r.diagnostics.mobilityDof).toBe(1);
+    expect(r.diagnostics.overConstrained).toBe(false);
+  });
+
+  it('driving one pivot flexes the loop and preserves EVERY member length', () => {
+    const d = square();
+    const r = solve(d, { lengthsLocked: true, pivotAngles: { pv1: 0.4 } }, 'pose');
+    const L = (a: string, b: string) => dist(at(r, a), at(r, b));
+    // all four sides stay unit length (lengths locked → the loop must close)
+    expect(L('n0', 'n1')).toBeCloseTo(1, 3);
+    expect(L('n1', 'n2')).toBeCloseTo(1, 3);
+    expect(L('n2', 'n3')).toBeCloseTo(1, 3);
+    expect(L('n3', 'n0')).toBeCloseTo(1, 3);
+    // and the mechanism actually moved (a free corner left its rest spot)
+    expect(dist(at(r, 'n2'), V(1, 0, 1))).toBeGreaterThan(0.02);
+  });
+});
+
 describe('solve — determinism & rigidity', () => {
   it('is reproducible for identical inputs', () => {
     const d = singlePivot();

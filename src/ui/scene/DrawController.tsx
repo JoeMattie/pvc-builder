@@ -75,7 +75,10 @@ export function DrawController() {
   const projectToScreen = (w: Vec3): Pt => {
     const rect = gl.domElement.getBoundingClientRect();
     const v = screenTmp.set(w.x, w.y, w.z).project(camera);
-    return { x: rect.left + (v.x * 0.5 + 0.5) * rect.width, y: rect.top + (-v.y * 0.5 + 0.5) * rect.height };
+    return {
+      x: rect.left + (v.x * 0.5 + 0.5) * rect.width,
+      y: rect.top + (-v.y * 0.5 + 0.5) * rect.height,
+    };
   };
   const memberScreenPts = (m: Member): Pt[] => {
     const design = useAppStore.getState().current;
@@ -129,7 +132,9 @@ export function DrawController() {
       // select tool: a drag on empty space is a rubber-band marquee
       if (liveTool === 'select') {
         if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > CLICK_SLOP_PX) {
-          useEditorStore.getState().setMarquee({ x0: startX, y0: startY, x1: ev.clientX, y1: ev.clientY });
+          useEditorStore
+            .getState()
+            .setMarquee({ x0: startX, y0: startY, x1: ev.clientX, y1: ev.clientY });
         }
         return;
       }

@@ -9,6 +9,8 @@ import {
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect } from 'react';
 import { MOUSE, Vector3 } from 'three';
+import { nodeById } from '../../design/docOps';
+import { marqueeFromDrag, memberSelectedBy, type Pt } from '../../design/marquee';
 import type { Vec3 } from '../../schema';
 import { solve } from '../../solver';
 import {
@@ -20,8 +22,6 @@ import {
   stepPhysics,
   stopPhysics,
 } from '../../solver/physics';
-import { nodeById } from '../../design/docOps';
-import { marqueeFromDrag, memberSelectedBy, type Pt } from '../../design/marquee';
 import { bumpAnim, easedPos, stepEasing } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
 import {
