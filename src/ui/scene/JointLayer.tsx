@@ -9,14 +9,16 @@
 //     eye bolt rings each end, a knotted cord runs between them, and a ball sits
 //     at the joint.
 // Everything is placed at eased render positions so it glides with the pipe.
+import { Html } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
+import { ArrowLeftRight } from 'lucide-react';
 import { CatmullRomCurve3, Vector3 } from 'three';
 import { memberById, nodeById } from '../../design/docOps';
 import { add, normalize, scale, sub } from '../../geometry/math3';
 import { type Joint, pipeSpec, type Vec3 } from '../../schema';
 import { easedPos, useAnim } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
-import { selectMember } from '../../state/editorActions';
+import { swapJointReceiver } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
@@ -79,7 +81,7 @@ function AnchorTee({
   const onSelect = selectable
     ? (e: ThreeEvent<MouseEvent>) => {
         e.stopPropagation();
-        selectMember(mover.id);
+        useEditorStore.getState().selectJoint(joint.id);
       }
     : undefined;
 
@@ -164,7 +166,7 @@ function WrapJoint({
   const onSelect = selectable
     ? (e: ThreeEvent<MouseEvent>) => {
         e.stopPropagation();
-        selectMember(mover.id);
+        useEditorStore.getState().selectJoint(joint.id);
       }
     : undefined;
 
@@ -247,7 +249,7 @@ function FreeJoint({
   const onSelect = selectable
     ? (e: ThreeEvent<MouseEvent>) => {
         e.stopPropagation();
-        selectMember(mover.id);
+        useEditorStore.getState().selectJoint(joint.id);
       }
     : undefined;
 
@@ -294,13 +296,20 @@ export function JointLayer() {
   useAnim((s) => s.v); // re-render while easing so joints track the pipe
   const design = useAppStore((s) => s.current);
   const tool = useEditorStore((s) => s.tool);
-  const selectedIds = useEditorStore((s) => s.selectedIds);
+  const selectedJointId = useEditorStore((s) => s.selectedJointId);
   const night = useThemeStore((s) => s.night);
   if (!design || design.members.length > MAX_JOINT_MEMBERS) return null;
   const pal = scenePalette(night);
   const editing = tool === 'select' || tool === 'move' || tool === 'rotate';
   const selectable = tool === 'select';
-  const isSelected = (j: Joint) => selectedIds.includes(j.mover);
+  // a joint is a first-class selectable — selecting it highlights the hardware
+  // ONLY (not the pipe), and swap/switch acts on it while it stays selected
+  const isSelected = (j: Joint) => selectedJointId === j.id;
+  const selectedJoint = design.joints.find((j) => j.id === selectedJointId);
+  const swapNode =
+    selectable && selectedJoint && !selectedJoint.onBody
+      ? (easedPos(selectedJoint.nodeId) ?? nodeById(design, selectedJoint.nodeId)?.position)
+      : undefined;
   // right-clicking the joint hardware (the collar / ball) re-opens its menu —
   // the pipe ends are pulled back at a free pivot, so the pipe alone can't catch
   // a click on the ball. Uses the joint's own node + mover (not a raycast guess).
@@ -350,6 +359,25 @@ export function JointLayer() {
           />
         );
       })}
+      {/* floating switch gizmo next to a selected end-to-end joint: swaps which
+          pipe wraps/receives which, keeping the joint selected */}
+      {swapNode && selectedJoint && (
+        <Html position={[swapNode.x, swapNode.y, swapNode.z]} center zIndexRange={[60, 0]}>
+          <button
+            type="button"
+            title="Swap which pipe wraps which"
+            aria-label="Swap joint receiver"
+            onClick={(e) => {
+              e.stopPropagation();
+              swapJointReceiver(selectedJoint.id);
+            }}
+            style={{ transform: 'translate(20px, -20px)' }}
+            className="flex h-6 w-6 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-md hover:bg-accent"
+          >
+            <ArrowLeftRight size={13} />
+          </button>
+        </Html>
+      )}
     </>
   );
 }
