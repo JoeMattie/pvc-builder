@@ -205,6 +205,27 @@ export function bendMember(
   return { ...design, members: design.members.map((mm) => (mm.id === memberId ? formed : mm)) };
 }
 
+/** Move one control point of a formed (curve) member — the Bend tool's tweak
+ * handles. No-op for a straight member or an out-of-range index. */
+export function moveControlPoint(
+  design: Design,
+  memberId: string,
+  index: number,
+  position: Vec3,
+): Design {
+  return {
+    ...design,
+    members: design.members.map((m) => {
+      if (m.id !== memberId || m.kind !== 'formed') return m;
+      if (index < 0 || index >= m.controlPoints.length) return m;
+      return {
+        ...m,
+        controlPoints: m.controlPoints.map((cp, i) => (i === index ? position : cp)),
+      };
+    }),
+  };
+}
+
 /** Change a member's nominal size (the right-click size switcher). Reducing
  * tees are DERIVED from the receiver/mover sizes (see `resolveFittings`), so no
  * joint record changes — the unions re-resolve automatically. */

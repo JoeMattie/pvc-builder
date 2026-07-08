@@ -15,6 +15,7 @@ import {
   measurementEndPos,
   measurePerp,
   memberEndpoints,
+  moveControlPoint,
   nodeById,
   reconcileBodyJoints,
   removeMeasurement,
@@ -547,6 +548,12 @@ export function bendMemberAt(memberId: string, t: number, perpOffset: Vec3): voi
   const fillet = MIN_BEND_RADIUS_FACTOR * pipeSpec(size).odM;
   const lockEndAngles = useEditorStore.getState().bendLockEndAngles;
   updateReconciled((d) => bendMember(d, memberId, t, perpOffset, fillet, { lockEndAngles }));
+}
+
+/** Move a formed member's control point (the Bend tool's tweak handles),
+ * clamped to the ground. */
+export function moveFormedControlPoint(memberId: string, index: number, raw: Vec3): void {
+  updateReconciled((d) => moveControlPoint(d, memberId, index, clampGround(raw)));
 }
 
 /** Delete a measurement. */

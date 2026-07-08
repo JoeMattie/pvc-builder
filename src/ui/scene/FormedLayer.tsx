@@ -1,18 +1,69 @@
 // Renders formed (heat-bent) pipe as a smooth swept tube along a Catmull-Rom
 // spline through nodeA → control points → nodeB (planfile §6), at true OD.
 // Endpoints use eased render positions so the tube glides with the design.
-import type { ThreeEvent } from '@react-three/fiber';
-import { CatmullRomCurve3, Vector3 } from 'three';
+import { type ThreeEvent, useThree } from '@react-three/fiber';
+import { useMemo } from 'react';
+import { CatmullRomCurve3, Raycaster, Vector2, Vector3 } from 'three';
 import { nodeById } from '../../design/docOps';
 import { type FormedMember, pipeSpec, type Vec3 } from '../../schema';
 import { easedPos, useAnim } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
-import { selectMember } from '../../state/editorActions';
+import { moveFormedControlPoint, selectMember } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
+import { dominantAxisNormal, rayToPlane } from './ground';
 
 const toV3 = (p: Vec3) => new Vector3(p.x, p.y, p.z);
+
+/** A draggable control-point handle on a formed pipe (Bend tool). Dragging it
+ * rides a view-facing plane through the point, so the bend follows the cursor.
+ * Window listeners keep the drag alive off the tiny handle. */
+function ControlHandle({ memberId, index, pos }: { memberId: string; index: number; pos: Vec3 }) {
+  const camera = useThree((s) => s.camera);
+  const gl = useThree((s) => s.gl);
+  const controls = useThree((s) => s.controls) as { enabled: boolean } | null;
+  const rc = useMemo(() => new Raycaster(), []);
+  const ndc = useMemo(() => new Vector2(), []);
+  const fwd = useMemo(() => new Vector3(), []);
+
+  const onDown = (e: ThreeEvent<PointerEvent>) => {
+    if (e.nativeEvent.button !== 0) return;
+    e.stopPropagation();
+    camera.getWorldDirection(fwd);
+    const normal = dominantAxisNormal({ x: fwd.x, y: fwd.y, z: fwd.z });
+    if (controls) controls.enabled = false;
+    useAppStore.getState().beginGesture();
+    const el = gl.domElement;
+    const move = (ev: PointerEvent) => {
+      const rect = el.getBoundingClientRect();
+      ndc.set(
+        ((ev.clientX - rect.left) / rect.width) * 2 - 1,
+        -((ev.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      rc.setFromCamera(ndc, camera);
+      const g = rayToPlane(rc.ray, pos, normal);
+      if (g) moveFormedControlPoint(memberId, index, g);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      if (controls) controls.enabled = true;
+      useAppStore.getState().endGesture();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  };
+
+  return (
+    <mesh position={[pos.x, pos.y, pos.z]} onPointerDown={onDown}>
+      <sphereGeometry args={[0.016, 14, 12]} />
+      <meshBasicMaterial color="#e08a00" transparent opacity={0.85} />
+    </mesh>
+  );
+}
 
 /** Catmull-Rom curve through a formed member's eased points, or null. */
 export function formedCurve(
@@ -40,6 +91,8 @@ export function FormedLayer() {
   const selected = new Set(selectedIds);
   const onSelect = tool === 'select' ? selectMember : undefined;
   const at = (id: string): Vec3 | undefined => easedPos(id) ?? nodeById(design, id)?.position;
+  // the Bend tool shows draggable control-point handles so bends can be tweaked
+  const showHandles = tool === 'bend';
 
   return (
     <>
@@ -56,19 +109,31 @@ export function FormedLayer() {
             }
           : undefined;
         return (
-          // biome-ignore lint/a11y/noStaticElementInteractions: r3f <mesh> is a three.js scene node, not a DOM element
-          <mesh key={m.id} onClick={click} castShadow receiveShadow>
-            <tubeGeometry args={[curve, segs, r, 14, false]} />
-            <meshPhysicalMaterial
-              color={color}
-              roughness={0.38}
-              metalness={0}
-              clearcoat={0.6}
-              clearcoatRoughness={0.35}
-              emissive={isSel ? '#2a78d6' : '#000000'}
-              emissiveIntensity={isSel ? 0.35 : 0}
-            />
-          </mesh>
+          <group key={m.id}>
+            {/* biome-ignore lint/a11y/noStaticElementInteractions: r3f <mesh> is a scene node */}
+            <mesh onClick={click} castShadow receiveShadow>
+              <tubeGeometry args={[curve, segs, r, 14, false]} />
+              <meshPhysicalMaterial
+                color={color}
+                roughness={0.38}
+                metalness={0}
+                clearcoat={0.6}
+                clearcoatRoughness={0.35}
+                emissive={isSel || showHandles ? '#2a78d6' : '#000000'}
+                emissiveIntensity={isSel ? 0.35 : showHandles ? 0.12 : 0}
+              />
+            </mesh>
+            {showHandles &&
+              m.controlPoints.map((cp, i) => (
+                <ControlHandle
+                  // biome-ignore lint/suspicious/noArrayIndexKey: index IS the control-point identity
+                  key={i}
+                  memberId={m.id}
+                  index={i}
+                  pos={cp}
+                />
+              ))}
+          </group>
         );
       })}
     </>

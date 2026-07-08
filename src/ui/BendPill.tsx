@@ -11,7 +11,9 @@ export function BendPill() {
   if (tool !== 'bend') return null;
   return (
     <div className="-translate-x-1/2 absolute top-4 left-1/2 flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-sm">
-      <span className="text-[11px] text-muted-foreground">Drag a pipe to bend it</span>
+      <span className="text-[11px] text-muted-foreground">
+        Drag a pipe to bend it · drag the orange points to tweak
+      </span>
       <div className="h-5 w-px bg-border" />
       <button
         type="button"

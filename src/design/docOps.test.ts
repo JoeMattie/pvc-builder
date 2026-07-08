@@ -14,6 +14,7 @@ import {
   measurementLengthM,
   measurePerp,
   memberLengthM,
+  moveControlPoint,
   nodeById,
   nodeDegrees,
   reconcileBodyJoints,
@@ -558,6 +559,18 @@ describe('bendMember', () => {
       expect(bent.controlPoints[1]!.z).toBeGreaterThan(0.2);
       expect(Math.abs(bent.controlPoints[2]!.z)).toBeLessThan(1e-9);
     }
+  });
+
+  it('moveControlPoint tweaks one control point of a bent pipe', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0)]);
+    const bent = bendMember(design, memberIds[0]!, 0.5, V(0, 0, 0.2), 0.06, {
+      lockEndAngles: false,
+    });
+    const out = moveControlPoint(bent, memberIds[0]!, 0, V(0.5, 0, 0.5));
+    const m = out.members.find((x) => x.id === memberIds[0])!;
+    if (m.kind === 'formed') expect(m.controlPoints[0]).toEqual(V(0.5, 0, 0.5));
+    // a straight member or bad index is a no-op
+    expect(moveControlPoint(design, memberIds[0]!, 0, V(9, 9, 9))).toEqual(design);
   });
 
   it('re-bends an already-bent member (live drag) and clamps the pull', () => {

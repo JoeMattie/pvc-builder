@@ -35,6 +35,7 @@ import {
   finishFormed,
   finishPath,
   jointOrientationsOf,
+  moveFormedControlPoint,
   pivotAnglesOf,
   placeDrawAtDistance,
   placeDrawPoint,
@@ -333,6 +334,8 @@ export function EditorShell() {
     hook.deleteMeasurement = (id: string) => deleteMeasurement(id);
     hook.bendMember = (memberId: string, t: number, perpOffset: Vec3) =>
       bendMemberAt(memberId, t, perpOffset);
+    hook.moveControlPoint = (memberId: string, index: number, raw: Vec3) =>
+      moveFormedControlPoint(memberId, index, raw);
     hook.selectMember = (id: string) => selectMember(id);
     hook.selectJoint = (id: string | null) => useEditorStore.getState().selectJoint(id);
     hook.clearSelection = () => clearSelection();
