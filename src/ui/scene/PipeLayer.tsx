@@ -63,9 +63,10 @@ export function PipeLayer() {
   const color = scenePalette(night).pvc;
   const model = design ? buildPipeModel(design, easedPos) : null;
   if (!model) return null;
-  // click-to-select works in the select tool and the move tool (so you can pick
-  // the pipe to translate without leaving the gizmo)
-  const onSelect = tool === 'select' || tool === 'move' ? selectMember : undefined;
+  // click-to-select works in the select / move / rotate tools (so you can pick
+  // the pipe to transform without leaving the gizmo)
+  const onSelect =
+    tool === 'select' || tool === 'move' || tool === 'rotate' ? selectMember : undefined;
   const selected = new Set(selectedIds);
 
   return (

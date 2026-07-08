@@ -4,6 +4,18 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Rotate tool (2026-07-07)
+
+- **Rotate tool: a 3-axis ring gizmo on the selected member.** Rings in the
+  axis-triad colours (X red / Y green / Z blue) at the member's midpoint;
+  dragging one turns the whole member (both endpoints + a formed pipe's control
+  points) about that world axis through the midpoint, tracking the cursor's
+  angle in the ring plane (free rotation, applied incrementally). `rotateMember`
+  (pure Rodrigues rotation, tested — length/bends preserved); the drag rides the
+  ring plane via `rayToPlane`. Click-to-select also works in the rotate tool.
+  Seam `__pvc.rotateMember(id, axis, angleRad, pivot)`. Pillbox button (no
+  hotkey — R is taken by reset-pivots).
+
 ## Drawing UX — click+drag, split snap toggles, 3D draw / Y-axis lock (2026-07-07)
 
 - **Click+drag drawing** alongside two-click: press places the first point,

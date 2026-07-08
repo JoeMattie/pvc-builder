@@ -14,6 +14,7 @@ import {
   setMemberLengthM,
   setNodePosition,
   setPivotAngle as setPivotAngleOp,
+  rotateMember,
   setWrapRigid as setWrapRigidOp,
   startPath,
   translateMember,
@@ -261,6 +262,16 @@ export function setMemberLength(memberId: string, lengthM: number): void {
 /** Translate a whole member by `delta` (the move tool's axis arrows). */
 export function translateMemberBy(memberId: string, delta: Vec3): void {
   useAppStore.getState().updateCurrent((d) => translateMember(d, memberId, delta));
+}
+
+/** Rotate a whole member about `pivot` around `axis` by `angleRad` (rotate tool). */
+export function rotateMemberBy(
+  memberId: string,
+  axis: Vec3,
+  angleRad: number,
+  pivot: Vec3,
+): void {
+  useAppStore.getState().updateCurrent((d) => rotateMember(d, memberId, axis, angleRad, pivot));
 }
 
 // ── pivots (Phase 4) ────────────────────────────────────────────────────────

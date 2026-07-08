@@ -2,7 +2,7 @@
 // docOps): every editing action is a pure `Design → Design` transform, applied
 // through appStore.updateCurrent so undo/autosave stay centralized. No
 // three.js / UI types here.
-import { add, cross, length, normalize, sub } from '../geometry/math3';
+import { add, cross, dot, length, normalize, sub } from '../geometry/math3';
 import type { Design, Member, Node, NominalSize, Pivot, Vec3, Wrap } from '../schema';
 import { makeId } from './ids';
 
@@ -151,6 +151,48 @@ export function translateMember(design: Design, memberId: string, delta: Vec3): 
       ? design.members.map((mm) =>
           mm.id === memberId && mm.kind === 'formed'
             ? { ...mm, controlPoints: mm.controlPoints.map(move) }
+            : mm,
+        )
+      : design.members;
+  return { ...design, nodes, members };
+}
+
+/** Rotate a point `p` about `pivot` around unit axis `k` by `angle` (Rodrigues). */
+function rotateAroundAxis(p: Vec3, pivot: Vec3, k: Vec3, angle: number): Vec3 {
+  const v = sub(p, pivot);
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  const kxv = cross(k, v);
+  const kv = dot(k, v) * (1 - c);
+  return add(pivot, {
+    x: v.x * c + kxv.x * s + k.x * kv,
+    y: v.y * c + kxv.y * s + k.y * kv,
+    z: v.z * c + kxv.z * s + k.z * kv,
+  });
+}
+
+/** Rotate a whole member by `angleRad` about `pivot` around world `axis` (the
+ * rotate tool): both endpoint nodes — and a formed pipe's control points —
+ * turn together, so lengths and bends are preserved. */
+export function rotateMember(
+  design: Design,
+  memberId: string,
+  axis: Vec3,
+  angleRad: number,
+  pivot: Vec3,
+): Design {
+  const m = memberById(design, memberId);
+  if (!m || length(axis) < 1e-9) return design;
+  const k = normalize(axis);
+  const rot = (p: Vec3): Vec3 => rotateAroundAxis(p, pivot, k, angleRad);
+  const nodes = design.nodes.map((n) =>
+    n.id === m.nodeA || n.id === m.nodeB ? { ...n, position: rot(n.position) } : n,
+  );
+  const members =
+    m.kind === 'formed'
+      ? design.members.map((mm) =>
+          mm.id === memberId && mm.kind === 'formed'
+            ? { ...mm, controlPoints: mm.controlPoints.map(rot) }
             : mm,
         )
       : design.members;

@@ -1,4 +1,4 @@
-import { MousePointer2, Move3d, Pencil, Rotate3d, Spline } from 'lucide-react';
+import { MousePointer2, Move3d, Pencil, Rotate3d, RotateCw, Spline } from 'lucide-react';
 import type { NominalSize } from '../schema';
 import { useEditorStore } from '../state/editorStore';
 
@@ -52,6 +52,19 @@ export function Pillbox() {
         }`}
       >
         <Move3d size={15} /> Move
+      </button>
+      <button
+        type="button"
+        aria-pressed={tool === 'rotate'}
+        onClick={() => setTool('rotate')}
+        title="Rotate pipe — axis rings"
+        className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium ${
+          tool === 'rotate'
+            ? 'bg-primary text-primary-foreground'
+            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+        }`}
+      >
+        <RotateCw size={15} /> Rotate
       </button>
       <button
         type="button"

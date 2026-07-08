@@ -40,7 +40,7 @@ import { FormedLayer } from './FormedLayer';
 import { IntersectionLayer } from './IntersectionLayer';
 import { PipeLayer } from './PipeLayer';
 import { PivotLayer } from './PivotLayer';
-import { MoveGizmo, SelectionHandles } from './SelectionHandles';
+import { MoveGizmo, RotateGizmo, SelectionHandles } from './SelectionHandles';
 import { WrapLayer } from './WrapLayer';
 
 /** Everything inside the Canvas: camera, studio lighting, ground grid + shadow
@@ -119,8 +119,9 @@ export function Scene() {
 
       {/* endpoint drag handles for the selected member */}
       {tool === 'select' && <SelectionHandles />}
-      {/* move-tool translate gizmo on the selected member */}
+      {/* move-tool translate gizmo / rotate-tool ring gizmo on the selection */}
       {tool === 'move' && <MoveGizmo />}
+      {tool === 'rotate' && <RotateGizmo />}
       <PivotLayer />
 
       {/* middle = pan, right = free rotate; left is reserved (drawing / select

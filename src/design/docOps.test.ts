@@ -10,6 +10,7 @@ import {
   nodeDegrees,
   removeWrap,
   resetPivots,
+  rotateMember,
   setMemberLengthM,
   setNodePosition,
   setPivotAngle,
@@ -135,6 +136,24 @@ describe('pivots', () => {
     const posed = setPivotAngle(added.design, added.pivotId!, 1.2);
     expect(posed.pivots[0]!.angleRad).toBe(1.2);
     expect(resetPivots(posed).pivots[0]!.angleRad).toBe(0);
+  });
+});
+
+describe('rotateMember', () => {
+  it('rotates both endpoints about a pivot, preserving length', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(0.4, 0, 0)]);
+    const before = memberLengthM(design, design.members[0]!);
+    const mid = V(0.2, 0, 0);
+    // 90° about +Y around the midpoint → the pipe now runs along Z
+    const out = rotateMember(design, memberIds[0]!, V(0, 1, 0), Math.PI / 2, mid);
+    const m = out.members[0]!;
+    const a = nodeById(out, m.nodeA)!.position;
+    const b = nodeById(out, m.nodeB)!.position;
+    expect(memberLengthM(out, m)).toBeCloseTo(before, 9);
+    // endpoints swing to ±Z about the midpoint, x collapses to the pivot x
+    expect(a.x).toBeCloseTo(0.2, 6);
+    expect(b.x).toBeCloseTo(0.2, 6);
+    expect(Math.abs(a.z - b.z)).toBeCloseTo(0.4, 6);
   });
 });
 

@@ -5,7 +5,7 @@ import { useMemo, useRef, useState } from 'react';
 import { type Ray, Raycaster, Vector2, Vector3 } from 'three';
 import { memberById, nodeById } from '../../design/docOps';
 import { closestAxisPointToRay } from '../../design/dragMath';
-import { dot, length, normalize, scale, sub } from '../../geometry/math3';
+import { cross, dot, length, normalize, scale, sub } from '../../geometry/math3';
 import { pipeSpec, type Vec3 } from '../../schema';
 import { easedPos, useAnim } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
@@ -13,12 +13,13 @@ import {
   dragLocked,
   dragMemberEndLength,
   dragNodeTo,
+  rotateMemberBy,
   translateMemberBy,
 } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { formatLength } from '../units';
-import { orientY } from './axis';
+import { orientY, orientZ } from './axis';
 import { dominantAxisNormal, rayToGround, rayToPlane } from './ground';
 
 /**
@@ -328,6 +329,86 @@ export function MoveGizmo() {
           sizeM={sizeM}
           gridStepM={gridStepM}
         />
+      ))}
+    </group>
+  );
+}
+
+/** One rotate ring of the rotate gizmo: dragging it turns the whole member about
+ * `axisKey` through the member's midpoint, tracking the cursor's angle in the
+ * ring's plane (so the drag reads as free rotation). */
+function RotateRing({
+  memberId,
+  pivot,
+  axisKey,
+  ringR,
+}: {
+  memberId: string;
+  pivot: Vec3;
+  axisKey: 'x' | 'y' | 'z';
+  ringR: number;
+}) {
+  const axis = AXIS_DIRS[axisKey];
+  const pivotRef = useRef<Vec3>(pivot);
+  const uRef = useRef<Vec3>({ x: 1, y: 0, z: 0 });
+  const vRef = useRef<Vec3>({ x: 0, y: 0, z: 1 });
+  const lastAngle = useRef(0);
+  const angleAt = (g: Vec3): number => {
+    const d = sub(g, pivotRef.current);
+    return Math.atan2(dot(d, vRef.current), dot(d, uRef.current));
+  };
+  const { start, dragging } = useGroundDrag(
+    (g) => {
+      const ang = angleAt(g);
+      // shortest signed step since the last frame, applied incrementally
+      const delta = Math.atan2(Math.sin(ang - lastAngle.current), Math.cos(ang - lastAngle.current));
+      if (delta !== 0) {
+        rotateMemberBy(memberId, axis, delta, pivotRef.current);
+        lastAngle.current = ang;
+      }
+    },
+    { project: (ray) => rayToPlane(ray, pivotRef.current, axis) },
+  );
+  const onDown = (e: ThreeEvent<PointerEvent>) => {
+    pivotRef.current = pivot;
+    const ref = Math.abs(axis.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 };
+    uRef.current = normalize(cross(axis, ref));
+    vRef.current = cross(axis, uRef.current);
+    const g = rayToPlane(e.ray, pivot, axis);
+    lastAngle.current = g ? angleAt(g) : 0;
+    start(e);
+  };
+  return (
+    <mesh position={[pivot.x, pivot.y, pivot.z]} quaternion={orientZ(axis)} onPointerDown={onDown}>
+      <torusGeometry args={[ringR, Math.max(ringR * 0.045, 0.004), 8, 48]} />
+      <meshBasicMaterial color={AXIS_COLORS[axisKey]} opacity={dragging ? 1 : 0.8} transparent />
+    </mesh>
+  );
+}
+
+/** The rotate tool's 3-axis ring gizmo, centred on the selected member. */
+export function RotateGizmo() {
+  useAnim((s) => s.v);
+  const design = useAppStore((s) => s.current);
+  const selectedIds = useEditorStore((s) => s.selectedIds);
+  if (!design) return null;
+  const member = selectedIds[0] ? memberById(design, selectedIds[0]) : undefined;
+  if (!member) return null;
+  const a = nodeById(design, member.nodeA);
+  const b = nodeById(design, member.nodeB);
+  if (!a || !b) return null;
+  const aPos = easedPos(a.id) ?? a.position;
+  const bPos = easedPos(b.id) ?? b.position;
+  const pivot: Vec3 = {
+    x: (aPos.x + bPos.x) / 2,
+    y: (aPos.y + bPos.y) / 2,
+    z: (aPos.z + bPos.z) / 2,
+  };
+  const ringR = Math.max(0.08, Math.min(0.28, length(sub(bPos, aPos)) * 0.6));
+  return (
+    <group>
+      {(['x', 'y', 'z'] as const).map((k) => (
+        <RotateRing key={k} memberId={member.id} pivot={pivot} axisKey={k} ringR={ringR} />
       ))}
     </group>
   );

@@ -36,6 +36,7 @@ import {
   resetPivots,
   selectMember,
   setMemberLength,
+  rotateMemberBy,
   setPivotAngle,
   setWrapRigid,
   snapDrawPoint,
@@ -195,7 +196,7 @@ export function EditorShell() {
         lengthM: memberLengthM(d, m),
       }));
     };
-    hook.setTool = (tool: 'select' | 'draw' | 'formed' | 'pivot' | 'move') =>
+    hook.setTool = (tool: 'select' | 'draw' | 'formed' | 'pivot' | 'move' | 'rotate') =>
       useEditorStore.getState().setTool(tool);
     hook.setProjection = (p: 'ortho' | 'perspective') => useEditorStore.getState().setProjection(p);
     hook.setDrawSize = (size: '1/2"' | '3/4"') => useEditorStore.getState().setDrawSize(size);
@@ -213,6 +214,8 @@ export function EditorShell() {
     hook.setMemberLength = (id: string, lengthM: number) => setMemberLength(id, lengthM);
     hook.dragNode = (id: string, raw: Vec3) => dragNodeTo(id, raw);
     hook.moveMember = (id: string, delta: Vec3) => translateMemberBy(id, delta);
+    hook.rotateMember = (id: string, axis: Vec3, angleRad: number, pivot: Vec3) =>
+      rotateMemberBy(id, axis, angleRad, pivot);
     hook.getIntersections = () => {
       const d = useAppStore.getState().current;
       return d ? [...intersectingMembers(d)] : [];
