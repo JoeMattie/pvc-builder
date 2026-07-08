@@ -166,7 +166,9 @@ export function SelectionHandles() {
   useAnim((s) => s.v);
   if (!design) return null;
   const member = selectedIds[0] ? memberById(design, selectedIds[0]) : undefined;
-  if (!member) return null;
+  // length arrows + endpoint drag apply to straight pipe only (formed pipes are
+  // edited by their control points, a later slice)
+  if (member?.kind !== 'straight') return null;
   const a = nodeById(design, member.nodeA);
   const b = nodeById(design, member.nodeB);
   if (!a || !b) return null;

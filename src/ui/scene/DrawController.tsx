@@ -1,12 +1,19 @@
 import { Html, Line } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
 import { useRef, useState } from 'react';
+import { CatmullRomCurve3, Vector3 } from 'three';
 import { nodeById } from '../../design/docOps';
 import type { SnapResult } from '../../design/snapping';
 import { length, sub } from '../../geometry/math3';
 import { pipeSpec } from '../../schema';
 import { useAppStore } from '../../state/appStore';
-import { clearSelection, placeDrawPoint, snapDrawPoint } from '../../state/editorActions';
+import {
+  clearSelection,
+  placeDrawPoint,
+  placeFormedPoint,
+  snapDrawPoint,
+  snapFormedPoint,
+} from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { formatLength } from '../units';
@@ -31,15 +38,17 @@ export function DrawController() {
     s.current && drawingFromNodeId ? nodeById(s.current, drawingFromNodeId)?.position : undefined,
   );
   const units = useAppStore((s) => s.current?.unitsPreference ?? 'imperial');
+  const formedPoints = useEditorStore((s) => s.formedPoints);
   const [preview, setPreview] = useState<SnapResult | null>(null);
   const down = useRef<{ x: number; y: number } | null>(null);
 
   const odR = pipeSpec(drawSize).odM / 2;
 
   const onMove = (e: ThreeEvent<PointerEvent>) => {
-    if (tool !== 'draw') return;
     const g = rayToGround(e.ray);
-    if (g) setPreview(snapDrawPoint(g, e.nativeEvent.shiftKey));
+    if (!g) return;
+    if (tool === 'draw') setPreview(snapDrawPoint(g, e.nativeEvent.shiftKey));
+    else if (tool === 'formed') setPreview(snapFormedPoint(g));
   };
 
   const onDown = (e: ThreeEvent<PointerEvent>) => {
@@ -57,10 +66,16 @@ export function DrawController() {
     const g = rayToGround(e.ray);
     if (!g) return;
     if (tool === 'draw') setPreview(placeDrawPoint(g, e.nativeEvent.shiftKey));
+    else if (tool === 'formed') setPreview(placeFormedPoint(g));
     else clearSelection();
   };
 
   const showPreview = tool === 'draw' && preview;
+  // formed preview: a spline through the committed points + the cursor
+  const formedPreview =
+    tool === 'formed' && preview
+      ? [...formedPoints, preview.position].map((p) => new Vector3(p.x, p.y, p.z))
+      : null;
   const p = preview?.position;
   const guide = preview?.guide;
   const segLen = fromPos && p ? length(sub(p, fromPos)) : 0;
@@ -135,6 +150,38 @@ export function DrawController() {
               dashSize={0.03}
               gapSize={0.02}
             />
+          )}
+        </>
+      )}
+
+      {/* formed (heat-bent) preview: committed markers + a ghost spline tube */}
+      {tool === 'formed' && (
+        <>
+          {formedPoints.map((cp) => (
+            <mesh key={`${cp.x},${cp.y},${cp.z}`} position={[cp.x, cp.y, cp.z]}>
+              <sphereGeometry args={[Math.max(odR * 1.2, 0.012), 14, 10]} />
+              <meshBasicMaterial color="#2a78d6" />
+            </mesh>
+          ))}
+          {p && (
+            <mesh position={[p.x, p.y, p.z]}>
+              <sphereGeometry args={[Math.max(odR * 1.2, 0.012), 14, 10]} />
+              <meshBasicMaterial color="#2a78d6" transparent opacity={0.85} />
+            </mesh>
+          )}
+          {formedPreview && formedPreview.length >= 2 && (
+            <mesh>
+              <tubeGeometry
+                args={[
+                  new CatmullRomCurve3(formedPreview, false, 'catmullrom', 0.5),
+                  Math.max(24, formedPreview.length * 20),
+                  odR,
+                  12,
+                  false,
+                ]}
+              />
+              <meshStandardMaterial color="#2a78d6" transparent opacity={0.3} roughness={0.5} />
+            </mesh>
           )}
         </>
       )}

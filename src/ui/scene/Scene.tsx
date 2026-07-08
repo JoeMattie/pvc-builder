@@ -16,6 +16,8 @@ import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
 import { DrawController } from './DrawController';
 import { FittingLayer } from './FittingLayer';
+import { FormedLayer } from './FormedLayer';
+import { IntersectionLayer } from './IntersectionLayer';
 import { PipeLayer } from './PipeLayer';
 import { SelectionHandles } from './SelectionHandles';
 
@@ -86,7 +88,9 @@ export function Scene() {
       />
 
       <PipeLayer />
+      <FormedLayer />
       <FittingLayer />
+      <IntersectionLayer />
 
       {/* ground-plane pointer target + shadow catcher + draw preview */}
       <DrawController />

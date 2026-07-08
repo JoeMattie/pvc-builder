@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { DEFAULT_GRID_M } from '../design/snapping';
 import { getSnapPref, setSnapPref } from '../persistence/prefs';
-import type { NominalSize } from '../schema';
+import type { NominalSize, Vec3 } from '../schema';
 
 /** Snapping configuration (the snap pill). A workspace preference, persisted
  * to localStorage, never in the document. */
@@ -34,8 +34,9 @@ function initialSnap(): SnapSettings {
 // undo history — that is the document's job (appStore). Resolved fittings will
 // also be cached here from Phase 2 on.
 
-/** Active editing tool. v1 ships select + draw; formed/pivot arrive later. */
-export type Tool = 'select' | 'draw';
+/** Active editing tool. `formed` draws a heat-bent spline; pivot arrives in
+ * Phase 4. */
+export type Tool = 'select' | 'draw' | 'formed';
 
 /** Camera projection: orthographic isometric by default, one-toggle
  * perspective (planfile §1). */
@@ -50,6 +51,8 @@ export interface EditorState {
   /** while drawing a path, the node the next segment extends from (null = the
    * pen is up / no path in progress) */
   drawingFromNodeId: string | null;
+  /** the committed points of the in-progress formed (heat-bent) pipe */
+  formedPoints: Vec3[];
   /** snapping configuration (the snap pill) */
   snap: SnapSettings;
   setTool(tool: Tool): void;
@@ -58,6 +61,8 @@ export interface EditorState {
   setSelection(ids: string[]): void;
   setDrawSize(size: NominalSize): void;
   setDrawingFrom(nodeId: string | null): void;
+  pushFormedPoint(p: Vec3): void;
+  clearFormedPoints(): void;
   setSnap(patch: Partial<SnapSettings>): void;
   /** reset everything transient (e.g. when switching designs) — keeps snap */
   resetTransient(): void;
@@ -69,14 +74,19 @@ const INITIAL = {
   selectedIds: [] as string[],
   drawSize: '3/4"' as NominalSize,
   drawingFromNodeId: null as string | null,
+  formedPoints: [] as Vec3[],
 };
 
 export const useEditorStore = create<EditorState>()((set, get) => ({
   ...INITIAL,
   snap: initialSnap(),
   setTool(tool) {
-    // leaving the draw tool ends any path in progress
-    set({ tool, drawingFromNodeId: tool === 'draw' ? get().drawingFromNodeId : null });
+    // leaving a drawing tool ends any path in progress
+    set({
+      tool,
+      drawingFromNodeId: tool === 'draw' ? get().drawingFromNodeId : null,
+      formedPoints: tool === 'formed' ? get().formedPoints : [],
+    });
   },
   setProjection(projection) {
     set({ projection });
@@ -92,6 +102,12 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   },
   setDrawingFrom(nodeId) {
     set({ drawingFromNodeId: nodeId });
+  },
+  pushFormedPoint(p) {
+    set({ formedPoints: [...get().formedPoints, p] });
+  },
+  clearFormedPoints() {
+    set({ formedPoints: [] });
   },
   setSnap(patch) {
     const next = { ...get().snap, ...patch };

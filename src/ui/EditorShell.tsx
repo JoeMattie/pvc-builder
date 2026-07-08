@@ -1,14 +1,18 @@
 import { Box, ChevronLeft, Lock, LockOpen, Moon, Redo2, Sun, Undo2 } from 'lucide-react';
 import { useEffect } from 'react';
-import { deleteMember, memberLengthM } from '../design/docOps';
+import { deleteMember, memberById, memberLengthM } from '../design/docOps';
 import { resolveFittings } from '../design/fittings';
+import { analyzeFormed } from '../design/formed';
+import { intersectingMembers } from '../design/intersections';
 import type { Vec3 } from '../schema';
 import { useAppStore } from '../state/appStore';
 import {
   clearSelection,
   dragNodeTo,
+  finishFormed,
   finishPath,
   placeDrawPoint,
+  placeFormedPoint,
   selectMember,
   setMemberLength,
   snapDrawPoint,
@@ -65,6 +69,7 @@ export function EditorShell() {
 
       if (e.key === 'Escape' || e.key === 'Enter') {
         if (editor.drawingFromNodeId) finishPath();
+        else if (editor.formedPoints.length) finishFormed();
         else clearSelection();
       } else if (e.key === ' ') {
         // spacebar → back to the select tool
@@ -74,6 +79,8 @@ export function EditorShell() {
         editor.setTool('select');
       } else if (e.key === 'b' || e.key === 'B') {
         editor.setTool('draw');
+      } else if (e.key === 'h' || e.key === 'H') {
+        editor.setTool('formed');
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         const id = editor.selectedIds[0];
         if (id) {
@@ -85,7 +92,10 @@ export function EditorShell() {
     // right button ends any path in progress (and never opens a context menu);
     // right-drag still rotates via OrbitControls
     const onPointerDown = (e: PointerEvent) => {
-      if (e.button === 2 && useEditorStore.getState().drawingFromNodeId) finishPath();
+      if (e.button !== 2) return;
+      const s = useEditorStore.getState();
+      if (s.drawingFromNodeId) finishPath();
+      else if (s.formedPoints.length) finishFormed();
     };
     const onContextMenu = (e: MouseEvent) => e.preventDefault();
     window.addEventListener('keydown', onKey);
@@ -135,7 +145,7 @@ export function EditorShell() {
         lengthM: memberLengthM(d, m),
       }));
     };
-    hook.setTool = (tool: 'select' | 'draw') => useEditorStore.getState().setTool(tool);
+    hook.setTool = (tool: 'select' | 'draw' | 'formed') => useEditorStore.getState().setTool(tool);
     hook.setProjection = (p: 'ortho' | 'perspective') => useEditorStore.getState().setProjection(p);
     hook.setDrawSize = (size: '1/2"' | '3/4"') => useEditorStore.getState().setDrawSize(size);
     hook.setLengthsLocked = (locked: boolean) =>
@@ -145,10 +155,21 @@ export function EditorShell() {
     hook.snap = (raw: Vec3, lockAxis?: boolean) => snapDrawPoint(raw, !!lockAxis);
     hook.draw = (raw: Vec3, lockAxis?: boolean) => placeDrawPoint(raw, !!lockAxis);
     hook.finishPath = () => finishPath();
+    hook.drawFormed = (raw: Vec3) => placeFormedPoint(raw);
+    hook.finishFormed = () => finishFormed();
     hook.selectMember = (id: string) => selectMember(id);
     hook.clearSelection = () => clearSelection();
     hook.setMemberLength = (id: string, lengthM: number) => setMemberLength(id, lengthM);
     hook.dragNode = (id: string, raw: Vec3) => dragNodeTo(id, raw);
+    hook.getIntersections = () => {
+      const d = useAppStore.getState().current;
+      return d ? [...intersectingMembers(d)] : [];
+    };
+    hook.getFormed = (id: string) => {
+      const d = useAppStore.getState().current;
+      const m = d ? memberById(d, id) : undefined;
+      return d && m && m.kind === 'formed' ? analyzeFormed(d, m) : null;
+    };
   }, []);
 
   if (!hasDesign) return null;

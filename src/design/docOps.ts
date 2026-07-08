@@ -6,6 +6,12 @@ import { length, normalize, sub } from '../geometry/math3';
 import type { Design, Member, Node, NominalSize, Vec3 } from '../schema';
 import { makeId } from './ids';
 
+/** An existing node at (or very near) `pos`, for reusing a junction instead of
+ * duplicating it. */
+export function findNodeAt(design: Design, pos: Vec3, tol = 1e-6): string | undefined {
+  return design.nodes.find((n) => length(sub(n.position, pos)) < tol)?.id;
+}
+
 /** Fast node lookup for a design. */
 export function nodeMap(design: Design): Map<string, Node> {
   return new Map(design.nodes.map((n) => [n.id, n]));
@@ -60,6 +66,35 @@ export function addMember(
   };
 }
 
+/** Add a heat-bent (formed) member A→controlPoints→B. Endpoints reuse an
+ * existing node when one sits at that position (so a formed pipe can start/end
+ * on a junction), else new nodes are created. */
+export function addFormedMember(
+  design: Design,
+  aPos: Vec3,
+  bPos: Vec3,
+  controlPoints: Vec3[],
+  size: NominalSize,
+  filletRadiiM?: number[],
+): { design: Design; memberId: string } {
+  let d = design;
+  let nodeA = findNodeAt(d, aPos);
+  if (!nodeA) {
+    const r = addNode(d, aPos);
+    d = r.design;
+    nodeA = r.nodeId;
+  }
+  let nodeB = findNodeAt(d, bPos);
+  if (!nodeB) {
+    const r = addNode(d, bPos);
+    d = r.design;
+    nodeB = r.nodeId;
+  }
+  const id = makeId('m');
+  const member: Member = { id, kind: 'formed', nodeA, nodeB, controlPoints, size, filletRadiiM };
+  return { design: { ...d, members: [...d.members, member] }, memberId: id };
+}
+
 /** Start a pipe path: place the first node (the pen-down point). */
 export function startPath(
   design: Design,
@@ -106,7 +141,7 @@ export function setNodePosition(design: Design, nodeId: string, position: Vec3):
  * +X so the edit is still well-defined. */
 export function setMemberLengthM(design: Design, memberId: string, lengthM: number): Design {
   const member = memberById(design, memberId);
-  if (!member || member.kind !== 'straight') return design; // formed length is derived
+  if (member?.kind !== 'straight') return design; // formed length is derived
   const e = memberEndpoints(design, member);
   if (!e) return design;
   const d = sub(e.b, e.a);

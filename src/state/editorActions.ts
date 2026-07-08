@@ -3,6 +3,7 @@
 // bridges pure snapping (design/snapping) + pure docOps (design/docOps) into
 // the appStore (undo/autosave) and transient editorStore.
 import {
+  addFormedMember,
   appendPipe,
   connectPipe,
   memberEndpoints,
@@ -12,6 +13,7 @@ import {
   startPath,
 } from '../design/docOps';
 import { lockToNearestAxis, projectLengthOnAxis } from '../design/dragMath';
+import { MIN_BEND_RADIUS_FACTOR } from '../design/formed';
 import {
   AXIS_BAND_M,
   POINT_RADIUS_M,
@@ -20,6 +22,7 @@ import {
   snapPoint,
 } from '../design/snapping';
 import type { Design, Vec3 } from '../schema';
+import { pipeSpec } from '../schema';
 import { useAppStore } from './appStore';
 import { useEditorStore } from './editorStore';
 
@@ -121,6 +124,49 @@ export function placeDrawPoint(raw: Vec3, lockAxis = false): SnapResult {
 /** End the current path (Escape / Enter / right-click / double-click). */
 export function finishPath(): void {
   useEditorStore.getState().setDrawingFrom(null);
+}
+
+/** Snap a formed-tool point: like drawing, with axis inference anchored at the
+ * previous committed point. */
+export function snapFormedPoint(raw: Vec3): SnapResult {
+  const design = useAppStore.getState().current;
+  const pts = useEditorStore.getState().formedPoints;
+  const fromNode = pts.length ? pts[pts.length - 1] : undefined;
+  return snapPoint(raw, {
+    nodes: design ? design.nodes.map((n) => ({ id: n.id, position: n.position })) : [],
+    segments: design ? segmentsOf(design) : [],
+    fromNode,
+    ...snapTol(),
+  });
+}
+
+/** Commit a point of the in-progress formed pipe. */
+export function placeFormedPoint(raw: Vec3): SnapResult {
+  const snap = snapFormedPoint(raw);
+  useEditorStore.getState().pushFormedPoint(snap.position);
+  return snap;
+}
+
+/** Finish the formed pipe: build a heat-bent member through the committed
+ * points (start → control points → end). Needs at least two points; each bend
+ * gets a default fillet = the pipe's minimum heat-form radius. */
+export function finishFormed(): void {
+  const editor = useEditorStore.getState();
+  const pts = editor.formedPoints;
+  if (pts.length < 2) {
+    editor.clearFormedPoints();
+    return;
+  }
+  const size = editor.drawSize;
+  const a = pts[0]!;
+  const b = pts[pts.length - 1]!;
+  const controls = pts.slice(1, -1);
+  const fillet = MIN_BEND_RADIUS_FACTOR * pipeSpec(size).odM;
+  const filletRadiiM = controls.map(() => fillet);
+  useAppStore
+    .getState()
+    .updateCurrent((d) => addFormedMember(d, a, b, controls, size, filletRadiiM).design);
+  editor.clearFormedPoints();
 }
 
 export function selectMember(memberId: string): void {

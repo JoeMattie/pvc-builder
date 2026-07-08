@@ -4,6 +4,32 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Phase 3 — Formed (spline) pipe + intersections (2026-07-07)
+
+- **`formed` member = a Catmull-Rom spline** through nodeA → controlPoints →
+  nodeB, with optional per-bend `filletRadiiM` (schema v2 + identity migration).
+  Control points are stored on the member (not nodes); endpoints are nodes so a
+  formed pipe can plug into a junction (`addFormedMember` reuses an existing
+  node at the endpoint position).
+- **Analysis is pure and reuses `geometry/pipe.ts`** (`design/formed.ts`):
+  developed centre-line length (filleted), bend schedule (deflection +
+  fabrication dihedral), and a min-bend-radius check (OD × 3 estimate). The
+  developed length is verified against the analytic fillet formula.
+- **Intersection highlighting is a pure capsule test** (`design/intersections.ts`,
+  Ericson segment-segment distance), excluding members that share a node
+  (legitimate joints). Rendered as an enlarged translucent-red shell over the
+  offending pipe; skipped past 200 members.
+- **Formed tool** accumulates ground clicks in `editorStore.formedPoints`,
+  previews a live ghost spline tube, and commits one formed member on
+  finish (Enter / right-click; ≥2 points). Each bend defaults to the min
+  heat-form radius. Rendered with `TubeGeometry` along a `CatmullRomCurve3` at
+  true OD (`FormedLayer`), eased like straight pipe.
+- **Rendering split:** `pipeModel`/PipeLayer handle straight cylinders + all
+  joints; formed bodies are tubes in FormedLayer; fitting end-tangents at a
+  formed endpoint come from the first/last spline segment. SelectionHandles
+  (length arrows) stay straight-only; the SelectionPanel shows a formed pipe's
+  developed length + bend count + a tight-bend warning instead.
+
 ## Phase 2 — Fitting auto-solve + procedural meshes (2026-07-07)
 
 - **`resolveFittings(design)` is pure and the single source of fitting truth**

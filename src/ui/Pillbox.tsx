@@ -1,4 +1,4 @@
-import { MousePointer2, Pencil } from 'lucide-react';
+import { MousePointer2, Pencil, Spline } from 'lucide-react';
 import type { NominalSize } from '../schema';
 import { useEditorStore } from '../state/editorStore';
 
@@ -39,6 +39,19 @@ export function Pillbox() {
         }`}
       >
         <Pencil size={15} /> Draw
+      </button>
+      <button
+        type="button"
+        aria-pressed={tool === 'formed'}
+        onClick={() => setTool('formed')}
+        title="Bend pipe — heat-formed spline (H)"
+        className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium ${
+          tool === 'formed'
+            ? 'bg-primary text-primary-foreground'
+            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+        }`}
+      >
+        <Spline size={15} /> Bend
       </button>
 
       <div className="mx-0.5 h-6 w-px bg-border" />
