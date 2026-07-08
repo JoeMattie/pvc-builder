@@ -4,6 +4,40 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## todo.txt batch — bug fixes, tools, BOM, T-rex (2026-07-08)
+
+Implemented the root `todo.txt` batch on `feat/todo-batch-wave1` in three review-gated
+waves over schema v6. Decisions of lasting consequence:
+
+- **Free pivots under length-lock** are true 3-DOF ball joints even inside closed loops:
+  `solveLoops` now varies free spanning-tree joints via 3 exp-map params (was: frozen →
+  behaved like a locked axis). Open-chain CCD was already correct.
+- **Overlapping joints** are prevented by `dedupeJoints` (keyed on `(nodeId, unordered
+  {receiver,mover})`) folded into the heal path, and by **welding coincident nodes on drop**
+  (`weldNodes`/`weldDroppedNode`) — dropping one pipe end onto another joins them.
+- **Curves are treated like straight pipes** for auto-junctions: `healBodyJoints` no longer
+  skips formed members and `finishFormed` reconciles.
+- **Doc-stored viewport** (schema v6): a document restores its own camera/tool/projection/
+  drawSize on open (not the previous doc's). Written via a **non-undoable** `appStore.setViewport`
+  (zundo paused) and debounced 600 ms so orbiting doesn't churn the doc or re-render the scene.
+- **Units are display-only** (`lengthDisplay`: mm/cm/in/in-frac), default decimal inches; a pure
+  `parseLength` accepts `10mm`/`1/2"`/`10ft`… Nothing changes stored SI.
+- **Ground** is a finite 20 ft square (not infinite); the colored fill sits below the deepest
+  pipe radius so on-ground pipes aren't clipped; night ground is dark gray (lighter than sky,
+  darker than pipes).
+- **New tools**: Measure (persistent, schema-backed), draw-on-Plane (F, camera flips to face a
+  wall plane, drawing constrained), and Bend (drag a straight pipe → heat-formed curve with
+  draggable control points). Curve = the renamed heat-formed tool (hotkey C).
+- **Manufactured joints** snap the mover to the nearest standard fitting angle (90/45/straight)
+  and drop the pivot record, so `resolveFittings` draws a real socket fitting.
+- **BOM** now adds wrapped-union fabrication allowances (mover wrap-around + bolt, padded 15%)
+  and a 1"+radius end-cap extension where a pipe end receives a wrap (also ghost-rendered);
+  shown as "base + allowance = cut". Constants are documented ESTIMATES.
+- **T-rex** decimated from an STL (vertex-cluster weld → 57 nodes / 145 pipes, <200 cap) into
+  two examples: all-rigid (v1, exercises the migration chain) and all-universal-pivot (v6, a
+  `free` joint per connection). Follow-ups (noted in `docs/HANDOFF.md`): Bend length-lock,
+  plane pipe-relative angle snap, manufactured-union cut-list splitting.
+
 ## Schema v6 — doc-stored UI state, persistent measurements, manufactured joints (2026-07-08)
 
 Bumped `SCHEMA_VERSION` 5→6 for the todo.txt batch. All additions are optional
