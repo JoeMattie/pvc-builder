@@ -56,6 +56,7 @@ import { downloadFile } from './lib/download';
 import { Pillbox } from './Pillbox';
 import { PivotPanel } from './PivotPanel';
 import { SelectionPanel } from './SelectionPanel';
+import { SizeMenu } from './SizeMenu';
 import { SnapPill } from './SnapPill';
 import { Viewport } from './scene/Viewport';
 import { UnitsPill } from './UnitsPill';
@@ -389,6 +390,9 @@ export function EditorShell() {
 
       {/* right-click join menu (anchor / wrapped / free) */}
       <JoinMenu />
+
+      {/* right-click size switcher (1/2" ↔ 3/4") */}
+      <SizeMenu />
 
       {/* top-right: play + undo/redo + view + physics + theme toggles */}
       <div className="absolute top-4 right-4 flex items-center gap-1 rounded-lg border border-border bg-card px-1.5 py-1.5 shadow-sm">

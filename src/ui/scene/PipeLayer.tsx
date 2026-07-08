@@ -3,7 +3,7 @@
 // each free pipe end so pipes read as real tube with wall thickness. In the
 // select tool, clicking a pipe selects its member.
 import type { ThreeEvent } from '@react-three/fiber';
-import { memberById, nodeById } from '../../design/docOps';
+import { incidentMembers, memberById, nodeById } from '../../design/docOps';
 import { length, sub } from '../../geometry/math3';
 import { easedPos, useAnim } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
@@ -85,21 +85,37 @@ export function PipeLayer() {
   // the pipe to transform without leaving the gizmo)
   const editing = tool === 'select' || tool === 'move' || tool === 'rotate';
   const onSelect = editing ? selectMember : undefined;
-  // right-click a pipe near a join → the anchor / wrapped / free menu
+  // right-click routing: a shared JUNCTION (where ≥2 pipes meet, within the end
+  // zone) opens the join selector; anywhere else on the pipe body — or a lone
+  // flat end — opens the size switcher for that pipe (or the whole multi-select).
   const onContext =
     editing && design && !drawingFrom
       ? (memberId: string, e: ThreeEvent<MouseEvent>) => {
-          const m = memberById(design, memberId);
-          if (m?.kind !== 'straight') return;
-          const pa = nodeById(design, m.nodeA)?.position;
-          const pb = nodeById(design, m.nodeB)?.position;
-          if (!pa || !pb) return;
-          // the join is at whichever endpoint is nearer the click
-          const nodeId = length(sub(e.point, pa)) <= length(sub(e.point, pb)) ? m.nodeA : m.nodeB;
           const ne = e.nativeEvent as MouseEvent;
-          useEditorStore
-            .getState()
-            .openJoinMenu({ nodeId, moverId: memberId, x: ne.clientX, y: ne.clientY });
+          const store = useEditorStore.getState();
+          const m = memberById(design, memberId);
+          if (m?.kind === 'straight') {
+            const pa = nodeById(design, m.nodeA)?.position;
+            const pb = nodeById(design, m.nodeB)?.position;
+            if (pa && pb) {
+              const nearA = length(sub(e.point, pa)) <= length(sub(e.point, pb));
+              const nodeId = nearA ? m.nodeA : m.nodeB;
+              const endPos = nearA ? pa : pb;
+              const endZone = 0.25 * length(sub(pa, pb));
+              // only a genuine multi-pipe junction opens the join menu
+              if (
+                length(sub(e.point, endPos)) < endZone &&
+                incidentMembers(design, nodeId).length >= 2
+              ) {
+                store.openJoinMenu({ nodeId, moverId: memberId, x: ne.clientX, y: ne.clientY });
+                return;
+              }
+            }
+          }
+          // resize the whole current multi-selection if this pipe is part of it
+          const sel = store.selectedIds;
+          const memberIds = sel.includes(memberId) && sel.length > 1 ? sel : [memberId];
+          store.openSizeMenu({ memberIds, x: ne.clientX, y: ne.clientY });
         }
       : undefined;
   const selected = new Set(selectedIds);

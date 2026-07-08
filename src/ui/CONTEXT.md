@@ -20,7 +20,8 @@ siblings.
 | `SelectionPanel.tsx` (221) | Selected-member inspector — editable length, bend warnings, joint-mode controls | controlled draft string synced from geometry |
 | `PivotPanel.tsx` (101) | Locked-mode pivot controls — mobility readout + per-wrapped-joint angle slider | free joints get no slider (posed by dragging) |
 | `Pillbox.tsx` (104) | Bottom-center tool + size pillbox | sizes hardcoded `['1/2"','3/4"']` |
-| `JoinMenu.tsx` (120) | **NEW/untracked** right-click join menu (Anchor/Wrapped/Free/Socket-fitting) | options gated by `joinContext` geometry |
+| `JoinMenu.tsx` (120) | Right-click join menu (Anchor/Wrapped/Free) — opens only at a shared junction / joint hardware | options gated by `joinContext` geometry |
+| `SizeMenu.tsx` (—) | Right-click size switcher (1/2"↔3/4") for a pipe or the whole multi-selection | opens on a pipe body / lone end; drives `setMembersSize` |
 | `SnapPill.tsx` (133) | Bottom-left snap settings (grid + toggles) | grid options are unit-dependent |
 | `ProjectList.tsx` (103) | Landing screen — create/open/delete + examples | header comment may be stale |
 | `units.ts` (168) | **Display-only** length/mass conversion + `formatLengthDisplay`/`parseLength` (mm/cm/in/in-frac, schema v6) | ⚠ everything stored is SI; `parseLength` reads `10mm`/`1/2"`/`10ft`… |
