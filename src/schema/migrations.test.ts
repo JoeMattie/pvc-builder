@@ -98,6 +98,40 @@ describe('v4 → v5 fold (pivots + wraps → joints)', () => {
   });
 });
 
+describe('v5 → v6 (measurements + doc-stored UI state)', () => {
+  const v5 = {
+    schemaVersion: 5,
+    id: 'd1',
+    name: 'Cube frame',
+    unitsPreference: 'imperial',
+    enabledSizes: ['1/2"'],
+    lengthsLocked: false,
+    nodes: [{ id: 'n1', position: { x: 0, y: 0, z: 0 } }],
+    members: [],
+    joints: [],
+  };
+
+  it('adds an empty measurements array and validates', () => {
+    const out = migrateToLatest(JSON.parse(JSON.stringify(v5)));
+    expect(out.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(out.measurements).toEqual([]);
+    expect(out.viewport).toBeUndefined();
+    expect(out.lengthDisplay).toBeUndefined();
+  });
+
+  it('preserves existing measurements', () => {
+    const withMeas = {
+      ...v5,
+      measurements: [
+        { id: 'ms1', a: { nodeId: 'n1' }, b: { position: { x: 1, y: 0, z: 0 } }, offsetM: 0.05 },
+      ],
+    };
+    const out = migrateToLatest(JSON.parse(JSON.stringify(withMeas)));
+    expect(out.measurements).toHaveLength(1);
+    expect(out.measurements[0]?.id).toBe('ms1');
+  });
+});
+
 describe('applyMigrations', () => {
   it('chains steps and stamps the schemaVersion after each', () => {
     const registry: Record<number, Migration> = {

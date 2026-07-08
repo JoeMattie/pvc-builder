@@ -62,6 +62,13 @@ export const migrations: Record<number, Migration> = {
     const { pivots: _pivots, wraps: _wraps, ...rest } = doc;
     return { ...rest, joints };
   },
+  // v5 → v6: doc-stored UI state + persistent measurements. Only `measurements`
+  // is required by the schema; give old docs an empty array. `viewport`,
+  // `lengthDisplay`, and `joint.manufactured` are optional → nothing to add.
+  5: (doc) => ({
+    ...doc,
+    measurements: Array.isArray(doc.measurements) ? doc.measurements : [],
+  }),
 };
 
 export class MigrationError extends Error {}

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   idSchema,
+  lengthDisplaySchema,
   nominalSizeSchema,
   quaternionSchema,
   unitsPreferenceSchema,
@@ -15,8 +16,11 @@ import {
  * v4: `wraps` (heat-wrapped tee connections onto a pipe body).
  * v5: unified `joints` — every non-default pipe connection (wrapped pivot, free
  *     ball-joint pivot, or intact-run screwed tee) is ONE joint record; the old
- *     `pivots` and `wraps` arrays are folded into it. */
-export const SCHEMA_VERSION = 5;
+ *     `pivots` and `wraps` arrays are folded into it.
+ * v6: doc-stored UI state (`viewport`, `lengthDisplay`), persistent tape-measure
+ *     objects (`measurements`), and `joint.manufactured` (render as off-the-shelf
+ *     fitting). All additive/optional except `measurements` (defaults to []). */
+export const SCHEMA_VERSION = 6;
 
 /** A junction where pipe ends meet. Position is SI metres. */
 export const nodeSchema = z.object({
@@ -90,6 +94,42 @@ export const jointSchema = z.object({
   orientation: quaternionSchema.optional(),
   /** wrapped: optional revolute travel limits */
   limits: z.object({ minRad: z.number(), maxRad: z.number() }).optional(),
+  /** v6: render this joint as an off-the-shelf manufactured fitting (the mover
+   * pipe has been bent so its approach angle matches a standard elbow/tee) */
+  manufactured: z.boolean().optional(),
+});
+
+/** v6: a persistent tape-measure. Each end is either pinned to a node
+ * (`{nodeId}`) or a free point (`{position}`). `offsetM` is the perpendicular
+ * distance of the drawn dimension line from the measured axis (0 = on-axis). */
+export const measurementEndSchema = z.union([
+  z.object({ nodeId: idSchema }),
+  z.object({ position: vec3Schema }),
+]);
+export const measurementSchema = z.object({
+  id: idSchema,
+  a: measurementEndSchema,
+  b: measurementEndSchema,
+  offsetM: z.number(),
+});
+
+/** v6: doc-stored viewport/UI state, restored when the document is opened so a
+ * project reopens exactly as it was saved (planfile: states stored in the doc,
+ * not carried over from the previous document). All fields optional. Camera and
+ * tool are written outside undo history (see appStore). */
+export const cameraPoseSchema = z.object({
+  position: vec3Schema,
+  target: vec3Schema,
+  zoom: z.number(),
+});
+export const viewportSchema = z.object({
+  camera: cameraPoseSchema.optional(),
+  /** 'orthographic' | 'perspective' — kept as a loose string so adding view
+   * modes never forces a schema bump */
+  projection: z.string().optional(),
+  /** last active tool id (loose string for the same forward-compat reason) */
+  tool: z.string().optional(),
+  drawSize: nominalSizeSchema.optional(),
 });
 
 /** The top-level design document — the single source of truth for the file
@@ -109,6 +149,12 @@ export const designSchema = z.object({
   members: z.array(memberSchema),
   /** non-default pipe connections: wrapped/free pivots + intact-run screwed tees */
   joints: z.array(jointSchema),
+  /** v6: persistent tape-measure annotations (default []) */
+  measurements: z.array(measurementSchema),
+  /** v6: display-only length format (undefined = decimal inches) */
+  lengthDisplay: lengthDisplaySchema.optional(),
+  /** v6: doc-stored camera + tool state, restored on open */
+  viewport: viewportSchema.optional(),
 });
 
 export type Node = z.infer<typeof nodeSchema>;
@@ -117,6 +163,10 @@ export type FormedMember = z.infer<typeof formedMemberSchema>;
 export type Member = z.infer<typeof memberSchema>;
 export type JointMode = z.infer<typeof jointModeSchema>;
 export type Joint = z.infer<typeof jointSchema>;
+export type MeasurementEnd = z.infer<typeof measurementEndSchema>;
+export type Measurement = z.infer<typeof measurementSchema>;
+export type CameraPose = z.infer<typeof cameraPoseSchema>;
+export type Viewport = z.infer<typeof viewportSchema>;
 export type Design = z.infer<typeof designSchema>;
 
 export function createEmptyDesign(id: string, name: string): Design {
@@ -130,5 +180,6 @@ export function createEmptyDesign(id: string, name: string): Design {
     nodes: [],
     members: [],
     joints: [],
+    measurements: [],
   };
 }

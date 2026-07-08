@@ -4,6 +4,24 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Schema v6 — doc-stored UI state, persistent measurements, manufactured joints (2026-07-08)
+
+Bumped `SCHEMA_VERSION` 5→6 for the todo.txt batch. All additions are optional
+except `measurements` (required, defaults to `[]`), so the v5→v6 migration is a
+trivial stamp that only backfills the empty measurements array; `viewport`,
+`lengthDisplay`, and `joint.manufactured` are optional and need no migration
+work. Added: (1) `viewport` — doc-stored camera pose + projection + last tool +
+drawSize, so opening a document restores its own view/tool state instead of
+carrying over the previous document's (written outside undo history); (2)
+`lengthDisplay` (`mm|cm|in|in-frac`) — a display-only length format independent
+of `unitsPreference` (which still drives mass), defaulting to decimal inches
+when undefined, never changing what is stored (still SI); (3) `measurements` —
+persistent tape-measure objects (each end pinned to a node or a free point, plus
+a perpendicular `offsetM` for the dimension line); (4) `joint.manufactured` — a
+flag marking a joint rendered as an off-the-shelf fitting. `projection`/`tool`
+on `viewport` are loose strings so adding view modes / tools later never forces
+another schema bump.
+
 ## CI deploys to Cloudflare Pages at pvc-builder.joemattie.com (2026-07-08)
 
 Mirrors riglab exactly. Hosting is Cloudflare Pages free tier (project
