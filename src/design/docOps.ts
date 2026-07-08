@@ -407,13 +407,26 @@ export function setJoinMode(
   const receiver = receiverId && ctx.candidates.includes(receiverId) ? receiverId : ctx.receiver;
   if (!receiver) return design;
 
+  // Find the record for this connection, matching the UNORDERED member pair at
+  // the node — so a right-click on the OTHER pipe of the same joint (which sees
+  // `mover`/`receiver` swapped) edits it in place rather than appending a second,
+  // swapped record for the same pair.
+  const existing =
+    ctx.existing ??
+    design.joints.find(
+      (j) =>
+        j.nodeId === nodeId &&
+        ((j.receiver === receiver && j.mover === moverId) ||
+          (j.receiver === moverId && j.mover === receiver)),
+    );
+
   // an end-to-end anchor IS the default rigid coupling → drop any record
   if (mode === 'anchor' && !ctx.onBody) {
-    return ctx.existing ? removeJoint(design, ctx.existing.id) : design;
+    return existing ? removeJoint(design, existing.id) : design;
   }
 
   const next: Joint = {
-    id: ctx.existing?.id ?? makeId('jt'),
+    id: existing?.id ?? makeId('jt'),
     nodeId,
     receiver,
     mover: moverId,
@@ -421,11 +434,11 @@ export function setJoinMode(
     mode,
   };
   // preserve articulation state across a mode/receiver change where meaningful
-  if (mode === 'wrapped' && ctx.existing?.receiver === receiver) {
-    if (ctx.existing.angleRad !== undefined) next.angleRad = ctx.existing.angleRad;
-    if (ctx.existing.limits) next.limits = ctx.existing.limits;
-  } else if (mode === 'free' && ctx.existing?.orientation) {
-    next.orientation = ctx.existing.orientation;
+  if (mode === 'wrapped' && existing?.receiver === receiver) {
+    if (existing.angleRad !== undefined) next.angleRad = existing.angleRad;
+    if (existing.limits) next.limits = existing.limits;
+  } else if (mode === 'free' && existing?.orientation) {
+    next.orientation = existing.orientation;
   }
   return { ...design, joints: [...design.joints.filter((j) => j.id !== next.id), next] };
 }
@@ -446,17 +459,65 @@ export function addBodyJoint(
   if (!nodeById(design, branchNode)) return { design, jointId: null };
   const branch = incidentMembers(design, branchNode).find((m) => m.id !== receiver);
   if (!branch) return { design, jointId: null };
-  if (design.joints.some((j) => j.nodeId === branchNode && j.mover === branch.id))
+  // refuse a duplicate for this branch: an existing record with the same mover,
+  // OR one describing the same UNORDERED pair with receiver/mover swapped
+  if (
+    design.joints.some(
+      (j) =>
+        j.nodeId === branchNode &&
+        (j.mover === branch.id || (j.receiver === branch.id && j.mover === receiver)),
+    )
+  )
     return { design, jointId: null };
   const joint: Joint = { id, nodeId: branchNode, receiver, mover: branch.id, onBody: true, mode };
   return { design: { ...design, joints: [...design.joints, joint] }, jointId: id };
+}
+
+/** Collapse duplicate joints at a node that describe the SAME physical
+ * connection: two records whose UNORDERED member pair is equal — either an exact
+ * duplicate, or the swapped case `{receiver:A, mover:B}` + `{receiver:B, mover:A}`
+ * that a right-click on each of the two pipes could otherwise create. Each such
+ * group collapses to ONE joint: a non-`anchor` mode (a deliberate wrapped/free
+ * pivot) wins over a default `anchor`; among equally-preferred candidates the
+ * LAST in array order (most recently set) is kept, with its own fields intact.
+ * Joints not part of any duplicate group pass through unchanged and in original
+ * relative order. Pure; never mutates the input. */
+export function dedupeJoints(design: Design): Design {
+  const groupKey = (j: Joint): string => {
+    const [a, b] = j.receiver < j.mover ? [j.receiver, j.mover] : [j.mover, j.receiver];
+    return `${j.nodeId}|${a}|${b}`;
+  };
+  const groups = new Map<string, Joint[]>();
+  for (const j of design.joints) {
+    const k = groupKey(j);
+    const g = groups.get(k);
+    if (g) g.push(j);
+    else groups.set(k, [j]);
+  }
+  const keptIds = new Set<string>();
+  let changed = false;
+  for (const g of groups.values()) {
+    if (g.length === 1) {
+      keptIds.add(g[0]!.id);
+      continue;
+    }
+    changed = true;
+    // prefer a non-anchor pivot; among candidates keep the LAST (most recent)
+    const preferred = g.filter((j) => j.mode !== 'anchor');
+    const pool = preferred.length ? preferred : g;
+    keptIds.add(pool[pool.length - 1]!.id);
+  }
+  if (!changed) return design;
+  return { ...design, joints: design.joints.filter((j) => keptIds.has(j.id)) };
 }
 
 /** Repair missing on-body unions: any pipe endpoint that sits exactly on another
  * straight member's span (a tee/branch) but carries no joint becomes a rigid
  * (anchor) on-body union — the same union drawing forms. Without it such a branch
  * reads as an unresolved red overlap instead of a tee. Idempotent; used when
- * importing a design (older files, or ones drawn before the union was created). */
+ * importing a design (older files, or ones drawn before the union was created).
+ * Runs `dedupeJoints` last, so this is the single choke both the live reconcile
+ * and the import path pass through to collapse swapped/duplicate joint pairs. */
 export function healBodyJoints(design: Design): Design {
   let d = design;
   for (const m of design.members) {
@@ -469,7 +530,7 @@ export function healBodyJoints(design: Design): Design {
       if (run) d = addBodyJoint(d, run.id, nodeId, 'anchor').design;
     }
   }
-  return d;
+  return dedupeJoints(d);
 }
 
 /** How close a branch endpoint must stay to its receiver's centre-line to keep

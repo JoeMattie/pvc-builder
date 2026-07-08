@@ -3,6 +3,7 @@ import { createEmptyDesign, type Design, type Vec3 } from '../schema';
 import {
   addBodyJoint,
   appendPipe,
+  dedupeJoints,
   deleteMember,
   healBodyJoints,
   joinContext,
@@ -393,5 +394,100 @@ describe('heat-wrapped tees', () => {
       (m) => m.nodeA === branchNode || m.nodeB === branchNode,
     )!;
     expect(deleteMember(withJoint, branchMember.id).joints).toHaveLength(0);
+  });
+});
+
+describe('dedupeJoints (swapped / duplicate joint pairs)', () => {
+  /** An L path whose corner node is shared by two members m0, m1. */
+  function corner() {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0), V(1, 0, 1)]);
+    return { design, corner: design.nodes[1]!.id, m0: memberIds[0]!, m1: memberIds[1]! };
+  }
+
+  it('setJoinMode twice with swapped mover args yields exactly ONE joint', () => {
+    const { design, corner: node, m0, m1 } = corner();
+    // right-click pipe A near the shared node
+    const afterA = setJoinMode(design, node, m0, 'wrapped');
+    expect(afterA.joints).toHaveLength(1);
+    // then right-click pipe B at the same node — must edit the SAME record
+    const afterB = setJoinMode(afterA, node, m1, 'wrapped');
+    expect(afterB.joints).toHaveLength(1);
+    expect(afterB.joints[0]!.id).toBe(afterA.joints[0]!.id);
+  });
+
+  it('collapses a swapped wrapped+free pair to a single non-anchor joint', () => {
+    const { design, corner: node, m0, m1 } = corner();
+    const dupes: Design = {
+      ...design,
+      joints: [
+        { id: 'j-wrap', nodeId: node, receiver: m0, mover: m1, onBody: false, mode: 'wrapped' },
+        { id: 'j-free', nodeId: node, receiver: m1, mover: m0, onBody: false, mode: 'free' },
+      ],
+    };
+    const out = dedupeJoints(dupes);
+    expect(out.joints).toHaveLength(1);
+    expect(out.joints[0]!.mode).not.toBe('anchor');
+    // the LAST (most recently set) of the equally-preferred pair wins
+    expect(out.joints[0]!.id).toBe('j-free');
+  });
+
+  it('prefers a non-anchor pivot over a default anchor when collapsing', () => {
+    const { design, corner: node, m0, m1 } = corner();
+    const dupes: Design = {
+      ...design,
+      joints: [
+        { id: 'j-wrap', nodeId: node, receiver: m0, mover: m1, onBody: false, mode: 'wrapped' },
+        { id: 'j-anchor', nodeId: node, receiver: m1, mover: m0, onBody: false, mode: 'anchor' },
+      ],
+    };
+    const out = dedupeJoints(dupes);
+    expect(out.joints).toHaveLength(1);
+    expect(out.joints[0]!.id).toBe('j-wrap'); // the pivot, not the anchor
+  });
+
+  it('is a no-op (returns the same design) when there are no duplicates', () => {
+    const clean = healBodyJoints(branchOnRun(V(0, 0, 0), V(0, 0, 0.3)));
+    expect(clean.joints).toHaveLength(1);
+    expect(dedupeJoints(clean)).toBe(clean);
+  });
+
+  it('leaves two DISTINCT joints (different member pairs) at one node intact', () => {
+    // a cross: four members meet at one node
+    const d = createEmptyDesign('d', 'Cross');
+    d.nodes.push(
+      { id: 'n', position: V(0, 0, 0) },
+      { id: 'a', position: V(1, 0, 0) },
+      { id: 'b', position: V(-1, 0, 0) },
+      { id: 'c', position: V(0, 0, 1) },
+    );
+    d.members.push(
+      { id: 'm1', kind: 'straight', nodeA: 'n', nodeB: 'a', size: '3/4"' },
+      { id: 'm2', kind: 'straight', nodeA: 'n', nodeB: 'b', size: '3/4"' },
+      { id: 'm3', kind: 'straight', nodeA: 'n', nodeB: 'c', size: '3/4"' },
+    );
+    const withTwo: Design = {
+      ...d,
+      joints: [
+        { id: 'j1', nodeId: 'n', receiver: 'm1', mover: 'm2', onBody: false, mode: 'wrapped' },
+        { id: 'j2', nodeId: 'n', receiver: 'm1', mover: 'm3', onBody: false, mode: 'free' },
+      ],
+    };
+    const out = dedupeJoints(withTwo);
+    expect(out.joints).toHaveLength(2);
+    expect(out.joints.map((j) => j.id).sort()).toEqual(['j1', 'j2']);
+  });
+
+  it('reconcileBodyJoints heals the reported swapped shape to one joint', () => {
+    // node with members m1, m2; a wrapped joint and its swapped free twin
+    const { design, corner: node, m0: m1, m1: m2 } = corner();
+    const reported: Design = {
+      ...design,
+      joints: [
+        { id: 'j-wrap', nodeId: node, receiver: m1, mover: m2, onBody: false, mode: 'wrapped' },
+        { id: 'j-free', nodeId: node, receiver: m2, mover: m1, onBody: false, mode: 'free' },
+      ],
+    };
+    const healed = reconcileBodyJoints(reported);
+    expect(healed.joints).toHaveLength(1);
   });
 });
