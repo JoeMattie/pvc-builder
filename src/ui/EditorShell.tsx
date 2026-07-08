@@ -58,6 +58,7 @@ import { PivotPanel } from './PivotPanel';
 import { SelectionPanel } from './SelectionPanel';
 import { SnapPill } from './SnapPill';
 import { Viewport } from './scene/Viewport';
+import { UnitsPill } from './UnitsPill';
 
 /** The rubber-band selection rectangle (screen overlay). Blue solid when
  * dragging left→right (window / contained), green dashed right→left (crossing /
@@ -378,6 +379,9 @@ export function EditorShell() {
 
       {/* snapping settings (bottom-left) */}
       <SnapPill />
+
+      {/* display-units pill (bottom-right) */}
+      <UnitsPill />
 
       {/* pivot angle sliders + mobility (locked mode, top-right) */}
       <PivotPanel />

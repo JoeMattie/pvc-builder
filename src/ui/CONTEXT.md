@@ -23,7 +23,8 @@ siblings.
 | `JoinMenu.tsx` (120) | **NEW/untracked** right-click join menu (Anchor/Wrapped/Free/Socket-fitting) | options gated by `joinContext` geometry |
 | `SnapPill.tsx` (133) | Bottom-left snap settings (grid + toggles) | grid options are unit-dependent |
 | `ProjectList.tsx` (103) | Landing screen — create/open/delete + examples | header comment may be stale |
-| `units.ts` (39) | **Display-only** imperial↔SI conversion | ⚠ everything stored is SI; metric path is identity |
+| `units.ts` (168) | **Display-only** length/mass conversion + `formatLengthDisplay`/`parseLength` (mm/cm/in/in-frac, schema v6) | ⚠ everything stored is SI; `parseLength` reads `10mm`/`1/2"`/`10ft`… |
+| `UnitsPill.tsx` (—) | Bottom-right display-units picker → writes `design.lengthDisplay` | display-only; default decimal inches |
 | `theme.ts` (40) | Day/night — toggles `.dark` + supplies **literal three.js scene colors** | three.js can't read CSS vars; edit scene colors HERE |
 | `lib/download.ts` (—) | Client-side file download (no network) | `downloadFile(name, content, mime)` |
 | `lib/utils.ts` (—) | shadcn `cn()` className helper | — |

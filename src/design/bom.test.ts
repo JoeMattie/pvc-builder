@@ -72,7 +72,7 @@ describe('bom joint hardware', () => {
     // both pipes butt the ball at the corner → each shortened by the eye-bolt take-off
     expect(cut(b, 0).cutLengthM).toBeCloseTo(1 - EYE_BOLT_TAKEOFF_M, 9);
     expect(cut(b, 1).cutLengthM).toBeCloseTo(1 - EYE_BOLT_TAKEOFF_M, 9);
-    const csv = bomToCsv(withFree, 'imperial');
+    const csv = bomToCsv(withFree);
     expect(csv).toContain('free pivot');
   });
 });
@@ -114,7 +114,7 @@ describe('bom formed pipe', () => {
 
 describe('bomToCsv', () => {
   it('emits cut-list, fittings and totals sections', () => {
-    const csv = bomToCsv(path([V(0, 0, 0), V(1, 0, 0), V(1, 0, 1)]), 'imperial');
+    const csv = bomToCsv(path([V(0, 0, 0), V(1, 0, 0), V(1, 0, 1)]));
     expect(csv).toMatch(/Cut list/);
     expect(csv).toMatch(/Fittings/);
     expect(csv).toMatch(/Total pipe by size/);

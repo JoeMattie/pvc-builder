@@ -5,14 +5,8 @@
 // documented ESTIMATES to be replaced with manufacturer tables). No three/UI
 // types. Hand-rolled CSV.
 import { bendDihedralsRad } from '../geometry/pipe';
-import {
-  type Design,
-  type JointMode,
-  type NominalSize,
-  pipeSpec,
-  type UnitsPreference,
-} from '../schema';
-import { formatLength } from '../ui/units';
+import { type Design, type JointMode, type NominalSize, pipeSpec } from '../schema';
+import { formatLengthDisplay } from '../ui/units';
 import { memberLengthM } from './docOps';
 import { type FittingType, resolveFittings } from './fittings';
 import { analyzeFormed, formedPoints } from './formed';
@@ -165,8 +159,9 @@ function csvCell(s: string | number): string {
 }
 
 /** Shop-ready CSV: a cut list, then a fitting count, then totals. */
-export function bomToCsv(design: Design, units: UnitsPreference): string {
+export function bomToCsv(design: Design): string {
   const b = bom(design);
+  const disp = design.lengthDisplay;
   const rows: string[] = [];
   const line = (...cells: Array<string | number>) => rows.push(cells.map(csvCell).join(','));
 
@@ -177,10 +172,10 @@ export function bomToCsv(design: Design, units: UnitsPreference): string {
       `P${i + 1}`,
       c.size,
       c.kind,
-      formatLength(c.spanM, units),
-      formatLength(c.takeoffAM, units),
-      formatLength(c.takeoffBM, units),
-      formatLength(c.cutLengthM, units),
+      formatLengthDisplay(c.spanM, disp),
+      formatLengthDisplay(c.takeoffAM, disp),
+      formatLengthDisplay(c.takeoffBM, disp),
+      formatLengthDisplay(c.cutLengthM, disp),
     );
   });
   line('');
@@ -196,7 +191,7 @@ export function bomToCsv(design: Design, units: UnitsPreference): string {
   line('');
   line('Total pipe by size');
   for (const [size, total] of Object.entries(b.totalBySize)) {
-    line(size, formatLength(total ?? 0, units));
+    line(size, formatLengthDisplay(total ?? 0, disp));
   }
   if (b.conflicts > 0) {
     line('');

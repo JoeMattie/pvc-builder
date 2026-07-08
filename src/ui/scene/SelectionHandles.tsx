@@ -6,7 +6,7 @@ import { type Ray, Raycaster, Vector2, Vector3 } from 'three';
 import { memberById, nodeById } from '../../design/docOps';
 import { closestAxisPointToRay } from '../../design/dragMath';
 import { cross, dot, length, normalize, scale, sub } from '../../geometry/math3';
-import { pipeSpec, type Vec3 } from '../../schema';
+import { type LengthDisplay, pipeSpec, type Vec3 } from '../../schema';
 import { easedPos, useAnim } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
 import {
@@ -18,7 +18,7 @@ import {
 } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
-import { formatLength } from '../units';
+import { formatLengthDisplay } from '../units';
 import { orientY, orientZ } from './axis';
 import { dominantAxisNormal, rayToGround, rayToPlane } from './ground';
 
@@ -146,14 +146,14 @@ function LengthArrow({
   fixedPos,
   odR,
   night,
-  units,
+  display,
 }: {
   movingNodeId: string;
   movingPos: Vec3;
   fixedPos: Vec3;
   odR: number;
   night: boolean;
-  units: 'imperial' | 'metric';
+  display: LengthDisplay | undefined;
 }) {
   const fixed = useRef<Vec3>(fixedPos);
   const dir = useRef<Vec3>({ x: 1, y: 0, z: 0 });
@@ -209,7 +209,7 @@ function LengthArrow({
               transform: 'translateY(-16px)',
             }}
           >
-            {formatLength(segLen, units)}
+            {formatLengthDisplay(segLen, display)}
           </div>
         </Html>
       )}
@@ -435,7 +435,7 @@ export function SelectionHandles() {
   const bPos = easedPos(b.id) ?? b.position;
   const odR = pipeSpec(member.size).odM / 2;
   const handleR = Math.max(odR * 1.7, 0.02);
-  const units = design.unitsPreference;
+  const display = design.lengthDisplay;
   const locked = design.lengthsLocked;
 
   return (
@@ -451,7 +451,7 @@ export function SelectionHandles() {
             fixedPos={bPos}
             odR={odR}
             night={night}
-            units={units}
+            display={display}
           />
           <LengthArrow
             movingNodeId={b.id}
@@ -459,7 +459,7 @@ export function SelectionHandles() {
             fixedPos={aPos}
             odR={odR}
             night={night}
-            units={units}
+            display={display}
           />
         </>
       )}

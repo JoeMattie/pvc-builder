@@ -1,44 +1,54 @@
 import { AlertTriangle, ArrowLeftRight, Circle, Lock, Rotate3d, Trash2 } from 'lucide-react';
 import { type FormEvent, useEffect, useState } from 'react';
-import { deleteMember, memberById, memberLengthM } from '../design/docOps';
+import { memberById, memberLengthM } from '../design/docOps';
 import { analyzeFormed } from '../design/formed';
+import type { LengthDisplay } from '../schema';
 import { useAppStore } from '../state/appStore';
 import {
   clearSelection,
+  deleteMembers,
   setJoinMode,
   setMemberLength,
   swapJointReceiver,
 } from '../state/editorActions';
 import { useEditorStore } from '../state/editorStore';
-import { formatLength, lengthFromDisplay, lengthToDisplay, lengthUnit } from './units';
+import { formatLengthDisplay, lengthDisplayUnit, parseLength } from './units';
+
+/** Length value (no unit suffix) for the editable field, in the current display
+ * format — so the input round-trips through `parseLength`. */
+function lengthDraft(m: number, display: LengthDisplay | undefined): string {
+  return formatLengthDisplay(m, display)
+    .replace(/"$/, '')
+    .replace(/\s*(mm|cm)$/, '')
+    .trim();
+}
 
 /** Inspector for the selected member: its size, an editable exact length for
  * straight pipe (planfile §1) or the developed length + bend warnings for a
  * formed pipe, and delete. */
 export function SelectionPanel() {
   const design = useAppStore((s) => s.current);
-  const updateCurrent = useAppStore((s) => s.updateCurrent);
   const selectedIds = useEditorStore((s) => s.selectedIds);
   const member = design && selectedIds[0] ? memberById(design, selectedIds[0]) : undefined;
 
-  const units = design?.unitsPreference ?? 'imperial';
+  const display = design?.lengthDisplay;
   const straight = member?.kind === 'straight';
   const lengthM = design && straight ? memberLengthM(design, member) : 0;
   const [draft, setDraft] = useState('');
 
   // reflect the live length into the input whenever the selection or geometry
   // changes (e.g. after a drag), except while the field is being edited
-  const display = lengthToDisplay(lengthM, units);
+  const drafted = lengthDraft(lengthM, display);
   useEffect(() => {
-    setDraft(String(Number(display.toFixed(units === 'imperial' ? 3 : 4))));
-  }, [display, units]);
+    setDraft(drafted);
+  }, [drafted]);
 
   if (!design || !member) return null;
 
   const commit = (e: FormEvent) => {
     e.preventDefault();
-    const v = Number(draft);
-    if (Number.isFinite(v) && v > 0) setMemberLength(member.id, lengthFromDisplay(v, units));
+    const m = parseLength(draft, display);
+    if (m !== null && m > 0) setMemberLength(member.id, m);
   };
 
   const formed = member.kind === 'formed' ? analyzeFormed(design, member) : null;
@@ -65,7 +75,7 @@ export function SelectionPanel() {
                 className="border-input bg-background w-20 rounded-md border px-2 py-1 text-right text-sm tabular-nums text-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
               />
             </label>
-            <span className="text-muted-foreground text-xs">{lengthUnit(units)}</span>
+            <span className="text-muted-foreground text-xs">{lengthDisplayUnit(display)}</span>
           </form>
           <span className="hidden text-[11px] text-muted-foreground sm:inline">
             drag arrows to resize · ends to move · Shift locks axis
@@ -76,7 +86,7 @@ export function SelectionPanel() {
           <span className="text-muted-foreground">
             Developed{' '}
             <span className="text-foreground tabular-nums">
-              {formatLength(formed?.developedLengthM ?? 0, units)}
+              {formatLengthDisplay(formed?.developedLengthM ?? 0, display)}
             </span>
           </span>
           <span className="text-muted-foreground">
@@ -158,7 +168,7 @@ export function SelectionPanel() {
         type="button"
         aria-label="Delete pipe"
         onClick={() => {
-          updateCurrent((d) => deleteMember(d, member.id));
+          deleteMembers(selectedIds.length ? selectedIds : [member.id]);
           clearSelection();
         }}
         className="text-muted-foreground hover:text-destructive rounded-md p-1.5"

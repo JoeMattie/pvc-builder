@@ -3,7 +3,7 @@ import { bom, bomToCsv, JOINT_HARDWARE, JOINT_LABEL } from '../design/bom';
 import { suggestedFileName } from '../persistence/exportImport';
 import { useAppStore } from '../state/appStore';
 import { downloadFile } from './lib/download';
-import { formatLength } from './units';
+import { formatLengthDisplay } from './units';
 
 /** BOM / cut-list panel (planfile §8): per-pipe cut lengths, fitting counts,
  * totals, and a CSV download. */
@@ -11,8 +11,7 @@ export function BomPanel({ onClose }: { onClose: () => void }) {
   const design = useAppStore((s) => s.current);
   if (!design) return null;
   const b = bom(design);
-  const units = design.unitsPreference;
-  const fmt = (m: number) => formatLength(m, units);
+  const fmt = (m: number) => formatLengthDisplay(m, design.lengthDisplay);
 
   return (
     <div className="absolute top-16 right-4 flex max-h-[70vh] w-80 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-lg">
@@ -24,7 +23,7 @@ export function BomPanel({ onClose }: { onClose: () => void }) {
             onClick={() =>
               downloadFile(
                 suggestedFileName(design).replace(/\.pvc\.json$/, '.csv'),
-                bomToCsv(design, units),
+                bomToCsv(design),
                 'text/csv',
               )
             }

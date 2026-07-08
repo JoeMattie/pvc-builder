@@ -19,7 +19,7 @@ import {
 } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
-import { formatLength } from '../units';
+import { formatLengthDisplay } from '../units';
 import { placeAxis } from './axis';
 import { dominantAxisNormal, rayToGround, rayToPlane } from './ground';
 
@@ -40,7 +40,7 @@ export function DrawController() {
   const fromPos = useAppStore((s) =>
     s.current && drawingFromNodeId ? nodeById(s.current, drawingFromNodeId)?.position : undefined,
   );
-  const units = useAppStore((s) => s.current?.unitsPreference ?? 'imperial');
+  const lengthDisplay = useAppStore((s) => s.current?.lengthDisplay);
   const formedPoints = useEditorStore((s) => s.formedPoints);
   const [preview, setPreview] = useState<SnapResult | null>(null);
   const camera = useThree((s) => s.camera);
@@ -243,7 +243,7 @@ export function DrawController() {
                     transform: 'translateY(-14px)',
                   }}
                 >
-                  {formatLength(segLen, units)}
+                  {formatLengthDisplay(segLen, lengthDisplay)}
                 </div>
               </Html>
             </>
