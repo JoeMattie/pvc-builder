@@ -6,6 +6,7 @@ import { Raycaster, Vector2 } from 'three';
 import { memberById, nodeById } from '../../design/docOps';
 import { length, normalize, sub } from '../../geometry/math3';
 import { pipeSpec, type Vec3 } from '../../schema';
+import { easedPos, useAnim } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
 import { dragMemberEndLength, dragNodeTo } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
@@ -161,32 +162,36 @@ export function SelectionHandles() {
   const design = useAppStore((s) => s.current);
   const selectedIds = useEditorStore((s) => s.selectedIds);
   const night = useThemeStore((s) => s.night);
+  // track eased positions so handles glide with the pipe, not the stepped doc
+  useAnim((s) => s.v);
   if (!design) return null;
   const member = selectedIds[0] ? memberById(design, selectedIds[0]) : undefined;
   if (!member) return null;
   const a = nodeById(design, member.nodeA);
   const b = nodeById(design, member.nodeB);
   if (!a || !b) return null;
+  const aPos = easedPos(a.id) ?? a.position;
+  const bPos = easedPos(b.id) ?? b.position;
   const odR = pipeSpec(member.size).odM / 2;
   const handleR = Math.max(odR * 1.7, 0.02);
   const units = design.unitsPreference;
 
   return (
     <>
-      <MoveHandle nodeId={a.id} pos={a.position} radiusM={handleR} />
-      <MoveHandle nodeId={b.id} pos={b.position} radiusM={handleR} />
+      <MoveHandle nodeId={a.id} pos={aPos} radiusM={handleR} />
+      <MoveHandle nodeId={b.id} pos={bPos} radiusM={handleR} />
       <LengthArrow
         movingNodeId={a.id}
-        movingPos={a.position}
-        fixedPos={b.position}
+        movingPos={aPos}
+        fixedPos={bPos}
         odR={odR}
         night={night}
         units={units}
       />
       <LengthArrow
         movingNodeId={b.id}
-        movingPos={b.position}
-        fixedPos={a.position}
+        movingPos={bPos}
+        fixedPos={aPos}
         odR={odR}
         night={night}
         units={units}

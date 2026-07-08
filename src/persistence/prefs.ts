@@ -45,6 +45,39 @@ export function setNightPref(night: boolean): void {
   }
 }
 
+// Snap settings are a workspace preference (like night), read at editor-store
+// load, so they use the guarded accessor with an in-memory fallback.
+const SNAP_KEY = 'pvc-builder.snap';
+
+export interface SnapPref {
+  gridStepM: number;
+  snapToPoints: boolean;
+  axisInference: boolean;
+}
+
+export function getSnapPref(): Partial<SnapPref> | null {
+  const s = safeStorage();
+  const raw = s instanceof Map ? (s.get(SNAP_KEY) ?? null) : s.getItem(SNAP_KEY);
+  if (!raw) return null;
+  try {
+    const p = JSON.parse(raw) as Partial<SnapPref>;
+    return {
+      gridStepM: typeof p.gridStepM === 'number' && p.gridStepM >= 0 ? p.gridStepM : undefined,
+      snapToPoints: typeof p.snapToPoints === 'boolean' ? p.snapToPoints : undefined,
+      axisInference: typeof p.axisInference === 'boolean' ? p.axisInference : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function setSnapPref(pref: SnapPref): void {
+  const s = safeStorage();
+  const raw = JSON.stringify(pref);
+  if (s instanceof Map) s.set(SNAP_KEY, raw);
+  else s.setItem(SNAP_KEY, raw);
+}
+
 export function getLastProjectId(): string | null {
   return localStorage.getItem(LAST_PROJECT_KEY);
 }

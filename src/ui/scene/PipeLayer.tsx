@@ -2,7 +2,7 @@
 // clearcoat so white PVC reads as plastic (planfile §6), plus rounding spheres
 // at junctions. In the select tool, clicking a pipe selects its member.
 import type { ThreeEvent } from '@react-three/fiber';
-import { useMemo } from 'react';
+import { easedPos, useAnim } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
 import { selectMember } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
@@ -56,8 +56,11 @@ export function PipeLayer() {
   const selectedIds = useEditorStore((s) => s.selectedIds);
   const tool = useEditorStore((s) => s.tool);
   const night = useThemeStore((s) => s.night);
+  // re-render while geometry is easing toward its snapped target (reads the
+  // mutable eased-position map, so it recomputes each animating frame)
+  useAnim((s) => s.v);
   const color = scenePalette(night).pvc;
-  const model = useMemo(() => (design ? buildPipeModel(design) : null), [design]);
+  const model = design ? buildPipeModel(design, easedPos) : null;
   if (!model) return null;
   const onSelect = tool === 'select' ? selectMember : undefined;
   const selected = new Set(selectedIds);

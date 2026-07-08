@@ -26,14 +26,20 @@ export interface PipeModel {
   joints: PipeJoint[];
 }
 
-export function buildPipeModel(design: Design): PipeModel {
+/** `posOf` optionally overrides a node's position (the eased render position);
+ * it falls back to the document position. */
+export function buildPipeModel(
+  design: Design,
+  posOf?: (id: string) => Vec3 | undefined,
+): PipeModel {
   const nodes = nodeMap(design);
+  const at = (id: string): Vec3 | undefined => posOf?.(id) ?? nodes.get(id)?.position;
   const cylinders: PipeCylinder[] = [];
   const maxRadiusAtNode = new Map<string, number>();
 
   for (const m of design.members) {
-    const a = nodes.get(m.nodeA)?.position;
-    const b = nodes.get(m.nodeB)?.position;
+    const a = at(m.nodeA);
+    const b = at(m.nodeB);
     if (!a || !b) continue;
     const radiusM = pipeSpec(m.size).odM / 2;
     cylinders.push({ a, b, radiusM, memberId: m.id, size: m.size });
@@ -50,7 +56,7 @@ export function buildPipeModel(design: Design): PipeModel {
     const deg = degrees.get(n.id) ?? 0;
     const r = maxRadiusAtNode.get(n.id);
     if (deg < 1 || r === undefined) continue;
-    joints.push({ center: n.position, radiusM: r, nodeId: n.id });
+    joints.push({ center: at(n.id) ?? n.position, radiusM: r, nodeId: n.id });
   }
 
   return { cylinders, joints };

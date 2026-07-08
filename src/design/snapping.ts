@@ -120,14 +120,21 @@ export function snapPoint(raw: Vec3, ctx: SnapContext): SnapResult {
   return { position: raw, kind: 'free' };
 }
 
+/** Cursor-radius for node / on-pipe snapping (world m). */
+export const POINT_RADIUS_M = 0.02;
+/** Half-width of the axis-inference corridor (world m). */
+export const AXIS_BAND_M = 0.03;
+/** Default grid increment: 1/4 inch (planfile §6 fine snapping). */
+export const DEFAULT_GRID_M = 0.25 * 0.0254;
+
 /** Default tolerances for a design working at furniture/rig scale. */
 export function defaultSnapTolerances(): Pick<
   SnapContext,
   'gridStepM' | 'pointRadiusM' | 'axisBandM'
 > {
   return {
-    gridStepM: 0.0254, // 1 inch
-    pointRadiusM: 0.02,
-    axisBandM: 0.03,
+    gridStepM: DEFAULT_GRID_M,
+    pointRadiusM: POINT_RADIUS_M,
+    axisBandM: AXIS_BAND_M,
   };
 }

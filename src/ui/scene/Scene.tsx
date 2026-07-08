@@ -6,9 +6,11 @@ import {
   OrthographicCamera,
   PerspectiveCamera,
 } from '@react-three/drei';
-import { useThree } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect } from 'react';
-import { Vector3 } from 'three';
+import { MOUSE, Vector3 } from 'three';
+import { bumpAnim, easedPos, stepEasing } from '../../state/animStore';
+import { useAppStore } from '../../state/appStore';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
@@ -90,15 +92,41 @@ export function Scene() {
       {/* endpoint drag handles for the selected member */}
       {tool === 'select' && <SelectionHandles />}
 
-      <OrbitControls key={projection} makeDefault enableDamping target={[0, 0, 0]} />
+      {/* middle = pan, right = free rotate; left is reserved (drawing / select
+          / future marquee), so it never orbits */}
+      <OrbitControls
+        key={projection}
+        makeDefault
+        enableDamping
+        target={[0, 0, 0]}
+        mouseButtons={{ MIDDLE: MOUSE.PAN, RIGHT: MOUSE.ROTATE }}
+      />
 
       <GizmoHelper alignment="bottom-right" margin={[64, 64]}>
         <GizmoViewport axisColors={['#d64545', '#3d9950', '#2a78d6']} labelColor="#fff" />
       </GizmoHelper>
 
+      <GeometryAnimator />
       <DebugBridge />
     </>
   );
+}
+
+// Ease at ~40 ms time-constant; skip animation past this many nodes (e.g. the
+// T-rex) so large designs never pay per-frame re-renders.
+const EASE_TAU = 0.045;
+const MAX_ANIMATED_NODES = 160;
+
+/** Drives the eased render positions once per frame (see state/animStore). */
+function GeometryAnimator() {
+  useFrame((_, dt) => {
+    const design = useAppStore.getState().current;
+    if (!design) return;
+    const instant = design.nodes.length > MAX_ANIMATED_NODES;
+    const alpha = Math.min(1, 1 - Math.exp(-dt / EASE_TAU));
+    if (stepEasing(design.nodes, alpha, instant)) bumpAnim();
+  });
+  return null;
 }
 
 /** Publishes camera / controls / projection seams onto window.__pvc so scripted
@@ -117,6 +145,7 @@ function DebugBridge() {
       z: camera.position.z,
     });
     w.__pvc.isControlsEnabled = () => (controls ? controls.enabled : null);
+    w.__pvc.getEasedPos = (id: string) => easedPos(id) ?? null;
     w.__pvc.screenOf = (p: { x: number; y: number; z: number }) => {
       const rect = gl.domElement.getBoundingClientRect();
       const v = new Vector3(p.x, p.y, p.z).project(camera);

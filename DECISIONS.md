@@ -4,6 +4,32 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Phase 1 — interaction polish (2026-07-07)
+
+- **Snapping is configurable via a floating pill** (`SnapPill`, bottom-left):
+  grid increment (default **1/4"**, plus 1/8"/1/2"/1"/Off; metric equivalents
+  when the design is metric) and toggles for point-snap and axis-inference. It's
+  a **workspace preference** in `editorStore.snap`, persisted to localStorage
+  (`prefs`), never in the document. `editorActions` derives all snap tolerances
+  from it. `DEFAULT_GRID_M` lives in `design/snapping.ts`.
+- **Geometry eases toward snapped positions** (`state/animStore.ts` +
+  `<GeometryAnimator/>`): editing writes stepped/snapped node positions to the
+  doc, and the viewport shows positions that lerp toward them (~45 ms), so a
+  fine grid glides instead of jumping. New nodes snap in place (no fly-in);
+  designs over 160 nodes skip easing (the T-rex renders at target, no per-frame
+  cost). `buildPipeModel` takes an optional eased-position override; PipeLayer +
+  SelectionHandles read the eased map and re-render off an anim tick.
+- **Control scheme:** left button is reserved for tools + a future selection
+  marquee (never orbits); **middle = pan, right = free rotate** (OrbitControls
+  `mouseButtons`), context menu suppressed. **Spacebar → select tool**;
+  **right-click ends the current path** (right-drag still rotates). **Shift while
+  drawing locks to the nearest world axis from the path start** (forced, beyond
+  proximity inference).
+- **Deferred:** SketchUp-style reference inference — hover a feature to seed
+  extra inference directions (from-point axes, parallel/perpendicular) — is not
+  built yet; only the basic Shift axis-lock is. Revisit alongside richer
+  drawing.
+
 ## Phase 1 — Draw straight pipe + realistic render (2026-07-07)
 
 - **Editing is pure `Design → Design` docOps** (`src/design/docOps.ts`) applied

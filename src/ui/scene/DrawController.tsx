@@ -39,22 +39,24 @@ export function DrawController() {
   const onMove = (e: ThreeEvent<PointerEvent>) => {
     if (tool !== 'draw') return;
     const g = rayToGround(e.ray);
-    if (g) setPreview(snapDrawPoint(g));
+    if (g) setPreview(snapDrawPoint(g, e.nativeEvent.shiftKey));
   };
 
   const onDown = (e: ThreeEvent<PointerEvent>) => {
+    // only the LEFT button drives drawing/selection; middle pans, right rotates
+    if (e.nativeEvent.button !== 0) return;
     down.current = { x: e.nativeEvent.clientX, y: e.nativeEvent.clientY };
   };
 
   const onUp = (e: ThreeEvent<PointerEvent>) => {
     const d = down.current;
     down.current = null;
-    if (!d) return;
+    if (!d || e.nativeEvent.button !== 0) return;
     const moved = Math.hypot(e.nativeEvent.clientX - d.x, e.nativeEvent.clientY - d.y);
-    if (moved > CLICK_SLOP_PX) return; // an orbit drag, not a place-point click
+    if (moved > CLICK_SLOP_PX) return; // a marquee/drag, not a place-point click
     const g = rayToGround(e.ray);
     if (!g) return;
-    if (tool === 'draw') setPreview(placeDrawPoint(g));
+    if (tool === 'draw') setPreview(placeDrawPoint(g, e.nativeEvent.shiftKey));
     else clearSelection();
   };
 

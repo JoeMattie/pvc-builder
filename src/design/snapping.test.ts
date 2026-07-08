@@ -94,7 +94,7 @@ describe('grid snapping', () => {
 });
 
 describe('defaultSnapTolerances', () => {
-  it('uses a 1-inch grid', () => {
-    expect(defaultSnapTolerances().gridStepM).toBeCloseTo(0.0254, 9);
+  it('uses a 1/4-inch grid', () => {
+    expect(defaultSnapTolerances().gridStepM).toBeCloseTo(0.00635, 9);
   });
 });

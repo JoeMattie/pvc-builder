@@ -13,7 +13,8 @@ import {
 } from '../design/docOps';
 import { lockToNearestAxis, projectLengthOnAxis } from '../design/dragMath';
 import {
-  defaultSnapTolerances,
+  AXIS_BAND_M,
+  POINT_RADIUS_M,
   type SnapContext,
   type SnapResult,
   snapPoint,
@@ -25,6 +26,16 @@ import { useEditorStore } from './editorStore';
 /** Shortest pipe a length drag can leave (one grid step), so a pipe never
  * collapses to zero. */
 const MIN_MEMBER_LEN_M = 0.0254;
+
+/** Snap tolerances derived from the live snap-pill settings. */
+function snapTol(): Pick<SnapContext, 'gridStepM' | 'pointRadiusM' | 'axisBandM'> {
+  const s = useEditorStore.getState().snap;
+  return {
+    gridStepM: s.gridStepM,
+    pointRadiusM: s.snapToPoints ? POINT_RADIUS_M : 0,
+    axisBandM: s.axisInference ? AXIS_BAND_M : 0,
+  };
+}
 
 function segmentsOf(design: Design, excludeNode?: string): SnapContext['segments'] {
   const out: SnapContext['segments'] = [];
@@ -46,20 +57,32 @@ export function buildDrawSnapContext(): SnapContext {
     nodes: design ? design.nodes.map((n) => ({ id: n.id, position: n.position })) : [],
     segments: design ? segmentsOf(design) : [],
     fromNode: from,
-    ...defaultSnapTolerances(),
+    ...snapTol(),
   };
 }
 
-export function snapDrawPoint(raw: Vec3): SnapResult {
-  return snapPoint(raw, buildDrawSnapContext());
+/** Resolve a draw point. `lockAxis` (Shift) forces the point onto whichever
+ * world axis from the path start it runs most along, overriding proximity-based
+ * inference. */
+export function snapDrawPoint(raw: Vec3, lockAxis = false): SnapResult {
+  const ctx = buildDrawSnapContext();
+  if (lockAxis && ctx.fromNode) {
+    const { position, axis } = lockToNearestAxis(ctx.fromNode, raw, ctx.gridStepM);
+    return {
+      position,
+      kind: `axis-${axis}` as SnapResult['kind'],
+      guide: { axis, from: ctx.fromNode, to: position },
+    };
+  }
+  return snapPoint(raw, ctx);
 }
 
 /** Place the next draw point (pen click): start a path, extend it, or join an
  * existing node. Returns the resolved snap for callers that want feedback. */
-export function placeDrawPoint(raw: Vec3): SnapResult {
+export function placeDrawPoint(raw: Vec3, lockAxis = false): SnapResult {
   const app = useAppStore.getState();
   const editor = useEditorStore.getState();
-  const snap = snapDrawPoint(raw);
+  const snap = snapDrawPoint(raw, lockAxis);
   const size = editor.drawSize;
   const fromId = editor.drawingFromNodeId;
 
@@ -122,7 +145,7 @@ export function dragNodeTo(
   if (!design) return;
   let position: Vec3;
   if (opts?.lockAxis && opts.anchor) {
-    position = lockToNearestAxis(opts.anchor, raw, defaultSnapTolerances().gridStepM).position;
+    position = lockToNearestAxis(opts.anchor, raw, snapTol().gridStepM).position;
   } else {
     position = snapPoint(raw, {
       nodes: design.nodes
@@ -130,7 +153,7 @@ export function dragNodeTo(
         .map((n) => ({ id: n.id, position: n.position })),
       segments: segmentsOf(design, nodeId),
       fromNode: undefined,
-      ...defaultSnapTolerances(),
+      ...snapTol(),
     }).position;
   }
   useAppStore.getState().updateCurrent((d) => setNodePosition(d, nodeId, position));
@@ -146,7 +169,7 @@ export function dragMemberEndLength(
   axisDir: Vec3,
   raw: Vec3,
 ): void {
-  const grid = defaultSnapTolerances().gridStepM;
+  const grid = snapTol().gridStepM;
   const { position } = projectLengthOnAxis(fixedEnd, axisDir, raw, grid, MIN_MEMBER_LEN_M);
   useAppStore.getState().updateCurrent((d) => setNodePosition(d, movingNodeId, position));
 }

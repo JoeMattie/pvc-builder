@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { memberLengthM } from '../design/docOps';
+import { DEFAULT_GRID_M } from '../design/snapping';
 import { createEmptyDesign, type Vec3 } from '../schema';
 import { useAppStore } from './appStore';
 import {
@@ -11,6 +12,7 @@ import {
   placeDrawPoint,
   selectMember,
   setMemberLength,
+  snapDrawPoint,
 } from './editorActions';
 import { useEditorStore } from './editorStore';
 
@@ -22,6 +24,10 @@ beforeEach(() => {
   useAppStore.setState({ current: createEmptyDesign('d', 'Path'), saveState: 'saved' });
   useEditorStore.getState().resetTransient();
   useEditorStore.getState().setTool('draw');
+  // reset snap to the default 1/4" grid (setSnap persists, so it would leak)
+  useEditorStore
+    .getState()
+    .setSnap({ gridStepM: DEFAULT_GRID_M, snapToPoints: true, axisInference: true });
 });
 
 const design = () => useAppStore.getState().current!;
@@ -106,15 +112,47 @@ describe('select + edit integration', () => {
   });
 });
 
+describe('snap settings + Shift-draw-lock', () => {
+  it('snaps drawn points to the configured grid increment', () => {
+    useEditorStore.getState().setSnap({ gridStepM: 0.0127 }); // 1/2"
+    placeDrawPoint(V(0, 0, 0));
+    placeDrawPoint(V(0.13, 0, 0)); // axis-x, 0.13 → 10 × 1/2" = 0.127
+    expect(memberLengthM(design(), design().members[0]!)).toBeCloseTo(0.127, 6);
+  });
+
+  it('Shift forces the draw point onto the nearest axis from the start', () => {
+    placeDrawPoint(V(0, 0, 0)); // start the path
+    // a point well off the X axis still locks to X under Shift
+    const r = snapDrawPoint(V(0.3048, 0, 0.09), true);
+    expect(r.kind).toBe('axis-x');
+    expect(r.position.x).toBeCloseTo(0.3048, 6);
+    expect(r.position.z).toBeCloseTo(0, 9);
+    expect(r.guide?.axis).toBe('x');
+  });
+
+  it('disabling point snapping stops nodes from snapping together', () => {
+    // draw two separate nodes, then with points off, a near-miss stays separate
+    placeDrawPoint(V(0, 0, 0));
+    placeDrawPoint(V(0.254, 0, 0));
+    finishPath();
+    useEditorStore.getState().setSnap({ snapToPoints: false, gridStepM: 0 });
+    const before = design().nodes.length;
+    placeDrawPoint(V(0.2551, 0, 0)); // ~0.5 mm from an existing node
+    // with points off + no grid, it starts a fresh node rather than snapping
+    expect(useEditorStore.getState().drawingFromNodeId).not.toBeNull();
+    expect(design().nodes.length).toBe(before + 1);
+  });
+});
+
 describe('length arrows + Shift-lock', () => {
   it('resizes a pipe along its own axis via the end arrow (opposite end fixed)', () => {
     placeDrawPoint(V(0, 0, 0));
     placeDrawPoint(V(0.3048, 0, 0)); // pipe A(0,0,0) → B(0.3048,0,0)
     const m = design().members[0]!;
-    // drag B's arrow: fixed end = A, axis = +X, cursor off-axis at ~0.5 m
-    dragMemberEndLength(m.nodeB, V(0, 0, 0), V(1, 0, 0), V(0.5, 0, 0.2));
+    // drag B's arrow: fixed end = A, axis = +X, cursor off-axis near 0.508 m
+    dragMemberEndLength(m.nodeB, V(0, 0, 0), V(1, 0, 0), V(0.51, 0, 0.2));
     const b = design().nodes.find((n) => n.id === m.nodeB)!;
-    expect(b.position.x).toBeCloseTo(0.508, 6); // 0.5 → 20" grid
+    expect(b.position.x).toBeCloseTo(0.508, 6); // 0.51 → 80 × 1/4" grid
     expect(b.position.z).toBeCloseTo(0, 9); // stays on the axis
   });
 
@@ -125,9 +163,9 @@ describe('length arrows + Shift-lock', () => {
     const nodeB = design().members[0]!.nodeB;
     const anchor = V(0.3048, 0, 0);
     // cursor drifts mostly along +Z from the anchor → lock to Z, x unchanged
-    dragNodeTo(nodeB, V(0.42, 0, 0.31), { lockAxis: true, anchor });
+    dragNodeTo(nodeB, V(0.42, 0, 0.3048), { lockAxis: true, anchor });
     const moved = design().nodes.find((n) => n.id === nodeB)!;
     expect(moved.position.x).toBeCloseTo(0.3048, 9);
-    expect(moved.position.z).toBeCloseTo(0.3048, 6); // 0.31 → 12" grid
+    expect(moved.position.z).toBeCloseTo(0.3048, 6); // 48 × 1/4" grid
   });
 });

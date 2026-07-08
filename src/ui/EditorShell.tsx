@@ -16,6 +16,7 @@ import { useEditorStore } from '../state/editorStore';
 import { useThemeStore } from '../state/themeStore';
 import { Pillbox } from './Pillbox';
 import { SelectionPanel } from './SelectionPanel';
+import { SnapPill } from './SnapPill';
 import { Viewport } from './scene/Viewport';
 
 /** The editor: the 3D viewport plus floating chrome — pillbox, selection
@@ -64,6 +65,10 @@ export function EditorShell() {
       if (e.key === 'Escape' || e.key === 'Enter') {
         if (editor.drawingFromNodeId) finishPath();
         else clearSelection();
+      } else if (e.key === ' ') {
+        // spacebar → back to the select tool
+        e.preventDefault();
+        editor.setTool('select');
       } else if (e.key === 'v' || e.key === 'V') {
         editor.setTool('select');
       } else if (e.key === 'b' || e.key === 'B') {
@@ -76,8 +81,20 @@ export function EditorShell() {
         }
       }
     };
+    // right button ends any path in progress (and never opens a context menu);
+    // right-drag still rotates via OrbitControls
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.button === 2 && useEditorStore.getState().drawingFromNodeId) finishPath();
+    };
+    const onContextMenu = (e: MouseEvent) => e.preventDefault();
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('contextmenu', onContextMenu);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('contextmenu', onContextMenu);
+    };
   }, [undo, redo, updateCurrent]);
 
   // test/debug hook (planfile §7): drives exactly what the tools drive, so a
@@ -96,9 +113,12 @@ export function EditorShell() {
         selectedIds: s.selectedIds,
         drawSize: s.drawSize,
         drawingFromNodeId: s.drawingFromNodeId,
+        snap: s.snap,
         night: useThemeStore.getState().night,
       };
     };
+    hook.setSnap = (patch: Record<string, unknown>) =>
+      useEditorStore.getState().setSnap(patch as never);
     hook.getMembers = () => {
       const d = useAppStore.getState().current;
       if (!d) return [];
@@ -117,8 +137,8 @@ export function EditorShell() {
       useAppStore.getState().updateCurrent((doc) => ({ ...doc, lengthsLocked: locked }));
     hook.setNight = (on: boolean) => useThemeStore.getState().setNight(on);
     // drawing / editing seams (world ground points)
-    hook.snap = (raw: Vec3) => snapDrawPoint(raw);
-    hook.draw = (raw: Vec3) => placeDrawPoint(raw);
+    hook.snap = (raw: Vec3, lockAxis?: boolean) => snapDrawPoint(raw, !!lockAxis);
+    hook.draw = (raw: Vec3, lockAxis?: boolean) => placeDrawPoint(raw, !!lockAxis);
     hook.finishPath = () => finishPath();
     hook.selectMember = (id: string) => selectMember(id);
     hook.clearSelection = () => clearSelection();
@@ -153,6 +173,9 @@ export function EditorShell() {
 
       {/* tool pillbox (bottom-center) */}
       <Pillbox />
+
+      {/* snapping settings (bottom-left) */}
+      <SnapPill />
 
       {/* top-right: undo/redo + view + physics + theme toggles */}
       <div className="absolute top-4 right-4 flex items-center gap-1 rounded-lg border border-border bg-card px-1.5 py-1.5 shadow-sm">
