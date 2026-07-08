@@ -25,9 +25,12 @@ beforeEach(() => {
   useEditorStore.getState().resetTransient();
   useEditorStore.getState().setTool('draw');
   // reset snap to the default 1/4" grid (setSnap persists, so it would leak)
-  useEditorStore
-    .getState()
-    .setSnap({ gridStepM: DEFAULT_GRID_M, snapToPoints: true, axisInference: true });
+  useEditorStore.getState().setSnap({
+    gridStepM: DEFAULT_GRID_M,
+    snapToEnds: true,
+    snapToPipes: true,
+    axisInference: true,
+  });
 });
 
 const design = () => useAppStore.getState().current!;
@@ -135,7 +138,7 @@ describe('snap settings + Shift-draw-lock', () => {
     placeDrawPoint(V(0, 0, 0));
     placeDrawPoint(V(0.254, 0, 0));
     finishPath();
-    useEditorStore.getState().setSnap({ snapToPoints: false, gridStepM: 0 });
+    useEditorStore.getState().setSnap({ snapToEnds: false, snapToPipes: false, gridStepM: 0 });
     const before = design().nodes.length;
     placeDrawPoint(V(0.2551, 0, 0)); // ~0.5 mm from an existing node
     // with points off + no grid, it starts a fresh node rather than snapping

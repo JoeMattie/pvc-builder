@@ -4,6 +4,30 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Drawing UX — click+drag, split snap toggles, 3D draw / Y-axis lock (2026-07-07)
+
+- **Click+drag drawing** alongside two-click: press places the first point,
+  drag, release places the end (path stays open to continue). The press+release
+  is driven by **window** pointer listeners (not the mesh's own pointerup), the
+  same reason the handle drags do — r3f drops a mesh pointerup once a drag moves
+  the ray. Mesh pointermove still handles the between-clicks hover preview.
+- **3D drawing / Shift-lock on any axis (incl. Y).** Once a path is open, the
+  draw pointer rides a **view-facing plane** through the previous point
+  (`dominantAxisNormal` + `rayToPlane`, like the endpoint drag) instead of the
+  y = 0 ground — so in a side/front view you can draw up a wall, and Shift
+  axis-lock now resolves to Y (it always considered Y; the ground target just
+  never produced a vertical component). The FIRST point of a path still lands on
+  the ground. Floor drawing in iso/top views is unchanged (the plane through a
+  y = 0 point is the ground).
+- **Snap toggles split** into **Snap to ends** (nodes) and **Snap along pipes**
+  (on-pipe), independently switchable in the snap pill. `SnapContext` gained
+  `pipeRadiusM` (falls back to `pointRadiusM`); the old combined `snapToPoints`
+  pref migrates to both. Also: pointer handlers read the tool **live** from the
+  store (a fresh tool switch can be a render ahead of the closure).
+- **Deferred:** Shift snapping *perpendicular to the previous segment* (for
+  non-axis-aligned runs) — world-axis lock incl. Y is done; perpendicular-to-
+  previous is a small follow-up.
+
 ## Render quality — hollow pipe ends, no junction ball, softer shadows (2026-07-07)
 
 - **Pipes read as real tube with wall thickness.** `buildPipeModel` no longer

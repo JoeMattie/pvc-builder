@@ -99,9 +99,14 @@ export function SnapPill() {
           </div>
           <div className="my-2 h-px bg-border" />
           <ToggleRow
-            label="Snap to points"
-            on={snap.snapToPoints}
-            onClick={() => setSnap({ snapToPoints: !snap.snapToPoints })}
+            label="Snap to ends"
+            on={snap.snapToEnds}
+            onClick={() => setSnap({ snapToEnds: !snap.snapToEnds })}
+          />
+          <ToggleRow
+            label="Snap along pipes"
+            on={snap.snapToPipes}
+            onClick={() => setSnap({ snapToPipes: !snap.snapToPipes })}
           />
           <ToggleRow
             label="Axis inference"

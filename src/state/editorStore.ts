@@ -8,23 +8,29 @@ import type { NominalSize, Vec3 } from '../schema';
 export interface SnapSettings {
   /** world grid increment in metres; 0 = no grid snapping */
   gridStepM: number;
-  /** snap to existing nodes / on-pipe points */
-  snapToPoints: boolean;
+  /** snap to existing nodes (pipe ends / junctions) */
+  snapToEnds: boolean;
+  /** snap to points along a pipe's length */
+  snapToPipes: boolean;
   /** SketchUp-style world-axis inference while drawing */
   axisInference: boolean;
 }
 
 const DEFAULT_SNAP: SnapSettings = {
   gridStepM: DEFAULT_GRID_M, // 1/4"
-  snapToPoints: true,
+  snapToEnds: true,
+  snapToPipes: true,
   axisInference: true,
 };
 
 function initialSnap(): SnapSettings {
   const pref = getSnapPref();
+  // migrate the old combined `snapToPoints` flag to both new toggles
+  const legacy = pref?.snapToPoints;
   return {
     gridStepM: pref?.gridStepM ?? DEFAULT_SNAP.gridStepM,
-    snapToPoints: pref?.snapToPoints ?? DEFAULT_SNAP.snapToPoints,
+    snapToEnds: pref?.snapToEnds ?? legacy ?? DEFAULT_SNAP.snapToEnds,
+    snapToPipes: pref?.snapToPipes ?? legacy ?? DEFAULT_SNAP.snapToPipes,
     axisInference: pref?.axisInference ?? DEFAULT_SNAP.axisInference,
   };
 }

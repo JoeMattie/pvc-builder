@@ -44,12 +44,14 @@ export function pivotAnglesOf(design: Design): Record<string, number> {
  * collapses to zero. */
 const MIN_MEMBER_LEN_M = 0.0254;
 
-/** Snap tolerances derived from the live snap-pill settings. */
-function snapTol(): Pick<SnapContext, 'gridStepM' | 'pointRadiusM' | 'axisBandM'> {
+/** Snap tolerances derived from the live snap-pill settings. Ends (nodes) and
+ * along-pipe points toggle independently. */
+function snapTol(): Pick<SnapContext, 'gridStepM' | 'pointRadiusM' | 'pipeRadiusM' | 'axisBandM'> {
   const s = useEditorStore.getState().snap;
   return {
     gridStepM: s.gridStepM,
-    pointRadiusM: s.snapToPoints ? POINT_RADIUS_M : 0,
+    pointRadiusM: s.snapToEnds ? POINT_RADIUS_M : 0,
+    pipeRadiusM: s.snapToPipes ? POINT_RADIUS_M : 0,
     axisBandM: s.axisInference ? AXIS_BAND_M : 0,
   };
 }

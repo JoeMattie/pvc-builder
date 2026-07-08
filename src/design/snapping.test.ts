@@ -57,6 +57,16 @@ describe('on-pipe snapping', () => {
     expect(r.kind).toBe('on-pipe');
     expect(r.onPipeMemberId).toBe('m7');
   });
+
+  it('along-pipe snapping uses its own radius (independent of end snapping)', () => {
+    const seg = { segments: [{ a: V(0, 0, 0), b: V(1, 0, 0) }] };
+    // ends off (pointRadiusM 0) but along-pipe on → still snaps to the pipe
+    const on = snapPoint(V(0.5, 0, 0.01), ctx({ ...seg, pointRadiusM: 0, pipeRadiusM: 0.02 }));
+    expect(on.kind).toBe('on-pipe');
+    // along-pipe off (pipeRadiusM 0) → does NOT snap to the pipe body
+    const off = snapPoint(V(0.5, 0, 0.01), ctx({ ...seg, pointRadiusM: 0.02, pipeRadiusM: 0 }));
+    expect(off.kind).not.toBe('on-pipe');
+  });
 });
 
 describe('axis inference from the path start', () => {

@@ -1,11 +1,12 @@
 import { Html, Line } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
-import { useRef, useState } from 'react';
-import { CatmullRomCurve3, Vector3 } from 'three';
+import { useThree } from '@react-three/fiber';
+import { useMemo, useState } from 'react';
+import { CatmullRomCurve3, type Ray, Raycaster, Vector2, Vector3 } from 'three';
 import { nodeById } from '../../design/docOps';
 import type { SnapResult } from '../../design/snapping';
 import { length, sub } from '../../geometry/math3';
-import { pipeSpec } from '../../schema';
+import { pipeSpec, type Vec3 } from '../../schema';
 import { useAppStore } from '../../state/appStore';
 import {
   clearSelection,
@@ -18,7 +19,7 @@ import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { formatLength } from '../units';
 import { placeAxis } from './axis';
-import { rayToGround } from './ground';
+import { dominantAxisNormal, rayToGround, rayToPlane } from './ground';
 
 // A click and an orbit-drag both start with a pointerdown on the ground; only
 // treat a pointerup as a "click" if the pointer barely moved.
@@ -40,34 +41,96 @@ export function DrawController() {
   const units = useAppStore((s) => s.current?.unitsPreference ?? 'imperial');
   const formedPoints = useEditorStore((s) => s.formedPoints);
   const [preview, setPreview] = useState<SnapResult | null>(null);
-  const down = useRef<{ x: number; y: number } | null>(null);
+  const camera = useThree((s) => s.camera);
+  const gl = useThree((s) => s.gl);
+  const fwd = useMemo(() => new Vector3(), []);
+  const rc = useMemo(() => new Raycaster(), []);
+  const ndc = useMemo(() => new Vector2(), []);
 
   const odR = pipeSpec(drawSize).odM / 2;
 
+  // The point being extended from (the previous path point). When present, the
+  // pointer rides a view-facing plane through it (3D drawing: draw up a wall in a
+  // side view, Shift-lock to any axis incl. Y), matching how endpoint drags work.
+  // The FIRST point of a path has no `from`, so it lands on the y = 0 ground.
+  const fromPoint = (): Vec3 | undefined => {
+    if (tool === 'draw') return fromPos;
+    if (tool === 'formed' && formedPoints.length) return formedPoints[formedPoints.length - 1];
+    return undefined;
+  };
+  const targetOf = (ray: Ray): Vec3 | null => {
+    const from = fromPoint();
+    if (!from) return rayToGround(ray);
+    camera.getWorldDirection(fwd);
+    return (
+      rayToPlane(ray, from, dominantAxisNormal({ x: fwd.x, y: fwd.y, z: fwd.z })) ??
+      rayToGround(ray)
+    );
+  };
+
+  // A world point from raw client coords (window events carry no r3f ray).
+  const targetFromClient = (clientX: number, clientY: number): Vec3 | null => {
+    const rect = gl.domElement.getBoundingClientRect();
+    ndc.set(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    rc.setFromCamera(ndc, camera);
+    return targetOf(rc.ray);
+  };
+
+  // hover preview between clicks (mesh event is fine when no button is down)
   const onMove = (e: ThreeEvent<PointerEvent>) => {
-    const g = rayToGround(e.ray);
+    if (e.nativeEvent.buttons !== 0) return; // a press drives its own window move
+    const g = targetOf(e.ray);
     if (!g) return;
     if (tool === 'draw') setPreview(snapDrawPoint(g, e.nativeEvent.shiftKey));
     else if (tool === 'formed') setPreview(snapFormedPoint(g));
   };
 
+  // The press+release is driven by WINDOW listeners, not the mesh's own
+  // pointerup — r3f drops the mesh pointerup once a drag moves the ray, the same
+  // reason the handle drags use window listeners (see useGroundDrag).
   const onDown = (e: ThreeEvent<PointerEvent>) => {
-    // only the LEFT button drives drawing/selection; middle pans, right rotates
-    if (e.nativeEvent.button !== 0) return;
-    down.current = { x: e.nativeEvent.clientX, y: e.nativeEvent.clientY };
-  };
-
-  const onUp = (e: ThreeEvent<PointerEvent>) => {
-    const d = down.current;
-    down.current = null;
-    if (!d || e.nativeEvent.button !== 0) return;
-    const moved = Math.hypot(e.nativeEvent.clientX - d.x, e.nativeEvent.clientY - d.y);
-    if (moved > CLICK_SLOP_PX) return; // a marquee/drag, not a place-point click
-    const g = rayToGround(e.ray);
-    if (!g) return;
-    if (tool === 'draw') setPreview(placeDrawPoint(g, e.nativeEvent.shiftKey));
-    else if (tool === 'formed') setPreview(placeFormedPoint(g));
-    else clearSelection();
+    if (e.nativeEvent.button !== 0) return; // left only; middle pans, right rotates
+    const startX = e.nativeEvent.clientX;
+    const startY = e.nativeEvent.clientY;
+    const liveTool = useEditorStore.getState().tool;
+    // click+drag: press places the first point; a path already open just waits
+    let startedPath = false;
+    if (liveTool === 'draw' && !useEditorStore.getState().drawingFromNodeId) {
+      const g = targetOf(e.ray);
+      if (g) {
+        setPreview(placeDrawPoint(g, e.nativeEvent.shiftKey));
+        startedPath = true;
+      }
+    }
+    const move = (ev: PointerEvent) => {
+      const g = targetFromClient(ev.clientX, ev.clientY);
+      if (!g) return;
+      if (liveTool === 'draw') setPreview(snapDrawPoint(g, ev.shiftKey));
+      else if (liveTool === 'formed') setPreview(snapFormedPoint(g));
+    };
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      if (ev.button !== 0) return;
+      const moved = Math.hypot(ev.clientX - startX, ev.clientY - startY);
+      const g = targetFromClient(ev.clientX, ev.clientY);
+      if (!g) return;
+      if (liveTool === 'draw') {
+        // a drag ends the segment; a click that didn't start the path extends it
+        // (two-click); a click that started the path leaves it open for click 2
+        if (moved > CLICK_SLOP_PX || !startedPath) setPreview(placeDrawPoint(g, ev.shiftKey));
+      } else if (moved <= CLICK_SLOP_PX) {
+        if (liveTool === 'formed') setPreview(placeFormedPoint(g));
+        else if (liveTool === 'select') clearSelection();
+      }
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
   };
 
   const showPreview = tool === 'draw' && preview;
@@ -89,7 +152,6 @@ export function DrawController() {
         receiveShadow
         onPointerMove={onMove}
         onPointerDown={onDown}
-        onPointerUp={onUp}
       >
         <planeGeometry args={[200, 200]} />
         <shadowMaterial transparent opacity={night ? 0.35 : 0.2} />

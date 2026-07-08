@@ -34,8 +34,11 @@ export interface SnapContext {
   fromNode?: Vec3;
   /** world grid step (m); 0 disables grid snapping */
   gridStepM: number;
-  /** radius (m) within which the cursor snaps to a node or on-pipe point */
+  /** radius (m) within which the cursor snaps to a node (a pipe END) */
   pointRadiusM: number;
+  /** radius (m) within which the cursor snaps to a point ALONG a pipe; falls
+   * back to `pointRadiusM` when unset (so ends + along-pipe can toggle apart) */
+  pipeRadiusM?: number;
   /** half-width (m) of the corridor around an axis line that snaps to it */
   axisBandM: number;
 }
@@ -85,13 +88,13 @@ export function snapPoint(raw: Vec3, ctx: SnapContext): SnapResult {
   }
   if (best) return { position: best.node.position, kind: 'node', nodeId: best.node.id };
 
-  // 2. on-pipe point
+  // 2. on-pipe point (a point ALONG a pipe — its own snap radius)
+  const pipeRadius = ctx.pipeRadiusM ?? ctx.pointRadiusM;
   let onPipe: { d: number; p: Vec3; memberId?: string } | null = null;
   for (const s of ctx.segments) {
     const cp = closestPointOnSegment(raw, s.a, s.b);
     const d = length(sub(raw, cp));
-    if (d <= ctx.pointRadiusM && (!onPipe || d < onPipe.d))
-      onPipe = { d, p: cp, memberId: s.memberId };
+    if (d <= pipeRadius && (!onPipe || d < onPipe.d)) onPipe = { d, p: cp, memberId: s.memberId };
   }
   if (onPipe) return { position: onPipe.p, kind: 'on-pipe', onPipeMemberId: onPipe.memberId };
 

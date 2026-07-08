@@ -51,7 +51,10 @@ const SNAP_KEY = 'pvc-builder.snap';
 
 export interface SnapPref {
   gridStepM: number;
-  snapToPoints: boolean;
+  /** legacy combined flag (read for migration; no longer written) */
+  snapToPoints?: boolean;
+  snapToEnds: boolean;
+  snapToPipes: boolean;
   axisInference: boolean;
 }
 
@@ -64,6 +67,8 @@ export function getSnapPref(): Partial<SnapPref> | null {
     return {
       gridStepM: typeof p.gridStepM === 'number' && p.gridStepM >= 0 ? p.gridStepM : undefined,
       snapToPoints: typeof p.snapToPoints === 'boolean' ? p.snapToPoints : undefined,
+      snapToEnds: typeof p.snapToEnds === 'boolean' ? p.snapToEnds : undefined,
+      snapToPipes: typeof p.snapToPipes === 'boolean' ? p.snapToPipes : undefined,
       axisInference: typeof p.axisInference === 'boolean' ? p.axisInference : undefined,
     };
   } catch {
@@ -71,7 +76,12 @@ export function getSnapPref(): Partial<SnapPref> | null {
   }
 }
 
-export function setSnapPref(pref: SnapPref): void {
+export function setSnapPref(pref: {
+  gridStepM: number;
+  snapToEnds: boolean;
+  snapToPipes: boolean;
+  axisInference: boolean;
+}): void {
   const s = safeStorage();
   const raw = JSON.stringify(pref);
   if (s instanceof Map) s.set(SNAP_KEY, raw);
