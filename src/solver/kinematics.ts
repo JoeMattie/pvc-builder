@@ -45,6 +45,17 @@ function axisAngleQuat(axis: Vec3, angle: number): Quaternion {
   return { x: u.x * s, y: u.y * s, z: u.z * s, w: Math.cos(angle / 2) };
 }
 
+/** Exponential map R³ → unit quaternion: a rotation vector (axis·angle) becomes
+ * the rotation it represents. Used to give a FREE (ball) joint three
+ * well-behaved orientation variables in the loop-closure solver (no gimbal, no
+ * normalization constraint), parameterizing an increment on its base pose. */
+function expQuat(w: Vec3): Quaternion {
+  const theta = length(w);
+  if (theta < 1e-9) return IDENTITY_Q;
+  const s = Math.sin(theta / 2) / theta;
+  return { x: w.x * s, y: w.y * s, z: w.z * s, w: Math.cos(theta / 2) };
+}
+
 function clampAngle(angle: number, limits?: { minRad: number; maxRad: number }): number {
   if (!limits) return angle;
   return Math.max(limits.minRad, Math.min(limits.maxRad, angle));
@@ -353,35 +364,57 @@ function sumSq(v: number[]): number {
   return s;
 }
 
-/** Loop-closure solver. The spanning-tree WRAPPED joints (`treeIds`) are the
- * free variables; a damped Gauss-Newton (Levenberg-Marquardt) drives:
+/** Loop-closure solver. The spanning-tree WRAPPED joint angles (`treeIds`) AND
+ * the spanning-tree FREE joint orientations (`freeIds`, three exp-map variables
+ * each) are the free variables; a damped Gauss-Newton (Levenberg-Marquardt)
+ * drives:
  *   • closure — each loop-closing joint's node must agree between its two bodies
  *     (this is what keeps every member length exact around the loop),
- *   • regularization — tree angles stay near their slider targets,
+ *   • regularization — tree angles stay near their slider targets, free-joint
+ *     increments stay near zero (minimal change from the input pose),
  *   • drag (optional) — the dragged node reaches its target.
- * Free tree joints hold their stored orientation constant through the solve.
- * Returns resolved angles for ALL wrapped joints + the final FK. */
+ * Free tree joints are true 3-DOF ball joints here (previously they were frozen,
+ * which made them behave like a locked axis inside any closed loop). Returns
+ * resolved angles for ALL wrapped joints, resolved orientations for ALL free
+ * joints, and the final FK. */
 function solveLoops(
   ctx: Ctx,
   design: Design,
   state: JointState,
   loopJoints: Joint[],
   treeIds: string[],
+  freeIds: string[],
   dragTarget?: { nodeId: string; position: Vec3 },
-): { angles: Record<string, number>; converged: boolean; fk: FKResult } {
+): {
+  angles: Record<string, number>;
+  orient: Record<string, Quaternion>;
+  converged: boolean;
+  fk: FKResult;
+} {
   const targets = state.angles;
-  const n = treeIds.length;
+  const nW = treeIds.length;
+  const nF = freeIds.length;
+  const n = nW + 3 * nF; // wrapped angles + 3 exp-map params per free tree joint
   const W_CLOSE = 40;
   const W_REG = 0.05;
   const W_DRAG = 2;
-  const x = treeIds.map((id) => targets[id] ?? 0);
+  const x = new Array<number>(n).fill(0);
+  treeIds.forEach((id, i) => {
+    x[i] = targets[id] ?? 0;
+  });
 
   const stateFrom = (xv: number[]): JointState => {
     const angles = { ...targets };
     treeIds.forEach((id, i) => {
       angles[id] = xv[i]!;
     });
-    return { angles, orient: state.orient };
+    const orient = { ...state.orient };
+    freeIds.forEach((id, k) => {
+      const base = state.orient[id] ?? IDENTITY_Q;
+      const off = nW + 3 * k;
+      orient[id] = mulQ(expQuat({ x: xv[off]!, y: xv[off + 1]!, z: xv[off + 2]! }), base);
+    });
+    return { angles, orient };
   };
   const residual = (xv: number[]): number[] => {
     const fk = runFK(ctx, stateFrom(xv));
@@ -397,7 +430,9 @@ function solveLoops(
       const nb = applyT(tb, nd);
       r.push((na.x - nb.x) * W_CLOSE, (na.y - nb.y) * W_CLOSE, (na.z - nb.z) * W_CLOSE);
     }
-    for (let i = 0; i < n; i++) r.push((xv[i]! - (targets[treeIds[i]!] ?? 0)) * W_REG);
+    for (let i = 0; i < nW; i++) r.push((xv[i]! - (targets[treeIds[i]!] ?? 0)) * W_REG);
+    // free tree joints: keep the ball-joint increment minimal (near the input pose)
+    for (let i = nW; i < n; i++) r.push(xv[i]! * W_REG);
     // wrapped loop joints have no tree variable — pull their *measured* angle
     // toward the slider target so driving ANY wrapped pivot moves the loop
     for (const p of loopJoints) {
@@ -478,7 +513,8 @@ function solveLoops(
     if (!stepped) break;
   }
 
-  const fk = runFK(ctx, stateFrom(x));
+  const finalState = stateFrom(x);
+  const fk = runFK(ctx, finalState);
   const angles: Record<string, number> = {};
   const treeSet = new Set(treeIds);
   for (const p of design.joints) {
@@ -500,7 +536,18 @@ function solveLoops(
           )
         : (targets[p.id] ?? 0);
   }
-  return { angles, converged: cost < 1e-8, fk };
+  // resolved free orientations: tree free joints take their solved value (exactly
+  // what FK used, so re-solving next frame is stable); loop free joints impose
+  // only a positional constraint and never feed FK, so pass their input through.
+  const orient: Record<string, Quaternion> = {};
+  const freeSet = new Set(freeIds);
+  for (const p of design.joints) {
+    if (p.mode !== 'free') continue;
+    orient[p.id] = freeSet.has(p.id)
+      ? (finalState.orient[p.id] ?? IDENTITY_Q)
+      : (state.orient[p.id] ?? p.orientation ?? IDENTITY_Q);
+  }
+  return { angles, orient, converged: cost < 1e-8, fk };
 }
 
 /** Whether every axis in the list is parallel (‖a×b‖ ≈ 0) — i.e. the component
@@ -583,6 +630,9 @@ export function solvePose(
   const treeWrapped = [...refFK.frames.entries()]
     .filter(([, f]) => f.mode === 'wrapped')
     .map(([id]) => id);
+  const treeFree = [...refFK.frames.entries()]
+    .filter(([, f]) => f.mode === 'free')
+    .map(([id]) => id);
   const loopJoints = design.joints.filter((p) => {
     if (p.mode === 'anchor') return false;
     const ba = ctx.bodyOfMember.get(p.receiver);
@@ -597,8 +647,9 @@ export function solvePose(
   if (loopJoints.length > 0) {
     // closed loops: run loop closure over wrapped tree joints so every member
     // length stays exact and driving one pivot pushes the others
-    const r = solveLoops(ctx, design, state, loopJoints, treeWrapped, inputs.dragTarget);
+    const r = solveLoops(ctx, design, state, loopJoints, treeWrapped, treeFree, inputs.dragTarget);
     angles = r.angles;
+    orientOut = { ...orientOut, ...r.orient };
     converged = r.converged;
     fk = r.fk;
   } else {

@@ -272,6 +272,69 @@ describe('solve — closed loop of wrapped pivots (spatial)', () => {
   });
 });
 
+describe('solve — closed loop containing free (ball) joints (locked)', () => {
+  /** A quadrilateral loop with a FREE ball joint at every corner. Because there
+   * is a loop, solvePose takes the loop-closure path — which previously FROZE
+   * every free joint (so a free pivot behaved like a locked axis, the reported
+   * bug from bug.pvc.json). Now the spanning-tree free joints are true 3-DOF
+   * variables in the solve, so the loop can flex out of plane to follow a drag
+   * while every member length stays exact. */
+  function freeLoop(): Design {
+    const d = createEmptyDesign('d', 'free loop');
+    d.nodes.push(
+      { id: 'n0', position: V(0, 0, 0) },
+      { id: 'n1', position: V(1, 0, 0) },
+      { id: 'n2', position: V(1, 0, 1) },
+      { id: 'n3', position: V(0, 0, 1) },
+    );
+    d.members.push(
+      { id: 'm0', kind: 'straight', nodeA: 'n0', nodeB: 'n1', size: '3/4"' },
+      { id: 'm1', kind: 'straight', nodeA: 'n1', nodeB: 'n2', size: '3/4"' },
+      { id: 'm2', kind: 'straight', nodeA: 'n2', nodeB: 'n3', size: '3/4"' },
+      { id: 'm3', kind: 'straight', nodeA: 'n3', nodeB: 'n0', size: '3/4"' },
+    );
+    d.joints.push(
+      { id: 'f1', nodeId: 'n1', receiver: 'm0', mover: 'm1', onBody: false, mode: 'free' },
+      { id: 'f2', nodeId: 'n2', receiver: 'm1', mover: 'm2', onBody: false, mode: 'free' },
+      { id: 'f3', nodeId: 'n3', receiver: 'm2', mover: 'm3', onBody: false, mode: 'free' },
+      { id: 'f0', nodeId: 'n0', receiver: 'm3', mover: 'm0', onBody: false, mode: 'free' },
+    );
+    return d;
+  }
+
+  it('free joints articulate inside the loop; drag flexes it, lengths preserved', () => {
+    const d = freeLoop();
+    const r = solve(
+      d,
+      {
+        lengthsLocked: true,
+        pivotAngles: {},
+        dragTarget: { nodeId: 'n2', position: V(1, 0.7, 1) },
+      },
+      'pose',
+    );
+    const L = (a: string, b: string) => dist(at(r, a), at(r, b));
+    // every member length stays exact around the loop (closure dominates)
+    expect(L('n0', 'n1')).toBeCloseTo(1, 2);
+    expect(L('n1', 'n2')).toBeCloseTo(1, 2);
+    expect(L('n2', 'n3')).toBeCloseTo(1, 2);
+    expect(L('n3', 'n0')).toBeCloseTo(1, 2);
+    // the loop left its drawn plane to follow the drag — impossible when the free
+    // joints are frozen (the pre-fix behavior kept n2.y ≈ 0)
+    expect(at(r, 'n2').y).toBeGreaterThan(0.2);
+    // and at least one free joint actually rotated (non-identity orientation)
+    const moved = Object.values(r.jointOrientations).some((q) => Math.hypot(q.x, q.y, q.z) > 1e-3);
+    expect(moved).toBe(true);
+  });
+
+  it('reports a mobile (not over-constrained) spherical loop', () => {
+    const r = solve(freeLoop(), { lengthsLocked: true, pivotAngles: {} }, 'pose');
+    // 4 bodies, 4 ball joints: 6·3 − (6·4 − 12) = 6 DOF
+    expect(r.diagnostics.mobilityDof).toBe(6);
+    expect(r.diagnostics.overConstrained).toBe(false);
+  });
+});
+
 describe('solve — determinism & rigidity', () => {
   it('is reproducible for identical inputs', () => {
     const d = wrappedL();
