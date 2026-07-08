@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createEmptyDesign, type Design, type Vec3 } from '../schema';
-import { bom, bomToCsv, fittingTakeoffM } from './bom';
-import { addFormedMember, appendPipe, startPath } from './docOps';
+import { bom, bomToCsv, EYE_BOLT_TAKEOFF_M, fittingTakeoffM } from './bom';
+import { addFormedMember, appendPipe, setJoinMode, startPath } from './docOps';
 
 const V = (x: number, y: number, z: number): Vec3 => ({ x, y, z });
 
@@ -49,6 +49,31 @@ describe('bom cut list', () => {
     const b = bom(path([V(0, 0, 0), V(1, 0, 0), V(1, 0, 1)], '1/2"'));
     const t = fittingTakeoffM('elbow90', '1/2"');
     expect(b.totalBySize['1/2"']).toBeCloseTo(2 * (1 - t), 9);
+  });
+});
+
+describe('bom joint hardware', () => {
+  it('counts a wrapped pivot as heat-wrap hardware (no socket fitting)', () => {
+    const d = path([V(0, 0, 0), V(1, 0, 0), V(1, 0, 1)]);
+    const corner = d.nodes[1]!.id;
+    const withPivot = setJoinMode(d, corner, d.members[0]!.id, 'wrapped');
+    const b = bom(withPivot);
+    expect(b.joints).toEqual([{ mode: 'wrapped', count: 1 }]);
+    // the pivoted corner is no longer an elbow fitting
+    expect(b.fittings.find((f) => f.type === 'elbow90')).toBeUndefined();
+  });
+
+  it('a free pivot lists eye-bolt hardware and takes a bit off each butted end', () => {
+    const d = path([V(0, 0, 0), V(1, 0, 0), V(1, 0, 1)]);
+    const corner = d.nodes[1]!.id;
+    const withFree = setJoinMode(d, corner, d.members[0]!.id, 'free');
+    const b = bom(withFree);
+    expect(b.joints).toEqual([{ mode: 'free', count: 1 }]);
+    // both pipes butt the ball at the corner → each shortened by the eye-bolt take-off
+    expect(cut(b, 0).cutLengthM).toBeCloseTo(1 - EYE_BOLT_TAKEOFF_M, 9);
+    expect(cut(b, 1).cutLengthM).toBeCloseTo(1 - EYE_BOLT_TAKEOFF_M, 9);
+    const csv = bomToCsv(withFree, 'imperial');
+    expect(csv).toContain('free pivot');
   });
 });
 

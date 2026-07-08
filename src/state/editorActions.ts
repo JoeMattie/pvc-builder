@@ -3,22 +3,22 @@
 // bridges pure snapping (design/snapping) + pure docOps (design/docOps) into
 // the appStore (undo/autosave) and transient editorStore.
 import {
+  addBodyJoint,
   addFormedMember,
-  addPivot,
-  addWrap,
   appendPipe,
   connectPipe,
-  convertWrapToFitting as convertWrapToFittingOp,
   incidentMembers,
   memberEndpoints,
   nodeById,
-  resetPivots as resetPivotsOp,
+  reconcileBodyJoints,
+  resetJoints as resetJointsOp,
   rotateMember,
+  setJoinMode as setJoinModeOp,
+  setJointAngle as setJointAngleOp,
   setMemberLengthM,
   setNodePosition,
-  setPivotAngle as setPivotAngleOp,
-  setWrapRigid as setWrapRigidOp,
   startPath,
+  swapReceiver as swapReceiverOp,
   translateMember,
 } from '../design/docOps';
 import {
@@ -36,16 +36,25 @@ import {
   snapPoint,
 } from '../design/snapping';
 import { dot, length, normalize, scale, sub } from '../geometry/math3';
-import type { Design, Vec3 } from '../schema';
+import type { Design, JointMode, Quaternion, Vec3 } from '../schema';
 import { pipeSpec } from '../schema';
 import { solve } from '../solver';
 import { useAppStore } from './appStore';
 import { useEditorStore } from './editorStore';
 
-/** The stored angle of every pivot as the solver's input map. */
+const IDENTITY_Q: Quaternion = { x: 0, y: 0, z: 0, w: 1 };
+
+/** The stored angle of every wrapped pivot as the solver's input map. */
 export function pivotAnglesOf(design: Design): Record<string, number> {
   const out: Record<string, number> = {};
-  for (const p of design.pivots) out[p.id] = p.angleRad ?? 0;
+  for (const j of design.joints) if (j.mode === 'wrapped') out[j.id] = j.angleRad ?? 0;
+  return out;
+}
+
+/** The stored orientation of every free (ball) pivot as the solver's input map. */
+export function jointOrientationsOf(design: Design): Record<string, Quaternion> {
+  const out: Record<string, Quaternion> = {};
+  for (const j of design.joints) if (j.mode === 'free') out[j.id] = j.orientation ?? IDENTITY_Q;
   return out;
 }
 
@@ -142,8 +151,8 @@ export function placeDrawPoint(raw: Vec3, lockAxis = false): SnapResult {
   const snap = snapDrawPoint(raw, lockAxis);
   const size = editor.drawSize;
   const fromId = editor.drawingFromNodeId;
-  // landing on a pipe's body (not an end node) forms a heat-wrapped tee around
-  // that intact run — rigid/screwed by default, switchable to a pivot later
+  // landing on a pipe's body (not an end node) forms an on-body tee around that
+  // intact run — rigid/screwed (anchor) by default, switchable to a pivot later
   const wrapMember = snap.kind === 'on-pipe' ? snap.onPipeMemberId : undefined;
 
   if (!fromId) {
@@ -154,33 +163,48 @@ export function placeDrawPoint(raw: Vec3, lockAxis = false): SnapResult {
       app.updateCurrent((d) => {
         const s = startPath(d, snap.position);
         newId = s.nodeId;
-        return wrapMember ? addWrap(s.design, wrapMember, newId).design : s.design;
+        // the branch member doesn't exist yet — remember the run so the on-body
+        // union is created once the first segment is drawn
+        return s.design;
       });
       editor.setDrawingFrom(newId);
+      editor.setDrawStartWrap(wrapMember ?? null);
     }
     return snap;
   }
 
   if (snap.nodeId === fromId) return snap; // clicked the current cursor — ignore
 
+  // a pending union at the path's on-pipe START node (fromId), now that its first
+  // segment exists
+  const startWrap = editor.drawStartWrapMember;
+
   if (snap.kind === 'node' && snap.nodeId) {
-    app.updateCurrent((d) => connectPipe(d, fromId, snap.nodeId as string, size).design);
+    app.updateCurrent((d) => {
+      const nd = connectPipe(d, fromId, snap.nodeId as string, size).design;
+      return startWrap ? addBodyJoint(nd, startWrap, fromId).design : nd;
+    });
     editor.setDrawingFrom(snap.nodeId);
   } else {
     let nextId = '';
     app.updateCurrent((d) => {
       const r = appendPipe(d, fromId, snap.position, size);
       nextId = r.nodeId;
-      return wrapMember ? addWrap(r.design, wrapMember, nextId).design : r.design;
+      let nd = wrapMember ? addBodyJoint(r.design, wrapMember, nextId).design : r.design;
+      if (startWrap) nd = addBodyJoint(nd, startWrap, fromId).design;
+      return nd;
     });
     editor.setDrawingFrom(nextId);
   }
+  if (startWrap) editor.setDrawStartWrap(null);
   return snap;
 }
 
 /** End the current path (Escape / Enter / right-click / double-click). */
 export function finishPath(): void {
-  useEditorStore.getState().setDrawingFrom(null);
+  const editor = useEditorStore.getState();
+  editor.setDrawingFrom(null);
+  editor.setDrawStartWrap(null);
 }
 
 /** Snap a formed-tool point: like drawing, with axis inference anchored at the
@@ -226,6 +250,12 @@ export function finishFormed(): void {
   editor.clearFormedPoints();
 }
 
+/** Apply a geometry edit, then reconcile on-body unions so connecting /
+ * disconnecting a branch happens immediately — even mid-drag. */
+function updateReconciled(mutate: (d: Design) => Design): void {
+  useAppStore.getState().updateCurrent((d) => reconcileBodyJoints(mutate(d)));
+}
+
 export function selectMember(memberId: string): void {
   useEditorStore.getState().setSelection([memberId]);
 }
@@ -259,7 +289,7 @@ export function dragNodeTo(
       ...snapTol(),
     }).position;
   }
-  useAppStore.getState().updateCurrent((d) => setNodePosition(d, nodeId, position));
+  updateReconciled((d) => setNodePosition(d, nodeId, position));
 }
 
 /** Resize a member by dragging one end's arrow along the pipe's own axis: move
@@ -285,69 +315,79 @@ export function dragMemberEndLength(
     grid,
     MIN_MEMBER_LEN_M,
   );
-  useAppStore.getState().updateCurrent((d) => setNodePosition(d, movingNodeId, position));
+  updateReconciled((d) => setNodePosition(d, movingNodeId, position));
 }
 
 /** Set an exact length on a member (length editor). */
 export function setMemberLength(memberId: string, lengthM: number): void {
-  useAppStore.getState().updateCurrent((d) => setMemberLengthM(d, memberId, lengthM));
+  updateReconciled((d) => setMemberLengthM(d, memberId, lengthM));
 }
 
 /** Translate a whole member by `delta` (the move tool's axis arrows). */
 export function translateMemberBy(memberId: string, delta: Vec3): void {
-  useAppStore.getState().updateCurrent((d) => translateMember(d, memberId, delta));
+  updateReconciled((d) => translateMember(d, memberId, delta));
 }
 
 /** Rotate a whole member about `pivot` around `axis` by `angleRad` (rotate tool). */
 export function rotateMemberBy(memberId: string, axis: Vec3, angleRad: number, pivot: Vec3): void {
-  useAppStore.getState().updateCurrent((d) => rotateMember(d, memberId, axis, angleRad, pivot));
+  updateReconciled((d) => rotateMember(d, memberId, axis, angleRad, pivot));
 }
 
-// ── pivots (Phase 4) ────────────────────────────────────────────────────────
+// ── joints (right-click a pipe join → wrapped / free / anchor) ──────────────
 
-/** Turn a 2-member node into a heat-formed pivot (the pivot tool). */
-export function createPivotAt(nodeId: string): void {
-  useAppStore.getState().updateCurrent((d) => addPivot(d, nodeId).design);
+/** Set member `moverId`'s connection mode at `nodeId` — the right-click join
+ * menu (and the __pvc hook) call this. `receiverId` overrides the auto-picked
+ * receiver for a wrapped pivot. */
+export function setJoinMode(
+  nodeId: string,
+  moverId: string,
+  mode: JointMode,
+  receiverId?: string,
+): void {
+  useAppStore.getState().updateCurrent((d) => setJoinModeOp(d, nodeId, moverId, mode, receiverId));
 }
 
-/** Set a pivot's angle (the angle slider). In a locked mechanism with closed
- * loops, driving one pivot pushes the others: after setting the driven angle we
- * solve and write back every OTHER pivot's resolved angle (the driven one stays
- * where the user put it), so the loop stays closed and the passive sliders
- * track. For open chains the solve is an identity, so this is a no-op there. */
-export function setPivotAngle(pivotId: string, angleRad: number): void {
+/** Swap which pipe wraps which (a wrapped end-to-end joint's ⇄ control). */
+export function swapJointReceiver(jointId: string): void {
+  useAppStore.getState().updateCurrent((d) => swapReceiverOp(d, jointId));
+}
+
+/** Set a wrapped pivot's angle (the angle slider). In a locked mechanism with
+ * closed loops, driving one pivot pushes the others: after setting the driven
+ * angle we solve and write back every OTHER wrapped joint's resolved angle (the
+ * driven one stays put), so the loop stays closed and the passive sliders track.
+ * For open chains the solve is an identity, so this is a no-op there. */
+export function setPivotAngle(jointId: string, angleRad: number): void {
   useAppStore.getState().updateCurrent((d) => {
-    const next = setPivotAngleOp(d, pivotId, angleRad);
-    if (!next.lengthsLocked || next.pivots.length < 2) return next;
-    const r = solve(next, { lengthsLocked: true, pivotAngles: pivotAnglesOf(next) }, 'pose');
+    const next = setJointAngleOp(d, jointId, angleRad);
+    if (!next.lengthsLocked || next.joints.length < 2) return next;
+    const r = solve(
+      next,
+      {
+        lengthsLocked: true,
+        pivotAngles: pivotAnglesOf(next),
+        jointOrientations: jointOrientationsOf(next),
+      },
+      'pose',
+    );
     return {
       ...next,
-      pivots: next.pivots.map((p) =>
-        p.id === pivotId ? p : { ...p, angleRad: r.pivotAngles[p.id] ?? p.angleRad ?? 0 },
+      joints: next.joints.map((j) =>
+        j.id === jointId || j.mode !== 'wrapped'
+          ? j
+          : { ...j, angleRad: r.pivotAngles[j.id] ?? j.angleRad ?? 0 },
       ),
     };
   });
 }
 
-/** Reset all pivots to their rest angle. */
+/** Reset all pivot joints to their rest pose. */
 export function resetPivots(): void {
-  useAppStore.getState().updateCurrent((d) => resetPivotsOp(d));
-}
-
-// ── heat-wrapped tees ───────────────────────────────────────────────────────
-
-/** Switch a wrap between rigid (screwed) and a natural pivot. */
-export function setWrapRigid(wrapId: string, rigid: boolean): void {
-  useAppStore.getState().updateCurrent((d) => setWrapRigidOp(d, wrapId, rigid));
-}
-
-/** Convert a wrap into a standard socket fitting (split the run → a tee). */
-export function convertWrapToFitting(wrapId: string): void {
-  useAppStore.getState().updateCurrent((d) => convertWrapToFittingOp(d, wrapId));
+  useAppStore.getState().updateCurrent((d) => resetJointsOp(d));
 }
 
 /** Drag-to-rotate in locked mode: run IK so `nodeId` follows the ground point,
- * writing the resolved pivot angles back to the document. */
+ * writing the resolved wrapped angles + free orientations back to the document. */
 export function dragLocked(nodeId: string, ground: Vec3): void {
   const design = useAppStore.getState().current;
   if (!design) return;
@@ -356,12 +396,18 @@ export function dragLocked(nodeId: string, ground: Vec3): void {
     {
       lengthsLocked: true,
       pivotAngles: pivotAnglesOf(design),
+      jointOrientations: jointOrientationsOf(design),
       dragTarget: { nodeId, position: ground },
     },
     'pose',
   );
   useAppStore.getState().updateCurrent((d) => ({
     ...d,
-    pivots: d.pivots.map((p) => ({ ...p, angleRad: r.pivotAngles[p.id] ?? p.angleRad ?? 0 })),
+    joints: d.joints.map((j) => {
+      if (j.mode === 'wrapped') return { ...j, angleRad: r.pivotAngles[j.id] ?? j.angleRad ?? 0 };
+      if (j.mode === 'free')
+        return { ...j, orientation: r.jointOrientations[j.id] ?? j.orientation };
+      return j;
+    }),
   }));
 }

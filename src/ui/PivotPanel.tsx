@@ -1,22 +1,34 @@
 import { RotateCcw, Trash2 } from 'lucide-react';
-import { removePivot } from '../design/docOps';
 import { solve } from '../solver';
 import { useAppStore } from '../state/appStore';
-import { pivotAnglesOf, resetPivots, setPivotAngle } from '../state/editorActions';
+import {
+  jointOrientationsOf,
+  pivotAnglesOf,
+  resetPivots,
+  setJoinMode,
+  setPivotAngle,
+} from '../state/editorActions';
 
 const DEG = 180 / Math.PI;
 
-/** Locked-mode pivot controls (planfile §5): a mobility/over-constrained
- * readout and an angle slider per pivot. Only shown when lengths are locked and
- * the design has pivots. */
+/** Locked-mode pivot controls (planfile §5): a mobility/over-constrained readout,
+ * plus an angle slider per WRAPPED pivot (free ball joints are posed by dragging,
+ * so they have no slider). Only shown when lengths are locked and pivots exist. */
 export function PivotPanel() {
   const design = useAppStore((s) => s.current);
-  const updateCurrent = useAppStore((s) => s.updateCurrent);
-  if (!design?.lengthsLocked || !design.pivots.length) return null;
+  if (!design?.lengthsLocked || !design.joints.length) return null;
+
+  const wrapped = design.joints.filter((j) => j.mode === 'wrapped');
+  const freeCount = design.joints.filter((j) => j.mode === 'free').length;
+  if (!wrapped.length && !freeCount) return null;
 
   const { diagnostics } = solve(
     design,
-    { lengthsLocked: true, pivotAngles: pivotAnglesOf(design) },
+    {
+      lengthsLocked: true,
+      pivotAngles: pivotAnglesOf(design),
+      jointOrientations: jointOrientationsOf(design),
+    },
     'pose',
   );
 
@@ -48,18 +60,18 @@ export function PivotPanel() {
         </div>
       </div>
 
-      {design.pivots.map((pv, i) => {
-        const deg = Math.round((pv.angleRad ?? 0) * DEG);
+      {wrapped.map((j, i) => {
+        const deg = Math.round((j.angleRad ?? 0) * DEG);
         return (
-          <div key={pv.id} className="mb-2 last:mb-0">
+          <div key={j.id} className="mb-2 last:mb-0">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>Pivot {i + 1}</span>
+              <span>Wrapped {i + 1}</span>
               <span className="flex items-center gap-1">
                 <span className="tabular-nums text-foreground">{deg}°</span>
                 <button
                   type="button"
-                  aria-label={`Delete pivot ${i + 1}`}
-                  onClick={() => updateCurrent((d) => removePivot(d, pv.id))}
+                  aria-label={`Remove wrapped pivot ${i + 1}`}
+                  onClick={() => setJoinMode(j.nodeId, j.mover, 'anchor')}
                   className="text-muted-foreground hover:text-destructive"
                 >
                   <Trash2 size={12} />
@@ -71,13 +83,19 @@ export function PivotPanel() {
               min={-180}
               max={180}
               value={deg}
-              aria-label={`Pivot ${i + 1} angle`}
-              onChange={(e) => setPivotAngle(pv.id, Number(e.target.value) / DEG)}
+              aria-label={`Wrapped pivot ${i + 1} angle`}
+              onChange={(e) => setPivotAngle(j.id, Number(e.target.value) / DEG)}
               className="w-full accent-primary"
             />
           </div>
         );
       })}
+
+      {freeCount > 0 && (
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          {freeCount} free ball joint{freeCount === 1 ? '' : 's'} — drag to pose
+        </p>
+      )}
     </div>
   );
 }

@@ -40,10 +40,10 @@ function initialSnap(): SnapSettings {
 // undo history — that is the document's job (appStore). Resolved fittings will
 // also be cached here from Phase 2 on.
 
-/** Active editing tool. `formed` draws a heat-bent spline; `pivot` turns a
- * junction into a heat-formed revolute joint; `move` translates the selected
- * member along a world axis via arrow handles. */
-export type Tool = 'select' | 'draw' | 'formed' | 'pivot' | 'move' | 'rotate';
+/** Active editing tool. `formed` draws a heat-bent spline; `move` translates the
+ * selected member along a world axis via arrow handles; `rotate` swings it about
+ * a ring gizmo. Pivots are created by right-clicking a pipe join (no tool). */
+export type Tool = 'select' | 'draw' | 'formed' | 'move' | 'rotate';
 
 /** Camera projection: orthographic isometric by default, one-toggle
  * perspective (planfile §1). */
@@ -58,15 +58,17 @@ export interface EditorState {
   /** while drawing a path, the node the next segment extends from (null = the
    * pen is up / no path in progress) */
   drawingFromNodeId: string | null;
+  /** when a path STARTED on a pipe body, the run it landed on — the branch member
+   * doesn't exist until the first segment, so the on-body union is created then */
+  drawStartWrapMember: string | null;
   /** the committed points of the in-progress formed (heat-bent) pipe */
   formedPoints: Vec3[];
   /** running the CrashCat rigid-body simulation (Play mode) */
   simulating: boolean;
-  /** show the fabrication detail on pivots: the receiving pipe extended 1" past
-   * an endpoint pivot + a PVC endcap retaining ring (the "Solve" toggle) */
-  fabricationSolved: boolean;
   /** the in-progress rubber-band selection rectangle (screen/client px), or null */
   marquee: { x0: number; y0: number; x1: number; y1: number } | null;
+  /** an open right-click join menu: the pipe end being edited + screen anchor */
+  joinMenu: { nodeId: string; moverId: string; x: number; y: number } | null;
   /** snapping configuration (the snap pill) */
   snap: SnapSettings;
   setTool(tool: Tool): void;
@@ -75,11 +77,13 @@ export interface EditorState {
   setSelection(ids: string[]): void;
   setDrawSize(size: NominalSize): void;
   setDrawingFrom(nodeId: string | null): void;
+  setDrawStartWrap(memberId: string | null): void;
   pushFormedPoint(p: Vec3): void;
   clearFormedPoints(): void;
   setSimulating(on: boolean): void;
-  setFabricationSolved(on: boolean): void;
   setMarquee(m: { x0: number; y0: number; x1: number; y1: number } | null): void;
+  openJoinMenu(menu: { nodeId: string; moverId: string; x: number; y: number }): void;
+  closeJoinMenu(): void;
   setSnap(patch: Partial<SnapSettings>): void;
   /** reset everything transient (e.g. when switching designs) — keeps snap */
   resetTransient(): void;
@@ -91,10 +95,11 @@ const INITIAL = {
   selectedIds: [] as string[],
   drawSize: '3/4"' as NominalSize,
   drawingFromNodeId: null as string | null,
+  drawStartWrapMember: null as string | null,
   formedPoints: [] as Vec3[],
   simulating: false,
-  fabricationSolved: false,
   marquee: null as { x0: number; y0: number; x1: number; y1: number } | null,
+  joinMenu: null as { nodeId: string; moverId: string; x: number; y: number } | null,
 };
 
 export const useEditorStore = create<EditorState>()((set, get) => ({
@@ -105,6 +110,7 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     set({
       tool,
       drawingFromNodeId: tool === 'draw' ? get().drawingFromNodeId : null,
+      drawStartWrapMember: tool === 'draw' ? get().drawStartWrapMember : null,
       formedPoints: tool === 'formed' ? get().formedPoints : [],
     });
   },
@@ -123,6 +129,9 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   setDrawingFrom(nodeId) {
     set({ drawingFromNodeId: nodeId });
   },
+  setDrawStartWrap(memberId) {
+    set({ drawStartWrapMember: memberId });
+  },
   pushFormedPoint(p) {
     set({ formedPoints: [...get().formedPoints, p] });
   },
@@ -133,11 +142,14 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     // leaving a drawing tool / selection isn't needed; just toggle the sim
     set({ simulating: on });
   },
-  setFabricationSolved(on) {
-    set({ fabricationSolved: on });
-  },
   setMarquee(m) {
     set({ marquee: m });
+  },
+  openJoinMenu(menu) {
+    set({ joinMenu: menu });
+  },
+  closeJoinMenu() {
+    set({ joinMenu: null });
   },
   setSnap(patch) {
     const next = { ...get().snap, ...patch };

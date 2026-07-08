@@ -1,25 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import { createEmptyDesign, type Design, type Vec3 } from '../schema';
 import {
-  addPivot,
-  addWrap,
+  addBodyJoint,
   appendPipe,
-  convertWrapToFitting,
   deleteMember,
+  healBodyJoints,
+  joinContext,
+  jointsAtNode,
   memberLengthM,
   nodeById,
   nodeDegrees,
-  removeWrap,
-  resetPivots,
+  reconcileBodyJoints,
+  removeJoint,
+  resetJoints,
   rotateMember,
+  setJoinMode,
+  setJointAngle,
   setMemberLengthM,
   setNodePosition,
-  setPivotAngle,
-  setWrapRigid,
   splitMemberAt,
   startPath,
+  swapReceiver,
   translateMember,
-  wrapsAtNode,
 } from './docOps';
 
 const V = (x: number, y: number, z: number): Vec3 => ({ x, y, z });
@@ -40,6 +42,86 @@ function drawPath(points: Vec3[], size: '1/2"' | '3/4"' = '3/4"') {
   }
   return { design: d, memberIds };
 }
+
+/** A run along X plus a separate branch whose START end lands on the run's span
+ * at `branchOnRun` (a tee that never formed a union). */
+function branchOnRun(onRun: Vec3, branchFar: Vec3): Design {
+  const d = createEmptyDesign('d', 'Heal');
+  d.nodes.push(
+    { id: 'r0', position: V(-0.3, 0, 0) },
+    { id: 'r1', position: V(0.3, 0, 0) },
+    { id: 'bn', position: onRun },
+    { id: 'bf', position: branchFar },
+  );
+  d.members.push(
+    { id: 'run', kind: 'straight', nodeA: 'r0', nodeB: 'r1', size: '3/4"' },
+    { id: 'branch', kind: 'straight', nodeA: 'bn', nodeB: 'bf', size: '3/4"' },
+  );
+  return d;
+}
+
+describe('healBodyJoints', () => {
+  it('creates a rigid on-body union for a branch end sitting on a run span', () => {
+    const healed = healBodyJoints(branchOnRun(V(0, 0, 0), V(0, 0, 0.3)));
+    expect(healed.joints).toHaveLength(1);
+    expect(healed.joints[0]).toMatchObject({
+      mode: 'anchor',
+      onBody: true,
+      receiver: 'run',
+      mover: 'branch',
+      nodeId: 'bn',
+    });
+  });
+
+  it('is idempotent (no duplicate union) and leaves a real end alone', () => {
+    const once = healBodyJoints(branchOnRun(V(0, 0, 0), V(0, 0, 0.3)));
+    const twice = healBodyJoints(once);
+    expect(twice.joints).toHaveLength(1);
+    // a branch that does NOT touch the run gets no union
+    expect(healBodyJoints(branchOnRun(V(0, 0.05, 0), V(0, 0.05, 0.3))).joints).toHaveLength(0);
+  });
+});
+
+describe('reconcileBodyJoints (live connect / disconnect)', () => {
+  it('creates a rigid union the moment a branch end lands on a run', () => {
+    // branch off the run — no union yet
+    const detached = branchOnRun(V(0, 0.05, 0), V(0, 0.05, 0.3));
+    expect(reconcileBodyJoints(detached).joints).toHaveLength(0);
+    // drop the branch end onto the run → union appears immediately
+    const onRun = setNodePosition(detached, 'bn', V(0, 0, 0));
+    const r = reconcileBodyJoints(onRun);
+    expect(r.joints).toHaveLength(1);
+    expect(r.joints[0]).toMatchObject({ mode: 'anchor', onBody: true, receiver: 'run' });
+  });
+
+  it('removes the union the moment the branch end leaves the run', () => {
+    const attached = reconcileBodyJoints(branchOnRun(V(0, 0, 0), V(0, 0, 0.3)));
+    expect(attached.joints).toHaveLength(1);
+    // drag the branch end off the run
+    const off = setNodePosition(attached, 'bn', V(0, 0.2, 0));
+    expect(reconcileBodyJoints(off).joints).toHaveLength(0);
+  });
+
+  it('keeps a still-attached union and preserves its chosen mode', () => {
+    let d = reconcileBodyJoints(branchOnRun(V(0, 0, 0), V(0, 0, 0.3)));
+    d = { ...d, joints: d.joints.map((j) => ({ ...j, mode: 'wrapped' as const, angleRad: 0.5 })) };
+    // slide the branch end ALONG the run — still attached
+    d = reconcileBodyJoints(setNodePosition(d, 'bn', V(0.1, 0, 0)));
+    expect(d.joints).toHaveLength(1);
+    expect(d.joints[0]).toMatchObject({ mode: 'wrapped', angleRad: 0.5 });
+  });
+
+  it('leaves end-to-end (non-on-body) unions untouched', () => {
+    const d = branchOnRun(V(0, 0, 0), V(0, 0, 0.3));
+    const withEndToEnd: Design = {
+      ...d,
+      joints: [
+        { id: 'e', nodeId: 'r1', receiver: 'run', mover: 'branch', onBody: false, mode: 'wrapped' },
+      ],
+    };
+    expect(reconcileBodyJoints(withEndToEnd).joints.some((j) => j.id === 'e')).toBe(true);
+  });
+});
 
 describe('drawing a pipe path', () => {
   it('creates one node per point and one member per segment', () => {
@@ -118,25 +200,75 @@ describe('nodeDegrees', () => {
   });
 });
 
-describe('pivots', () => {
-  it('deleting a pipe removes pivots that referenced it (no orphans)', () => {
-    // L path → corner node shared by two members; make it a pivot
+describe('joints — end-to-end pivots', () => {
+  it('setJoinMode "wrapped" creates a wrapped pivot with the other pipe as receiver', () => {
+    // L path → corner node shared by two members
     const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0), V(1, 0, 1)]);
     const corner = design.nodes[1]!.id;
-    const withPivot = addPivot(design, corner).design;
-    expect(withPivot.pivots).toHaveLength(1);
-    // deleting one of the pivot's members must drop the pivot
-    const out = deleteMember(withPivot, memberIds[0]!);
-    expect(out.pivots).toHaveLength(0);
+    const out = setJoinMode(design, corner, memberIds[0]!, 'wrapped');
+    expect(out.joints).toHaveLength(1);
+    const j = out.joints[0]!;
+    expect(j.mode).toBe('wrapped');
+    expect(j.mover).toBe(memberIds[0]);
+    expect(j.receiver).toBe(memberIds[1]);
+    expect(j.onBody).toBe(false);
   });
 
-  it('resetPivots zeroes every pivot angle', () => {
-    const { design } = drawPath([V(0, 0, 0), V(1, 0, 0), V(1, 0, 1)]);
+  it('a "free" ball joint is offered end-to-end but not on a pipe body', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0), V(1, 0, 1)]);
     const corner = design.nodes[1]!.id;
-    const added = addPivot(design, corner);
-    const posed = setPivotAngle(added.design, added.pivotId!, 1.2);
-    expect(posed.pivots[0]!.angleRad).toBe(1.2);
-    expect(resetPivots(posed).pivots[0]!.angleRad).toBe(0);
+    expect(joinContext(design, corner, memberIds[0]!).canFree).toBe(true);
+    const out = setJoinMode(design, corner, memberIds[0]!, 'free');
+    expect(out.joints[0]!.mode).toBe('free');
+  });
+
+  it('"anchor" on an end-to-end join stores no record (the default rigid coupling)', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0), V(1, 0, 1)]);
+    const corner = design.nodes[1]!.id;
+    const withPivot = setJoinMode(design, corner, memberIds[0]!, 'wrapped');
+    expect(withPivot.joints).toHaveLength(1);
+    const reverted = setJoinMode(withPivot, corner, memberIds[0]!, 'anchor');
+    expect(reverted.joints).toHaveLength(0);
+  });
+
+  it('swapReceiver flips which pipe wraps which', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0), V(1, 0, 1)]);
+    const corner = design.nodes[1]!.id;
+    const withPivot = setJoinMode(design, corner, memberIds[0]!, 'wrapped');
+    const swapped = swapReceiver(withPivot, withPivot.joints[0]!.id);
+    expect(swapped.joints[0]!.mover).toBe(memberIds[1]);
+    expect(swapped.joints[0]!.receiver).toBe(memberIds[0]);
+  });
+
+  it('an existing joint can be re-changed: free → wrapped → anchor', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0), V(1, 0, 1)]);
+    const corner = design.nodes[1]!.id;
+    const free = setJoinMode(design, corner, memberIds[0]!, 'free');
+    expect(free.joints[0]!.mode).toBe('free');
+    // switching modes updates the SAME record (no duplicate), receiver preserved
+    const wrapped = setJoinMode(free, corner, memberIds[0]!, 'wrapped');
+    expect(wrapped.joints).toHaveLength(1);
+    expect(wrapped.joints[0]!.mode).toBe('wrapped');
+    expect(wrapped.joints[0]!.receiver).toBe(free.joints[0]!.receiver);
+    // anchor on an end-to-end join drops the record (back to a rigid coupling)
+    expect(setJoinMode(wrapped, corner, memberIds[0]!, 'anchor').joints).toHaveLength(0);
+  });
+
+  it('deleting a pipe removes joints that referenced it (no orphans)', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0), V(1, 0, 1)]);
+    const corner = design.nodes[1]!.id;
+    const withPivot = setJoinMode(design, corner, memberIds[0]!, 'wrapped');
+    const out = deleteMember(withPivot, memberIds[0]!);
+    expect(out.joints).toHaveLength(0);
+  });
+
+  it('resetJoints zeroes a wrapped angle and clears a free orientation', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0), V(1, 0, 1)]);
+    const corner = design.nodes[1]!.id;
+    const added = setJoinMode(design, corner, memberIds[0]!, 'wrapped');
+    const posed = setJointAngle(added, added.joints[0]!.id, 1.2);
+    expect(posed.joints[0]!.angleRad).toBe(1.2);
+    expect(resetJoints(posed).joints[0]!.angleRad).toBe(0);
   });
 });
 
@@ -208,53 +340,58 @@ describe('heat-wrapped tees', () => {
     return { design: d, throughId, branchNode: step.nodeId };
   }
 
-  it('addWrap records a rigid tee onto the intact run (no split)', () => {
+  it('addBodyJoint records a rigid on-body tee onto the intact run (no split)', () => {
     const { design, throughId, branchNode } = runWithBranch();
-    const r = addWrap(design, throughId, branchNode);
-    expect(r.wrapId).not.toBeNull();
-    expect(r.design.wraps).toHaveLength(1);
-    expect(r.design.wraps[0]!.rigid).toBe(true); // screwed by default
+    const r = addBodyJoint(design, throughId, branchNode);
+    expect(r.jointId).not.toBeNull();
+    expect(r.design.joints).toHaveLength(1);
+    const j = r.design.joints[0]!;
+    expect(j.mode).toBe('anchor'); // screwed by default
+    expect(j.onBody).toBe(true);
+    expect(j.receiver).toBe(throughId);
     expect(r.design.members).toHaveLength(2); // run NOT cut
-    expect(wrapsAtNode(r.design, branchNode)).toHaveLength(1);
+    expect(jointsAtNode(r.design, branchNode)).toHaveLength(1);
   });
 
-  it('refuses a duplicate wrap at the same branch node', () => {
+  it('refuses a duplicate joint at the same branch node', () => {
     const { design, throughId, branchNode } = runWithBranch();
-    const once = addWrap(design, throughId, branchNode).design;
-    expect(addWrap(once, throughId, branchNode).wrapId).toBeNull();
+    const once = addBodyJoint(design, throughId, branchNode).design;
+    expect(addBodyJoint(once, throughId, branchNode).jointId).toBeNull();
   });
 
-  it('toggles rigid ⇄ pivot', () => {
+  it('toggles an on-body joint anchor ⇄ wrapped pivot (record kept either way)', () => {
     const { design, throughId, branchNode } = runWithBranch();
-    const r = addWrap(design, throughId, branchNode);
-    const asPivot = setWrapRigid(r.design, r.wrapId!, false);
-    expect(asPivot.wraps[0]!.rigid).toBe(false);
-    expect(removeWrap(asPivot, r.wrapId!).wraps).toHaveLength(0);
+    const r = addBodyJoint(design, throughId, branchNode);
+    const mover = r.design.joints[0]!.mover;
+    const asPivot = setJoinMode(r.design, branchNode, mover, 'wrapped');
+    expect(asPivot.joints[0]!.mode).toBe('wrapped');
+    expect(asPivot.joints[0]!.onBody).toBe(true); // still on the run body
+    expect(removeJoint(asPivot, r.jointId!).joints).toHaveLength(0);
   });
 
-  it('deleting the through pipe drops its wraps', () => {
+  it('an on-body branch can become a free ball joint (saddle eye bolt on the run)', () => {
     const { design, throughId, branchNode } = runWithBranch();
-    const withWrap = addWrap(design, throughId, branchNode).design;
-    expect(deleteMember(withWrap, throughId).wraps).toHaveLength(0);
+    const withJoint = addBodyJoint(design, throughId, branchNode).design;
+    const mover = withJoint.joints[0]!.mover;
+    expect(joinContext(withJoint, branchNode, mover).canFree).toBe(true);
+    const asFree = setJoinMode(withJoint, branchNode, mover, 'free');
+    expect(asFree.joints[0]!.mode).toBe('free');
+    expect(asFree.joints[0]!.onBody).toBe(true); // still on the run body
+    expect(asFree.joints[0]!.receiver).toBe(throughId);
   });
 
-  it('deleting the branch pipe drops the wrap (orphaned branch node)', () => {
+  it('deleting the through pipe drops its joints', () => {
     const { design, throughId, branchNode } = runWithBranch();
-    const withWrap = addWrap(design, throughId, branchNode).design;
-    const branchMember = withWrap.members.find(
+    const withJoint = addBodyJoint(design, throughId, branchNode).design;
+    expect(deleteMember(withJoint, throughId).joints).toHaveLength(0);
+  });
+
+  it('deleting the branch pipe drops the joint (orphaned branch node)', () => {
+    const { design, throughId, branchNode } = runWithBranch();
+    const withJoint = addBodyJoint(design, throughId, branchNode).design;
+    const branchMember = withJoint.members.find(
       (m) => m.nodeA === branchNode || m.nodeB === branchNode,
     )!;
-    expect(deleteMember(withWrap, branchMember.id).wraps).toHaveLength(0);
-  });
-
-  it('convertWrapToFitting splits the run into a tee and drops the wrap', () => {
-    const { design, throughId, branchNode } = runWithBranch();
-    const r = addWrap(design, throughId, branchNode);
-    const out = convertWrapToFitting(r.design, r.wrapId!);
-    expect(out.wraps).toHaveLength(0);
-    // the run is now two collinear members + the branch = 3 members
-    expect(out.members).toHaveLength(3);
-    // the branch node is a degree-3 junction (a tee)
-    expect(nodeDegrees(out).get(branchNode)).toBe(3);
+    expect(deleteMember(withJoint, branchMember.id).joints).toHaveLength(0);
   });
 });

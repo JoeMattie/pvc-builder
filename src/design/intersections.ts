@@ -13,17 +13,12 @@ function pairKey(a: string, b: string): string {
   return a < b ? `${a}|${b}` : `${b}|${a}`;
 }
 
-/** Member pairs joined by a heat-wrapped tee (branch ↔ through pipe): the
- * branch legitimately meets the run, so their overlap must not be flagged. */
+/** Member pairs joined by a joint (mover ↔ receiver): they legitimately touch
+ * (a branch on a run body, or two ends butted at a pivot), so their overlap
+ * must not be flagged. */
 function wrappedPairs(design: Design): Set<string> {
   const out = new Set<string>();
-  for (const w of design.wraps) {
-    for (const m of design.members) {
-      if (m.nodeA === w.branchNode || m.nodeB === w.branchNode) {
-        out.add(pairKey(m.id, w.throughMember));
-      }
-    }
-  }
+  for (const j of design.joints) out.add(pairKey(j.mover, j.receiver));
   return out;
 }
 

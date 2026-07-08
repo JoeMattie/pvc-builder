@@ -1,13 +1,22 @@
 import { z } from 'zod';
-import { idSchema, nominalSizeSchema, unitsPreferenceSchema, vec3Schema } from './common';
+import {
+  idSchema,
+  nominalSizeSchema,
+  quaternionSchema,
+  unitsPreferenceSchema,
+  vec3Schema,
+} from './common';
 
 /** Bump on every schema change and add a migration keyed by the version it
  * upgrades FROM (planfile §3, enforced by migrations.test).
  * v1: nodes + straight members.
  * v2: `formed` (heat-bent spline) member variant.
  * v3: `pivots` (heat-formed revolute joints).
- * v4: `wraps` (heat-wrapped tee connections onto a pipe body). */
-export const SCHEMA_VERSION = 4;
+ * v4: `wraps` (heat-wrapped tee connections onto a pipe body).
+ * v5: unified `joints` — every non-default pipe connection (wrapped pivot, free
+ *     ball-joint pivot, or intact-run screwed tee) is ONE joint record; the old
+ *     `pivots` and `wraps` arrays are folded into it. */
+export const SCHEMA_VERSION = 5;
 
 /** A junction where pipe ends meet. Position is SI metres. */
 export const nodeSchema = z.object({
@@ -46,38 +55,41 @@ export const memberSchema = z.discriminatedUnion('kind', [
   formedMemberSchema,
 ]);
 
-/** A heat-formed wrapping pivot (planfile §3): a revolute joint between two
- * members that share `nodeId`, rotating about `axis` (design-space unit
- * vector). `angleRad` is the current/target rotation from the design rest pose
- * (read/written by both drag and the angle slider). */
-export const pivotSchema = z.object({
-  id: idSchema,
-  nodeId: idSchema,
-  memberA: idSchema,
-  memberB: idSchema,
-  axis: vec3Schema,
-  angleRad: z.number().optional(),
-  limits: z.object({ minRad: z.number(), maxRad: z.number() }).optional(),
-});
+/** How two pipes connect at a joint (planfile §4/§5). Every non-default
+ * connection is ONE `joint` record; a plain rigid end-to-end coupling/elbow is
+ * the DEFAULT and carries no record (it's inferred by `resolveFittings`).
+ *  • `anchor`  — rigid/welded. Only stored for an on-body joint (an intact-run
+ *                screwed tee: the branch is flattened + screwed to the run,
+ *                which is NOT cut). End-to-end anchors are the default → no record.
+ *  • `wrapped` — the `mover` pipe wraps the `receiver` and swivels about the
+ *                receiver's own axis (a revolute pivot; axis is DERIVED from the
+ *                receiver direction, never stored — "always around the receiving
+ *                pipe"). `angleRad` is the rotation from the drawn rest pose.
+ *  • `free`    — a ball joint pivoting in ANY direction: two pipe ends butt at
+ *                `nodeId` with eye bolts + a knotted cord + a ball, or (on-body)
+ *                the branch ball-joints to a saddle eye bolt clamped on the run.
+ *                `orientation` is the 3-DOF rotation of the `mover` relative to
+ *                the `receiver` (identity = as drawn). */
+export const jointModeSchema = z.enum(['anchor', 'wrapped', 'free']);
 
-/** A heat-wrapped tee: a branch pipe whose end is heated, flattened, and
- * wrapped around an intact through pipe partway along its body (planfile §4
- * fabrication). `branchNode` is the branch's end node, sitting on
- * `throughMember`'s centre-line (the run is NOT cut). When `rigid` the wrap is
- * screwed in place (a fixed joint); otherwise it is a natural revolute pivot
- * whose axis is the through pipe's own direction, `angleRad` from the drawn
- * rest pose. (Articulation of the pivot in the solvers is future work; the
- * document + fabrication geometry are modelled here.) */
-export const wrapSchema = z.object({
+export const jointSchema = z.object({
   id: idSchema,
-  /** the intact pipe the branch wraps around */
-  throughMember: idSchema,
-  /** the branch's end node, on `throughMember`'s span */
-  branchNode: idSchema,
-  /** true = flattened + screwed (rigid); false = heat-wrap natural pivot */
-  rigid: z.boolean(),
-  /** pivot rotation about the through-pipe axis (0 = as drawn); ignored rigid */
+  /** the connection point: the shared end node (end-to-end) or, for `onBody`,
+   * the `mover`'s end node sitting on the `receiver`'s intact span */
+  nodeId: idSchema,
+  /** the pipe that stays put — the one wrapped/butted against */
+  receiver: idSchema,
+  /** the pipe that pivots (or, for an on-body joint, the branch) */
+  mover: idSchema,
+  /** mover's end lies on receiver's SPAN (intact run) vs both ends meet at nodeId */
+  onBody: z.boolean(),
+  mode: jointModeSchema,
+  /** wrapped: revolute rotation about the receiver axis (0 = as drawn) */
   angleRad: z.number().optional(),
+  /** free: 3-DOF orientation of mover vs receiver (identity = as drawn) */
+  orientation: quaternionSchema.optional(),
+  /** wrapped: optional revolute travel limits */
+  limits: z.object({ minRad: z.number(), maxRad: z.number() }).optional(),
 });
 
 /** The top-level design document — the single source of truth for the file
@@ -95,18 +107,16 @@ export const designSchema = z.object({
   lengthsLocked: z.boolean(),
   nodes: z.array(nodeSchema),
   members: z.array(memberSchema),
-  /** heat-formed revolute joints */
-  pivots: z.array(pivotSchema),
-  /** heat-wrapped tee connections onto a pipe body */
-  wraps: z.array(wrapSchema),
+  /** non-default pipe connections: wrapped/free pivots + intact-run screwed tees */
+  joints: z.array(jointSchema),
 });
 
 export type Node = z.infer<typeof nodeSchema>;
 export type StraightMember = z.infer<typeof straightMemberSchema>;
 export type FormedMember = z.infer<typeof formedMemberSchema>;
 export type Member = z.infer<typeof memberSchema>;
-export type Pivot = z.infer<typeof pivotSchema>;
-export type Wrap = z.infer<typeof wrapSchema>;
+export type JointMode = z.infer<typeof jointModeSchema>;
+export type Joint = z.infer<typeof jointSchema>;
 export type Design = z.infer<typeof designSchema>;
 
 export function createEmptyDesign(id: string, name: string): Design {
@@ -119,7 +129,6 @@ export function createEmptyDesign(id: string, name: string): Design {
     lengthsLocked: false,
     nodes: [],
     members: [],
-    pivots: [],
-    wraps: [],
+    joints: [],
   };
 }

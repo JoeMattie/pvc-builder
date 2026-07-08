@@ -15,6 +15,53 @@ export const migrations: Record<number, Migration> = {
   2: (doc) => ({ ...doc, pivots: Array.isArray(doc.pivots) ? doc.pivots : [] }),
   // v3 → v4: added `wraps` (heat-wrapped tees); old docs get an empty array.
   3: (doc) => ({ ...doc, wraps: Array.isArray(doc.wraps) ? doc.wraps : [] }),
+  // v4 → v5: fold `pivots` + `wraps` into a single `joints` array.
+  //   • pivot {nodeId, memberA, memberB, angleRad, limits}
+  //       → joint {receiver: memberA, mover: memberB, onBody:false, mode:'wrapped'}
+  //         (old pivots were end-to-end revolute joints, already drawn as a wrap
+  //          collar; the axis is now derived from the receiver, so it's dropped)
+  //   • wrap {throughMember, branchNode, rigid, angleRad}
+  //       → joint {receiver: throughMember, mover:<branch member>, onBody:true,
+  //         mode: rigid ? 'anchor' : 'wrapped'} (an intact-run screwed tee or swivel)
+  4: (doc) => {
+    const members = Array.isArray(doc.members) ? (doc.members as Record<string, unknown>[]) : [];
+    const oldPivots = Array.isArray(doc.pivots) ? (doc.pivots as Record<string, unknown>[]) : [];
+    const oldWraps = Array.isArray(doc.wraps) ? (doc.wraps as Record<string, unknown>[]) : [];
+    const joints: Record<string, unknown>[] = [];
+
+    for (const p of oldPivots) {
+      joints.push({
+        id: p.id,
+        nodeId: p.nodeId,
+        receiver: p.memberA,
+        mover: p.memberB,
+        onBody: false,
+        mode: 'wrapped',
+        ...(typeof p.angleRad === 'number' ? { angleRad: p.angleRad } : {}),
+        ...(p.limits && typeof p.limits === 'object' ? { limits: p.limits } : {}),
+      });
+    }
+
+    for (const w of oldWraps) {
+      // the branch is the member ending at branchNode that ISN'T the through run
+      const branch = members.find(
+        (m) => m.id !== w.throughMember && (m.nodeA === w.branchNode || m.nodeB === w.branchNode),
+      );
+      if (!branch) continue; // can't reconstruct the mover → drop the orphaned wrap
+      joints.push({
+        id: w.id,
+        nodeId: w.branchNode,
+        receiver: w.throughMember,
+        mover: branch.id,
+        onBody: true,
+        mode: w.rigid ? 'anchor' : 'wrapped',
+        ...(typeof w.angleRad === 'number' ? { angleRad: w.angleRad } : {}),
+      });
+    }
+
+    const { pivots: _pivots, wraps: _wraps, ...rest } = doc;
+    return { ...rest, joints };
+  },
 };
 
 export class MigrationError extends Error {}

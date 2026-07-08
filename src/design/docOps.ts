@@ -3,8 +3,18 @@
 // through appStore.updateCurrent so undo/autosave stay centralized. No
 // three.js / UI types here.
 import { add, cross, dot, length, normalize, sub } from '../geometry/math3';
-import type { Design, Member, Node, NominalSize, Pivot, Vec3, Wrap } from '../schema';
+import type {
+  Design,
+  Joint,
+  JointMode,
+  Member,
+  Node,
+  NominalSize,
+  Quaternion,
+  Vec3,
+} from '../schema';
 import { makeId } from './ids';
+import { closestPointOnSegment } from './snapping';
 
 /** An existing node at (or very near) `pos`, for reusing a junction instead of
  * duplicating it. */
@@ -246,10 +256,9 @@ export function splitMemberAt(
 }
 
 /** Delete a member and prune any node it leaves with no incident members
- * (Phase 1 nodes exist only as member endpoints). Pivots that referenced the
- * deleted member, or a node it orphaned, are removed too (no dangling pivots).
- * Wraps whose through pipe was deleted, or whose branch node was orphaned, are
- * removed as well. */
+ * (Phase 1 nodes exist only as member endpoints). Joints that referenced the
+ * deleted member (as receiver or mover), or a node it orphaned, are removed too
+ * (no dangling joints). */
 export function deleteMember(design: Design, memberId: string): Design {
   const members = design.members.filter((m) => m.id !== memberId);
   const referenced = new Set<string>();
@@ -257,143 +266,274 @@ export function deleteMember(design: Design, memberId: string): Design {
     referenced.add(m.nodeA);
     referenced.add(m.nodeB);
   }
-  const pivots = design.pivots.filter(
-    (p) => p.memberA !== memberId && p.memberB !== memberId && referenced.has(p.nodeId),
-  );
   const memberIds = new Set(members.map((m) => m.id));
-  const wraps = design.wraps.filter(
-    (w) => memberIds.has(w.throughMember) && referenced.has(w.branchNode),
+  const joints = design.joints.filter(
+    (j) => memberIds.has(j.receiver) && memberIds.has(j.mover) && referenced.has(j.nodeId),
   );
   return {
     ...design,
     members,
     nodes: design.nodes.filter((n) => referenced.has(n.id)),
-    pivots,
-    wraps,
+    joints,
   };
 }
 
-// ── heat-wrapped tees (planfile §4 fabrication) ─────────────────────────────
-
-/** All wraps whose branch end is `nodeId`. */
-export function wrapsAtNode(design: Design, nodeId: string): Wrap[] {
-  return design.wraps.filter((w) => w.branchNode === nodeId);
-}
-
-/** Add a heat-wrapped tee: the branch ending at `branchNode` wraps around the
- * intact straight `throughMember`. Rigid (screwed) by default. Ignored (returns
- * `wrapId: null`) if the members/node don't exist, the through member isn't
- * straight, or that branch node already wraps something. */
-export function addWrap(
-  design: Design,
-  throughMember: string,
-  branchNode: string,
-  rigid = true,
-  id: string = makeId('wr'),
-): { design: Design; wrapId: string | null } {
-  const through = memberById(design, throughMember);
-  if (through?.kind !== 'straight') return { design, wrapId: null };
-  if (!nodeById(design, branchNode)) return { design, wrapId: null };
-  if (design.wraps.some((w) => w.branchNode === branchNode)) return { design, wrapId: null };
-  const wrap: Wrap = { id, throughMember, branchNode, rigid };
-  return { design: { ...design, wraps: [...design.wraps, wrap] }, wrapId: id };
-}
-
-/** Convert a heat-wrapped tee into a standard socket fitting: split the run at
- * the wrap's branch node so the branch node becomes a real junction (two
- * collinear run halves + the branch = a tee that `resolveFittings` classifies)
- * and drop the wrap. Only meaningful where a manufactured fitting exists (the
- * branch ~perpendicular → tee); the UI gates the option to those angles. */
-export function convertWrapToFitting(design: Design, wrapId: string): Design {
-  const wrap = design.wraps.find((w) => w.id === wrapId);
-  if (!wrap) return design;
-  const through = memberById(design, wrap.throughMember);
-  if (through?.kind !== 'straight') return design;
-  const n = wrap.branchNode;
-  if (n === through.nodeA || n === through.nodeB) return design; // already an end
-  const a = addMember(design, through.nodeA, n, through.size);
-  const b = addMember(a.design, n, through.nodeB, through.size);
-  return {
-    ...b.design,
-    members: b.design.members.filter((m) => m.id !== through.id),
-    wraps: b.design.wraps.filter((w) => w.id !== wrapId),
-  };
-}
-
-/** Toggle a wrap between rigid (screwed) and a natural pivot. */
-export function setWrapRigid(design: Design, wrapId: string, rigid: boolean): Design {
-  return {
-    ...design,
-    wraps: design.wraps.map((w) => (w.id === wrapId ? { ...w, rigid } : w)),
-  };
-}
-
-export function removeWrap(design: Design, wrapId: string): Design {
-  return { ...design, wraps: design.wraps.filter((w) => w.id !== wrapId) };
-}
-
-/** Reset every pivot to its rest angle (0). */
-export function resetPivots(design: Design): Design {
-  return { ...design, pivots: design.pivots.map((p) => ({ ...p, angleRad: 0 })) };
-}
+// ── joints: unified pipe connections (planfile §4/§5) ───────────────────────
 
 /** A node's incident members (both straight and formed). */
 export function incidentMembers(design: Design, nodeId: string): Member[] {
   return design.members.filter((m) => m.nodeA === nodeId || m.nodeB === nodeId);
 }
 
-/** Whether a node can become a pivot: exactly two members meet and it isn't
- * already a pivot. */
-export function canPivot(design: Design, nodeId: string): boolean {
-  return (
-    incidentMembers(design, nodeId).length === 2 && !design.pivots.some((p) => p.nodeId === nodeId)
-  );
+/** Length of a straight member (0 for formed / missing endpoints). */
+function straightLength(design: Design, m: Member): number {
+  const ends = memberEndpoints(design, m);
+  return ends ? length(sub(ends.b, ends.a)) : 0;
 }
 
-/** Add a heat-formed revolute pivot at a 2-member node. The default axis is the
- * joint-plane normal (so rotating opens/closes the bend); for a straight
- * (collinear) run it falls back to a horizontal axis across the run. Returns
- * the design unchanged with `pivotId: null` if the node can't pivot. */
-export function addPivot(
+/** Unit direction of a straight member leaving `nodeId` toward its far end
+ * (null for a formed member or a missing node). Used to derive a wrapped
+ * pivot's axis (the receiver's own direction). */
+export function memberDirFromNode(design: Design, member: Member, nodeId: string): Vec3 | null {
+  if (member.kind !== 'straight') return null;
+  const far = member.nodeA === nodeId ? member.nodeB : member.nodeA;
+  const here = nodeById(design, nodeId)?.position;
+  const there = nodeById(design, far)?.position;
+  if (!here || !there) return null;
+  const d = sub(there, here);
+  return length(d) < 1e-9 ? null : normalize(d);
+}
+
+/** A straight member whose span passes through `nodeId`'s position without
+ * having it as an endpoint — the intact run an on-body branch wraps around. */
+export function throughMemberAt(design: Design, nodeId: string): Member | undefined {
+  const p = nodeById(design, nodeId)?.position;
+  if (!p) return undefined;
+  for (const m of design.members) {
+    if (m.kind !== 'straight') continue;
+    if (m.nodeA === nodeId || m.nodeB === nodeId) continue;
+    const ends = memberEndpoints(design, m);
+    if (ends && length(sub(closestPointOnSegment(p, ends.a, ends.b), p)) < 1e-6) return m;
+  }
+  return undefined;
+}
+
+/** Every joint whose connection point is `nodeId`. */
+export function jointsAtNode(design: Design, nodeId: string): Joint[] {
+  return design.joints.filter((j) => j.nodeId === nodeId);
+}
+
+/** The joint (if any) whose `mover` is `moverId` at `nodeId`. */
+export function jointForMover(design: Design, nodeId: string, moverId: string): Joint | undefined {
+  return design.joints.find((j) => j.nodeId === nodeId && j.mover === moverId);
+}
+
+export function jointById(design: Design, jointId: string): Joint | undefined {
+  return design.joints.find((j) => j.id === jointId);
+}
+
+/** The connection choices available for member `moverId` where it meets the
+ * structure at `nodeId` — the seam both the right-click menu and the scripted
+ * hook read to build/gate the anchor / wrapped / free options. */
+export interface JoinContext {
+  /** the joint record already present for (nodeId, moverId), if any */
+  existing: Joint | undefined;
+  /** mover's end lies on the receiver's intact span (a branch/tee on a body) */
+  onBody: boolean;
+  /** the default receiver: the through run, or the longest other pipe */
+  receiver: string | undefined;
+  /** every candidate receiver (other straight members at the node, or the run) */
+  candidates: string[];
+  /** a free ball joint applies: two eye-boltable ends butt, or a branch
+   * ball-joints to a saddle eye bolt on the run body (on-body) */
+  canFree: boolean;
+  /** a wrapped pivot / on-body anchor applies (a receiver pipe exists) */
+  canWrap: boolean;
+}
+
+export function joinContext(design: Design, nodeId: string, moverId: string): JoinContext {
+  const existing = jointForMover(design, nodeId, moverId);
+  const others = incidentMembers(design, nodeId).filter(
+    (m) => m.id !== moverId && m.kind === 'straight',
+  );
+  if (others.length > 0) {
+    // end-to-end (or a tee): other pipe ends share this node
+    const receiver =
+      (existing && !existing.onBody ? existing.receiver : undefined) ??
+      [...others].sort((a, b) => straightLength(design, b) - straightLength(design, a))[0]?.id;
+    return {
+      existing,
+      onBody: false,
+      receiver,
+      candidates: others.map((m) => m.id),
+      canFree: true,
+      canWrap: !!receiver,
+    };
+  }
+  // on-body: the mover's end sits on an intact run's span
+  const through = existing
+    ? memberById(design, existing.receiver)
+    : throughMemberAt(design, nodeId);
+  return {
+    existing,
+    onBody: true,
+    receiver: through?.id,
+    candidates: through ? [through.id] : [],
+    // a branch can ball-joint to a saddle eye bolt clamped on the run body
+    canFree: !!through,
+    canWrap: !!through,
+  };
+}
+
+export function removeJoint(design: Design, jointId: string): Design {
+  return { ...design, joints: design.joints.filter((j) => j.id !== jointId) };
+}
+
+/** Set member `moverId`'s connection mode at `nodeId`, creating / updating /
+ * removing the joint record. `receiverId` overrides the auto-picked receiver
+ * (must be one of `joinContext.candidates`). A plain end-to-end anchor is the
+ * DEFAULT (a rigid coupling/elbow) and carries no record. Returns the design
+ * unchanged if `mode` doesn't apply to the geometry. */
+export function setJoinMode(
   design: Design,
   nodeId: string,
-  id: string = makeId('pv'),
-): { design: Design; pivotId: string | null } {
-  if (!canPivot(design, nodeId)) return { design, pivotId: null };
-  const node = nodeById(design, nodeId);
-  if (!node) return { design, pivotId: null };
-  const [mA, mB] = incidentMembers(design, nodeId) as [Member, Member];
-  const otherA = mA.nodeA === nodeId ? mA.nodeB : mA.nodeA;
-  const otherB = mB.nodeA === nodeId ? mB.nodeB : mB.nodeA;
-  const pA = nodeById(design, otherA)?.position;
-  const pB = nodeById(design, otherB)?.position;
-  if (!pA || !pB) return { design, pivotId: null };
-  const dirA = normalize(sub(pA, node.position));
-  const dirB = normalize(sub(pB, node.position));
-  let axis = cross(dirA, dirB);
-  if (length(axis) < 1e-6) {
-    axis = cross(dirA, { x: 0, y: 1, z: 0 });
-    if (length(axis) < 1e-6) axis = { x: 1, y: 0, z: 0 };
+  moverId: string,
+  mode: JointMode,
+  receiverId?: string,
+): Design {
+  const ctx = joinContext(design, nodeId, moverId);
+  if (mode === 'free' && !ctx.canFree) return design;
+  if ((mode === 'wrapped' || mode === 'anchor') && !ctx.canWrap) return design;
+  const receiver = receiverId && ctx.candidates.includes(receiverId) ? receiverId : ctx.receiver;
+  if (!receiver) return design;
+
+  // an end-to-end anchor IS the default rigid coupling → drop any record
+  if (mode === 'anchor' && !ctx.onBody) {
+    return ctx.existing ? removeJoint(design, ctx.existing.id) : design;
   }
-  const pivot: Pivot = {
-    id,
+
+  const next: Joint = {
+    id: ctx.existing?.id ?? makeId('jt'),
     nodeId,
-    memberA: mA.id,
-    memberB: mB.id,
-    axis: normalize(axis),
-    angleRad: 0,
+    receiver,
+    mover: moverId,
+    onBody: ctx.onBody,
+    mode,
   };
-  return { design: { ...design, pivots: [...design.pivots, pivot] }, pivotId: id };
+  // preserve articulation state across a mode/receiver change where meaningful
+  if (mode === 'wrapped' && ctx.existing?.receiver === receiver) {
+    if (ctx.existing.angleRad !== undefined) next.angleRad = ctx.existing.angleRad;
+    if (ctx.existing.limits) next.limits = ctx.existing.limits;
+  } else if (mode === 'free' && ctx.existing?.orientation) {
+    next.orientation = ctx.existing.orientation;
+  }
+  return { ...design, joints: [...design.joints.filter((j) => j.id !== next.id), next] };
 }
 
-export function removePivot(design: Design, pivotId: string): Design {
-  return { ...design, pivots: design.pivots.filter((p) => p.id !== pivotId) };
+/** Create an on-body joint at draw time: the branch ending at `branchNode` wraps
+ * the intact straight `receiver`. Rigid/screwed (`anchor`) by default. Ignored
+ * (returns `jointId: null`) if the geometry is invalid, `mode` is `free`, or
+ * that branch already carries a joint. */
+export function addBodyJoint(
+  design: Design,
+  receiver: string,
+  branchNode: string,
+  mode: Exclude<JointMode, 'free'> = 'anchor',
+  id: string = makeId('jt'),
+): { design: Design; jointId: string | null } {
+  const run = memberById(design, receiver);
+  if (run?.kind !== 'straight') return { design, jointId: null };
+  if (!nodeById(design, branchNode)) return { design, jointId: null };
+  const branch = incidentMembers(design, branchNode).find((m) => m.id !== receiver);
+  if (!branch) return { design, jointId: null };
+  if (design.joints.some((j) => j.nodeId === branchNode && j.mover === branch.id))
+    return { design, jointId: null };
+  const joint: Joint = { id, nodeId: branchNode, receiver, mover: branch.id, onBody: true, mode };
+  return { design: { ...design, joints: [...design.joints, joint] }, jointId: id };
 }
 
-export function setPivotAngle(design: Design, pivotId: string, angleRad: number): Design {
+/** Repair missing on-body unions: any pipe endpoint that sits exactly on another
+ * straight member's span (a tee/branch) but carries no joint becomes a rigid
+ * (anchor) on-body union — the same union drawing forms. Without it such a branch
+ * reads as an unresolved red overlap instead of a tee. Idempotent; used when
+ * importing a design (older files, or ones drawn before the union was created). */
+export function healBodyJoints(design: Design): Design {
+  let d = design;
+  for (const m of design.members) {
+    if (m.kind !== 'straight') continue;
+    for (const nodeId of [m.nodeA, m.nodeB]) {
+      // only a clean branch END (one incident member) with no existing union
+      if (incidentMembers(d, nodeId).length !== 1) continue;
+      if (d.joints.some((j) => j.nodeId === nodeId && j.mover === m.id)) continue;
+      const run = throughMemberAt(d, nodeId);
+      if (run) d = addBodyJoint(d, run.id, nodeId, 'anchor').design;
+    }
+  }
+  return d;
+}
+
+/** How close a branch endpoint must stay to its receiver's centre-line to keep
+ * an on-body union alive after an edit (drags snap exactly onto the run, so this
+ * only forgives sub-0.1 mm float drift). */
+const ON_BODY_KEEP_TOL_M = 1e-4;
+
+/** Keep on-body unions in sync with geometry after a live edit (a drag or a
+ * length change): drop any union whose branch endpoint has moved off its
+ * receiver's span, then (re)create a rigid union for any endpoint that now sits
+ * on a run — so connecting and disconnecting happen immediately, mid-gesture. A
+ * union whose branch still rides the same receiver keeps its chosen mode
+ * (wrapped / free). Idempotent. */
+export function reconcileBodyJoints(design: Design): Design {
+  const stillAttached = (j: Joint): boolean => {
+    if (!j.onBody) return true; // end-to-end unions aren't span-based
+    const recv = memberById(design, j.receiver);
+    const p = nodeById(design, j.nodeId)?.position;
+    if (recv?.kind !== 'straight' || !p) return false;
+    // a branch that became an endpoint of the receiver is a shared node, not a
+    // body union
+    if (recv.nodeA === j.nodeId || recv.nodeB === j.nodeId) return false;
+    const e = memberEndpoints(design, recv);
+    if (!e) return false;
+    return length(sub(closestPointOnSegment(p, e.a, e.b), p)) < ON_BODY_KEEP_TOL_M;
+  };
+  const kept = design.joints.filter(stillAttached);
+  const pruned = kept.length === design.joints.length ? design : { ...design, joints: kept };
+  return healBodyJoints(pruned);
+}
+
+/** Swap which pipe is the receiver vs the mover (end-to-end joints only). */
+export function swapReceiver(design: Design, jointId: string): Design {
   return {
     ...design,
-    pivots: design.pivots.map((p) => (p.id === pivotId ? { ...p, angleRad } : p)),
+    joints: design.joints.map((j) =>
+      j.id === jointId && !j.onBody ? { ...j, receiver: j.mover, mover: j.receiver } : j,
+    ),
+  };
+}
+
+export function setJointAngle(design: Design, jointId: string, angleRad: number): Design {
+  return {
+    ...design,
+    joints: design.joints.map((j) => (j.id === jointId ? { ...j, angleRad } : j)),
+  };
+}
+
+export function setJointOrientation(design: Design, jointId: string, q: Quaternion): Design {
+  return {
+    ...design,
+    joints: design.joints.map((j) => (j.id === jointId ? { ...j, orientation: q } : j)),
+  };
+}
+
+/** Reset every pivot joint to its rest pose (wrapped → angle 0, free → identity). */
+export function resetJoints(design: Design): Design {
+  return {
+    ...design,
+    joints: design.joints.map((j) => {
+      if (j.mode === 'wrapped') return { ...j, angleRad: 0 };
+      if (j.mode === 'free') return { ...j, orientation: undefined };
+      return j;
+    }),
   };
 }
 

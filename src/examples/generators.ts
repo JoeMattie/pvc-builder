@@ -34,16 +34,18 @@ export function cubeFrame(): Design {
   return build('Cube frame', nodes, [...ring('b'), ...ring('t'), ...verticals], '3/4"');
 }
 
-/** A serial articulated arm — three 0.6 m links with a hinge (pivot) between
- * each. Toggle "Lengths" and drag / use the sliders to pose it. */
+/** A serial articulated arm — three 0.6 m links, each WRAPPED around the previous
+ * so it swivels about that pipe (a heat-wrap swivel). A zig-zag rest pose keeps
+ * each link perpendicular to the one it wraps, so the joints actually move.
+ * Toggle "Lengths" and drag / use the sliders to pose it. */
 export function articulatedArm(): Design {
   const d = build(
     'Articulated arm',
     [
       ['n0', V(0, 0, 0)],
       ['n1', V(0.6, 0, 0)],
-      ['n2', V(1.2, 0, 0)],
-      ['n3', V(1.8, 0, 0)],
+      ['n2', V(0.6, 0, 0.6)],
+      ['n3', V(0.6, 0.6, 0.6)],
     ],
     [
       ['n0', 'n1'],
@@ -52,9 +54,25 @@ export function articulatedArm(): Design {
     ],
     '3/4"',
   );
-  d.pivots.push(
-    { id: 'pv0', nodeId: 'n1', memberA: 'm0', memberB: 'm1', axis: V(0, 1, 0), angleRad: 0 },
-    { id: 'pv1', nodeId: 'n2', memberA: 'm1', memberB: 'm2', axis: V(0, 1, 0), angleRad: 0 },
+  d.joints.push(
+    {
+      id: 'jt0',
+      nodeId: 'n1',
+      receiver: 'm0',
+      mover: 'm1',
+      onBody: false,
+      mode: 'wrapped',
+      angleRad: 0,
+    },
+    {
+      id: 'jt1',
+      nodeId: 'n2',
+      receiver: 'm1',
+      mover: 'm2',
+      onBody: false,
+      mode: 'wrapped',
+      angleRad: 0,
+    },
   );
   return d;
 }

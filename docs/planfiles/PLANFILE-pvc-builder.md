@@ -95,16 +95,22 @@ dimensions live in a **static spec table**, not the document.
   wall 0.113 in; socket depths ≈ 0.688 in / 0.75 in. Fill remaining take-offs from Spears SCH 40
   tables during Phase 2 and cite the source in a comment.
 - **`Design` (top-level doc)** — `{ schemaVersion, id, name, unitsPreference, enabledSizes[],
-  lengthsLocked, nodes[], members[], pivots[] }`.
+  lengthsLocked, nodes[], members[], joints[] }`.
 - **`Node`** — `{ id, position: Vec3 }`. A junction where pipe ends meet.
 - **`Member`** — discriminated union on `kind`:
   - `straight` — `{ id, kind:'straight', nodeA, nodeB, size }`. Length is derived from node positions
     (design mode) or held rigid (locked mode).
   - `formed` — `{ id, kind:'formed', nodeA, nodeB, controlPoints: Vec3[], size, filletRadiiM?[] }`.
     A heat-bent spline (Catmull-Rom through nodeA → control points → nodeB).
-- **`Pivot`** — `{ id, nodeId, memberA, memberB, axis: Vec3, angleRad?, limits?: {minRad,maxRad} }`.
-  The heat-formed wrapping pivot: a revolute joint between two members sharing a node. `angleRad` is
-  the current/target angle (read/written by both drag and sliders).
+- **`Joint`** (schema v5, folded the old `pivots` + `wraps`) —
+  `{ id, nodeId, receiver, mover, onBody, mode, angleRad?, orientation?: Quaternion, limits? }`.
+  One record per non-default pipe connection. `mode`: `anchor` (rigid/welded — only stored for an
+  on-body screwed tee; a plain end-to-end anchor is the default and carries no record), `wrapped`
+  (the `mover` swivels about the `receiver`'s own axis — a revolute pivot whose axis is DERIVED from
+  the receiver, "always around the receiving pipe"; `angleRad`), or `free` (an eye-bolt + knotted-cord
+  ball joint, 3-DOF `orientation`, drag-to-pose only). `onBody` = the mover's end sits on the
+  receiver's intact span (a branch/tee) vs two ends meeting. Only two pivot kinds exist — wrapped and
+  free — created by right-clicking a pipe join (Wrapped / Free / Anchor); there is no pivot tool.
 
 **Resolved fittings are NOT stored** — they're a pure function of the design (§4), recomputed
 continuously and cached in transient editor state. (Leave room to store user *overrides* later.)
@@ -131,8 +137,9 @@ direction pointing away from the node along each member) and their sizes, then c
 | ≥5 or non-coplanar | — | **conflict** |
 
 Angle tolerances are a named constant (e.g. ±3°). Mixed sizes resolve to a reducing variant of the
-fitting where one exists, else a conflict. A node carrying a `Pivot` is exempt from standard
-classification (the pivot IS its fitting). Output feeds both rendering (§6) and BOM (§8).
+fitting where one exists, else a conflict. A node carrying a `Joint` is exempt from standard
+classification (the joint hardware — a wrapped/free pivot or a screwed on-body tee — IS its fitting).
+Output feeds both rendering (§6) and BOM (§8).
 
 ## 5. Solver — physics behind a pure boundary (CrashCat)
 

@@ -5,11 +5,21 @@
 // documented ESTIMATES to be replaced with manufacturer tables). No three/UI
 // types. Hand-rolled CSV.
 import { bendDihedralsRad } from '../geometry/pipe';
-import { type Design, type NominalSize, pipeSpec, type UnitsPreference } from '../schema';
+import {
+  type Design,
+  type JointMode,
+  type NominalSize,
+  pipeSpec,
+  type UnitsPreference,
+} from '../schema';
 import { formatLength } from '../ui/units';
 import { memberLengthM } from './docOps';
 import { type FittingType, resolveFittings } from './fittings';
 import { analyzeFormed, formedPoints } from './formed';
+
+/** An eye-bolt + knotted cord shortens each pipe end at a FREE (ball) pivot — a
+ * documented ESTIMATE take-off (≈1"), like the fitting take-offs above. */
+export const EYE_BOLT_TAKEOFF_M = 0.0254;
 
 // Fitting centre-to-face ÷ pipe OD — an ESTIMATE of how far the fitting body
 // eats into the centre-to-centre run past the socket. Replace with Spears /
@@ -51,9 +61,19 @@ export interface FittingLine {
   count: number;
 }
 
+/** Non-fitting joint hardware (not a socket fitting): a wrapped/free pivot or a
+ * screwed on-body tee. `wrapped`/`anchor` are heat-wrapped; `free` is a ball
+ * joint (2 eye bolts + a ball + cord per joint). */
+export interface JointLine {
+  mode: JointMode;
+  count: number;
+}
+
 export interface Bom {
   cuts: CutItem[];
   fittings: FittingLine[];
+  /** joint hardware counts by mode (wrapped / free / anchor) */
+  joints: JointLine[];
   conflicts: number;
   /** total pipe to buy per size (sum of cut lengths), m */
   totalBySize: Partial<Record<NominalSize, number>>;
@@ -62,15 +82,21 @@ export interface Bom {
 export function bom(design: Design): Bom {
   const { fittings, conflicts } = resolveFittings(design);
   const fittingByNode = new Map(fittings.map((f) => [f.nodeId, f]));
+  // a free (ball) pivot shortens each pipe end that butts into it
+  const freeNodes = new Set(design.joints.filter((j) => j.mode === 'free').map((j) => j.nodeId));
 
   const cuts: CutItem[] = [];
   const totalBySize: Partial<Record<NominalSize, number>> = {};
 
+  const endTakeoff = (fittingNode: string | undefined, size: NominalSize): number => {
+    const f = fittingNode ? fittingByNode.get(fittingNode) : undefined;
+    if (f) return fittingTakeoffM(f.type, size);
+    return fittingNode && freeNodes.has(fittingNode) ? EYE_BOLT_TAKEOFF_M : 0;
+  };
+
   for (const m of design.members) {
-    const fa = fittingByNode.get(m.nodeA);
-    const fb = fittingByNode.get(m.nodeB);
-    const takeoffAM = fa ? fittingTakeoffM(fa.type, m.size) : 0;
-    const takeoffBM = fb ? fittingTakeoffM(fb.type, m.size) : 0;
+    const takeoffAM = endTakeoff(m.nodeA, m.size);
+    const takeoffBM = endTakeoff(m.nodeB, m.size);
 
     let spanM: number;
     let bendsRad: number[] | undefined;
@@ -106,13 +132,32 @@ export function bom(design: Design): Bom {
     else lines.set(key, { type: f.type, sizes, reducing: f.reducing, count: 1 });
   }
 
+  // joint hardware counts by mode (wrapped / free / anchor)
+  const jointCounts = new Map<JointMode, number>();
+  for (const j of design.joints) jointCounts.set(j.mode, (jointCounts.get(j.mode) ?? 0) + 1);
+  const joints: JointLine[] = [...jointCounts.entries()]
+    .map(([mode, count]) => ({ mode, count }))
+    .sort((a, b) => a.mode.localeCompare(b.mode));
+
   return {
     cuts,
     fittings: [...lines.values()].sort((a, b) => a.type.localeCompare(b.type)),
+    joints,
     conflicts: conflicts.length,
     totalBySize,
   };
 }
+
+export const JOINT_LABEL: Record<JointMode, string> = {
+  wrapped: 'wrapped pivot',
+  free: 'free pivot',
+  anchor: 'screwed tee',
+};
+export const JOINT_HARDWARE: Record<JointMode, string> = {
+  wrapped: 'heat-wrap',
+  free: '2 eye bolts + ball + cord',
+  anchor: 'heat-wrap + set screws',
+};
 
 function csvCell(s: string | number): string {
   const v = String(s);
@@ -142,6 +187,12 @@ export function bomToCsv(design: Design, units: UnitsPreference): string {
   line('Fittings');
   line('Type', 'Sizes', 'Reducing', 'Count');
   for (const f of b.fittings) line(f.type, f.sizes.join(' × '), f.reducing ? 'yes' : '', f.count);
+  if (b.joints.length) {
+    line('');
+    line('Joints');
+    line('Type', 'Hardware', 'Count');
+    for (const j of b.joints) line(JOINT_LABEL[j.mode], JOINT_HARDWARE[j.mode], j.count);
+  }
   line('');
   line('Total pipe by size');
   for (const [size, total] of Object.entries(b.totalBySize)) {

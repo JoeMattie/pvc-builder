@@ -3,6 +3,8 @@
 // each free pipe end so pipes read as real tube with wall thickness. In the
 // select tool, clicking a pipe selects its member.
 import type { ThreeEvent } from '@react-three/fiber';
+import { memberById, nodeById } from '../../design/docOps';
+import { length, sub } from '../../geometry/math3';
 import { easedPos, useAnim } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
 import { selectMember } from '../../state/editorActions';
@@ -19,11 +21,13 @@ function Pipe({
   color,
   selected,
   onSelect,
+  onContext,
 }: {
   cyl: PipeCylinder;
   color: string;
   selected: boolean;
   onSelect?: (memberId: string) => void;
+  onContext?: (memberId: string, e: ThreeEvent<MouseEvent>) => void;
 }) {
   const placed = placeAxis(cyl.a, cyl.b);
   if (!placed) return null;
@@ -33,9 +37,22 @@ function Pipe({
         onSelect(cyl.memberId);
       }
     : undefined;
+  const context = onContext
+    ? (e: ThreeEvent<MouseEvent>) => {
+        e.stopPropagation();
+        onContext(cyl.memberId, e);
+      }
+    : undefined;
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: r3f <mesh> is a three.js scene node, not a DOM element — the a11y rule does not apply
-    <mesh position={placed.mid} quaternion={placed.quat} onClick={click} castShadow receiveShadow>
+    <mesh
+      position={placed.mid}
+      quaternion={placed.quat}
+      onClick={click}
+      onContextMenu={context}
+      castShadow
+      receiveShadow
+    >
       <cylinderGeometry args={[cyl.radiusM, cyl.radiusM, placed.len, RADIAL_SEGMENTS]} />
       <meshPhysicalMaterial
         color={color}
@@ -56,6 +73,7 @@ export function PipeLayer() {
   const design = useAppStore((s) => s.current);
   const selectedIds = useEditorStore((s) => s.selectedIds);
   const tool = useEditorStore((s) => s.tool);
+  const drawingFrom = useEditorStore((s) => s.drawingFromNodeId);
   const night = useThemeStore((s) => s.night);
   // re-render while geometry is easing toward its snapped target (reads the
   // mutable eased-position map, so it recomputes each animating frame)
@@ -65,8 +83,25 @@ export function PipeLayer() {
   if (!model) return null;
   // click-to-select works in the select / move / rotate tools (so you can pick
   // the pipe to transform without leaving the gizmo)
-  const onSelect =
-    tool === 'select' || tool === 'move' || tool === 'rotate' ? selectMember : undefined;
+  const editing = tool === 'select' || tool === 'move' || tool === 'rotate';
+  const onSelect = editing ? selectMember : undefined;
+  // right-click a pipe near a join → the anchor / wrapped / free menu
+  const onContext =
+    editing && design && !drawingFrom
+      ? (memberId: string, e: ThreeEvent<MouseEvent>) => {
+          const m = memberById(design, memberId);
+          if (m?.kind !== 'straight') return;
+          const pa = nodeById(design, m.nodeA)?.position;
+          const pb = nodeById(design, m.nodeB)?.position;
+          if (!pa || !pb) return;
+          // the join is at whichever endpoint is nearer the click
+          const nodeId = length(sub(e.point, pa)) <= length(sub(e.point, pb)) ? m.nodeA : m.nodeB;
+          const ne = e.nativeEvent as MouseEvent;
+          useEditorStore
+            .getState()
+            .openJoinMenu({ nodeId, moverId: memberId, x: ne.clientX, y: ne.clientY });
+        }
+      : undefined;
   const selected = new Set(selectedIds);
 
   return (
@@ -78,6 +113,7 @@ export function PipeLayer() {
           color={color}
           selected={selected.has(c.memberId)}
           onSelect={onSelect}
+          onContext={onContext}
         />
       ))}
       {model.ends.map((e) => (

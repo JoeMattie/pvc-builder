@@ -26,6 +26,34 @@ riglab's proven code over writing from scratch (specific files are cited through
 Note riglab uses konva (2D) + rapier/planck (physics); PVC Builder drops those — it is three.js-only
 and its physics is CrashCat (Phase 4).
 
+## Navigating the code — start here
+
+**`docs/CODE-MAP.md` is the index of the codebase.** Every source directory has a `CONTEXT.md`
+orientation card (its files, key exports, cross-directory dependencies, and read-before-editing
+gotchas). **Before working in a directory, read its `CONTEXT.md`** — it's the fast path from a cold
+session to knowing where the relevant code is and what invariants it holds. The map is arranged in
+dependency order (schema → geometry → design/solver → state → ui).
+
+### Working with context files (keep them true)
+- When you **add, rename, or move a source file**, or change a directory's role, update that
+  directory's `CONTEXT.md` (and `docs/CODE-MAP.md` if a directory was added/removed).
+- When you change a **cross-cutting invariant** a card documents — a pure boundary, the
+  `window.__pvc` seam list, the schema version, a store's write path — fix the card in the same
+  change. A stale card is worse than none; treat these like tests that must stay green.
+- Keep cards terse (a reference card, not prose). Deep rationale goes in `DECISIONS.md`.
+
+### Dispatching parallel work (subagents / agent teams)
+This layout exists so tasks can be **sliced by directory and run in parallel**. To dispatch fast:
+1. Point each agent at the relevant `CONTEXT.md` (and this file) as its starting context — it won't
+   need to re-explore the tree.
+2. **Every parallel agent works on its own git worktree + branch** (the Agent tool's
+   `isolation: "worktree"`, or `git worktree add ../pvc-builder-<slug> -b feat/<slug>`), never the
+   shared checkout — so working trees never collide.
+3. **`docs/AGENT-COORDINATION.md` is the shared board.** Each agent **claims** the files/dirs it
+   will change there before starting, checks for overlaps, and avoids the listed shared choke points
+   (schema, `EditorShell.tsx`, `editorActions.ts`, `Scene.tsx`, `docOps.ts`). Release the claim when
+   merged. This is how simultaneous tasks reconcile without merge pain.
+
 ## What this app is
 
 PVC Builder is a **3D-first, isometric PVC design studio** (SketchUp-for-PVC): draw pipe runs in a 3D
@@ -63,10 +91,12 @@ physics logic can be tested and reasoned about without three.js/React/engine typ
 
 - **Domain doc (`Design`)** is the single source of truth, defined in **Zod** (`z.infer` for types),
   stored **SI internally** (metres, radians; imperial is display-only). A `Design` holds `nodes`,
-  `members` (a discriminated union of `straight` and heat-bent `formed` splines), `pivots`
-  (revolute joints), and `wraps` (heat-wrapped tees — a branch flattened + wrapped around an intact
-  pipe body, rigid/screwed or a natural pivot; **schema v4**). Fitting dimensions live in a static
-  **`PipeSpec`** constant table (ASTM SCH 40 values), **not** in the document.
+  `members` (a discriminated union of `straight` and heat-bent `formed` splines), and `joints` — one
+  unified record per non-default pipe connection: `mode` `anchor` (rigid/welded), `wrapped` (a pivot
+  that swivels about the receiving pipe's own axis), or `free` (an eye-bolt + cord ball joint, 3-DOF),
+  with `onBody` marking a branch on an intact run; **schema v5** (folded the old `pivots` + `wraps`).
+  Fitting dimensions live in a static **`PipeSpec`** constant table (ASTM SCH 40 values), **not** in
+  the document.
 
 - **Fittings are never stored** — `resolveFittings(design)` is a **pure function** that classifies the
   pipe ends incident at each node into couplings / elbows / tees / crosses / reducers, or flags

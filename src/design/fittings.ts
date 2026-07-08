@@ -162,18 +162,18 @@ function classify(ends: FittingEnd[]): Classified | null {
 }
 
 /** Resolve every junction into a standard fitting or a conflict. Pure; feeds
- * rendering and the BOM. A node carrying a heat-formed pivot will be exempt
- * from Phase 4 (the pivot IS its fitting) — no pivots exist yet. */
+ * rendering and the BOM. A node carrying a JOINT is exempt: the joint hardware
+ * IS its fitting (a wrapped/free pivot, or a screwed on-body tee) — planfile §4. */
 export function resolveFittings(design: Design): FittingResolution {
   const ends = incidentEnds(design);
   const nodePos = new Map(design.nodes.map((n) => [n.id, n.position]));
-  // a node carrying a pivot is exempt — the pivot IS its fitting (planfile §4)
-  const pivotNodes = new Set(design.pivots.map((p) => p.nodeId));
+  // a node carrying a joint is exempt — the joint IS its fitting (planfile §4)
+  const jointNodes = new Set(design.joints.map((j) => j.nodeId));
   const fittings: ResolvedFitting[] = [];
   const conflicts: Conflict[] = [];
 
   for (const [nodeId, list] of ends) {
-    if (pivotNodes.has(nodeId)) continue;
+    if (jointNodes.has(nodeId)) continue;
     const position = nodePos.get(nodeId);
     if (!position) continue;
     const result = classify(list);

@@ -93,10 +93,17 @@ describe('intersectingMembers', () => {
       { id: 'run', a: V(-0.25, 0, 0), b: V(0.25, 0, 0) },
       { id: 'branch', a: V(0, 0, 0.2), b: V(0, 0, 0) },
     ]);
-    // without a wrap the touching pair IS flagged
+    // without a joint the touching pair IS flagged
     expect(intersectingMembers(d)).toEqual(new Set(['run', 'branch']));
     // the branch's end node is n3 (straightDesign numbers nodes in order)
-    d.wraps.push({ id: 'w1', throughMember: 'run', branchNode: 'n3', rigid: true });
+    d.joints.push({
+      id: 'jt1',
+      nodeId: 'n3',
+      receiver: 'run',
+      mover: 'branch',
+      onBody: true,
+      mode: 'anchor',
+    });
     expect(intersectingMembers(d).size).toBe(0);
   });
 });

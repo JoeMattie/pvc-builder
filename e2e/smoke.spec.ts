@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 // Scripted verification through window.__pvc (planfile §7/§11): assert state in
 // one page.evaluate; no gesture driving.
 
-test('draw → fittings → BOM → JSON round-trip → pivot, on the built app', async ({ page }) => {
+test('draw → fittings → BOM → JSON round-trip → joints, on the built app', async ({ page }) => {
   const errors: string[] = [];
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
   page.on('pageerror', (e) => errors.push(String(e)));
@@ -40,7 +40,7 @@ test('draw → fittings → BOM → JSON round-trip → pivot, on the built app'
   const roundtrip = await page.evaluate(async () => {
     const p = (window as any).__pvc;
     const geom = (d: any) =>
-      JSON.stringify({ nodes: d.nodes, members: d.members, pivots: d.pivots });
+      JSON.stringify({ nodes: d.nodes, members: d.members, joints: d.joints });
     const before = geom(p.getDoc());
     const json = p.exportJson();
     await p.importJson(json);
@@ -48,19 +48,34 @@ test('draw → fittings → BOM → JSON round-trip → pivot, on the built app'
   });
   expect(roundtrip.after).toBe(roundtrip.before);
 
-  // pivot: lock lengths, add a pivot at the corner, set an angle → 1-DOF pose
-  const pivot = await page.evaluate(() => {
+  // wrapped pivot: right-click join at the corner → 1-DOF revolute pose
+  const wrapped = await page.evaluate(() => {
     const p = (window as any).__pvc;
-    const mid = p.getDoc().members[0].nodeB;
-    p.createPivotAt(mid);
+    const doc = p.getDoc();
+    const mid = doc.members[0].nodeB;
+    p.setJoinMode(mid, doc.members[0].id, 'wrapped');
     p.setLengthsLocked(true);
-    const pv = p.getDoc().pivots[0];
-    p.setPivotAngle(pv.id, Math.PI / 4);
+    const j = p.getDoc().joints[0];
+    p.setPivotAngle(j.id, Math.PI / 4);
     const s = p.getSolve();
-    return { pivots: p.getDoc().pivots.length, dof: s.diagnostics.mobilityDof };
+    return { joints: p.getDoc().joints.length, mode: j.mode, dof: s.diagnostics.mobilityDof };
   });
-  expect(pivot.pivots).toBe(1);
-  expect(pivot.dof).toBe(1);
+  expect(wrapped.joints).toBe(1);
+  expect(wrapped.mode).toBe('wrapped');
+  expect(wrapped.dof).toBe(1);
+
+  // switch the same join to a FREE ball joint → 3-DOF spherical pose
+  const free = await page.evaluate(() => {
+    const p = (window as any).__pvc;
+    const doc = p.getDoc();
+    const mid = doc.members[0].nodeB;
+    p.setJoinMode(mid, doc.members[0].id, 'free');
+    const j = p.getDoc().joints[0];
+    const s = p.getSolve();
+    return { mode: j.mode, dof: s.diagnostics.mobilityDof };
+  });
+  expect(free.mode).toBe('free');
+  expect(free.dof).toBe(3);
 
   expect(errors).toEqual([]);
 });

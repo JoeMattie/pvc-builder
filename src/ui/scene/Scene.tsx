@@ -18,6 +18,7 @@ import {
   physicsActive,
   physicsNodePositions,
   physicsTopoHash,
+  simGroundY,
   startPhysics,
   stepPhysics,
   stopPhysics,
@@ -32,7 +33,7 @@ import {
   recordPose,
   type V3,
 } from '../../state/cameraStore';
-import { pivotAnglesOf } from '../../state/editorActions';
+import { jointOrientationsOf, pivotAnglesOf } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
@@ -40,10 +41,37 @@ import { DrawController } from './DrawController';
 import { FittingLayer } from './FittingLayer';
 import { FormedLayer } from './FormedLayer';
 import { IntersectionLayer } from './IntersectionLayer';
+import { JointLayer } from './JointLayer';
 import { PipeLayer } from './PipeLayer';
-import { PivotLayer } from './PivotLayer';
 import { MoveGizmo, RotateGizmo, SelectionHandles } from './SelectionHandles';
-import { WrapLayer } from './WrapLayer';
+
+/** The infinite reference grid. Sits at the design ground (y=0) normally; during
+ * a physics run it drops to the sim floor (just below the model) so pipes rest on
+ * the visible grid instead of sinking below it, and resets when the sim stops.
+ * Subscribes only to `simulating` (reads the frozen doc non-reactively), so a
+ * drag never re-renders the grid. */
+function GroundGrid({ pal }: { pal: ReturnType<typeof scenePalette> }) {
+  const simulating = useEditorStore((s) => s.simulating);
+  const design = simulating ? useAppStore.getState().current : null;
+  const groundY = design ? simGroundY(design) : 0;
+  return (
+    <group position={[0, groundY, 0]}>
+      <Grid
+        args={[40, 40]}
+        infiniteGrid
+        cellSize={0.1}
+        cellThickness={0.6}
+        cellColor={pal.gridCell}
+        sectionSize={0.5}
+        sectionThickness={1}
+        sectionColor={pal.gridSection}
+        fadeDistance={30}
+        fadeStrength={1.5}
+        followCamera={false}
+      />
+    </group>
+  );
+}
 
 /** Everything inside the Canvas: camera, studio lighting, ground grid + shadow
  * catcher, pipe meshes, the draw controller, and selection drag handles. */
@@ -96,24 +124,12 @@ export function Scene() {
         shadow-camera-far={40}
       />
 
-      <Grid
-        args={[40, 40]}
-        infiniteGrid
-        cellSize={0.1}
-        cellThickness={0.6}
-        cellColor={pal.gridCell}
-        sectionSize={0.5}
-        sectionThickness={1}
-        sectionColor={pal.gridSection}
-        fadeDistance={30}
-        fadeStrength={1.5}
-        followCamera={false}
-      />
+      <GroundGrid pal={pal} />
 
       <PipeLayer />
       <FormedLayer />
       <FittingLayer />
-      <WrapLayer />
+      <JointLayer />
       <IntersectionLayer />
 
       {/* ground-plane pointer target + shadow catcher + draw preview */}
@@ -124,7 +140,6 @@ export function Scene() {
       {/* move-tool translate gizmo / rotate-tool ring gizmo on the selection */}
       {tool === 'move' && <MoveGizmo />}
       {tool === 'rotate' && <RotateGizmo />}
-      <PivotLayer />
 
       {/* middle = pan, right = free rotate; left is reserved (drawing / select
           / future marquee), so it never orbits. `key={projection}` remounts the
@@ -244,8 +259,16 @@ function GeometryAnimator() {
     if (physicsActive()) stopPhysics(); // just stopped — sim disposed, revert to doc
 
     let target: Array<{ id: string; position: Vec3 }> = design.nodes;
-    if (design.lengthsLocked && design.pivots.length) {
-      const r = solve(design, { lengthsLocked: true, pivotAngles: pivotAnglesOf(design) }, 'pose');
+    if (design.lengthsLocked && design.joints.length) {
+      const r = solve(
+        design,
+        {
+          lengthsLocked: true,
+          pivotAngles: pivotAnglesOf(design),
+          jointOrientations: jointOrientationsOf(design),
+        },
+        'pose',
+      );
       target = design.nodes.map((n) => ({
         id: n.id,
         position: r.nodePositions[n.id] ?? n.position,

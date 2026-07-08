@@ -12,7 +12,6 @@ import {
   Square,
   Sun,
   Undo2,
-  Wrench,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { bom } from '../design/bom';
@@ -27,26 +26,27 @@ import { physicsNodePositions } from '../solver/physics';
 import { useAppStore } from '../state/appStore';
 import {
   clearSelection,
-  convertWrapToFitting,
-  createPivotAt,
   dragNodeTo,
   finishFormed,
   finishPath,
+  jointOrientationsOf,
   pivotAnglesOf,
   placeDrawPoint,
   placeFormedPoint,
   resetPivots,
   rotateMemberBy,
   selectMember,
+  setJoinMode,
   setMemberLength,
   setPivotAngle,
-  setWrapRigid,
   snapDrawPoint,
+  swapJointReceiver,
   translateMemberBy,
 } from '../state/editorActions';
 import { useEditorStore } from '../state/editorStore';
 import { useThemeStore } from '../state/themeStore';
 import { BomPanel } from './BomPanel';
+import { JoinMenu } from './JoinMenu';
 import { downloadFile } from './lib/download';
 import { Pillbox } from './Pillbox';
 import { PivotPanel } from './PivotPanel';
@@ -113,8 +113,6 @@ export function EditorShell() {
   const toggleProjection = useEditorStore((s) => s.toggleProjection);
   const simulating = useEditorStore((s) => s.simulating);
   const setSimulating = useEditorStore((s) => s.setSimulating);
-  const fabricationSolved = useEditorStore((s) => s.fabricationSolved);
-  const setFabricationSolved = useEditorStore((s) => s.setFabricationSolved);
 
   const night = useThemeStore((s) => s.night);
   const toggleNight = useThemeStore((s) => s.toggleNight);
@@ -141,6 +139,12 @@ export function EditorShell() {
         redo();
         return;
       }
+      // Ctrl/Cmd+Space → start/stop playback (physics simulation)
+      if (mod && (e.key === ' ' || e.code === 'Space')) {
+        e.preventDefault();
+        editor.setSimulating(!editor.simulating);
+        return;
+      }
       if (typing) return;
 
       if (e.key === 'Escape' || e.key === 'Enter') {
@@ -159,8 +163,6 @@ export function EditorShell() {
         editor.setTool('move');
       } else if (e.key === 'b' || e.key === 'B' || e.key === 'h' || e.key === 'H') {
         editor.setTool('formed');
-      } else if (e.key === 'p' || e.key === 'P') {
-        editor.setTool('pivot');
       } else if (e.key === 'r' || e.key === 'R') {
         resetPivots();
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -227,7 +229,7 @@ export function EditorShell() {
         lengthM: memberLengthM(d, m),
       }));
     };
-    hook.setTool = (tool: 'select' | 'draw' | 'formed' | 'pivot' | 'move' | 'rotate') =>
+    hook.setTool = (tool: 'select' | 'draw' | 'formed' | 'move' | 'rotate') =>
       useEditorStore.getState().setTool(tool);
     hook.setProjection = (p: 'ortho' | 'perspective') => useEditorStore.getState().setProjection(p);
     hook.setDrawSize = (size: '1/2"' | '3/4"') => useEditorStore.getState().setDrawSize(size);
@@ -256,17 +258,29 @@ export function EditorShell() {
       const m = d ? memberById(d, id) : undefined;
       return d && m && m.kind === 'formed' ? analyzeFormed(d, m) : null;
     };
-    // heat-wrapped tee seams
-    hook.getWraps = () => useAppStore.getState().current?.wraps ?? [];
-    hook.setWrapRigid = (wrapId: string, rigid: boolean) => setWrapRigid(wrapId, rigid);
-    hook.convertWrapToFitting = (wrapId: string) => convertWrapToFitting(wrapId);
+    // joint seams (right-click a join → anchor / wrapped / free)
+    hook.getJoints = () => useAppStore.getState().current?.joints ?? [];
+    hook.setJoinMode = (
+      nodeId: string,
+      moverId: string,
+      mode: 'anchor' | 'wrapped' | 'free',
+      receiverId?: string,
+    ) => setJoinMode(nodeId, moverId, mode, receiverId);
+    hook.swapJointReceiver = (jointId: string) => swapJointReceiver(jointId);
     // pivots / solver seams
-    hook.createPivotAt = (nodeId: string) => createPivotAt(nodeId);
-    hook.setPivotAngle = (pivotId: string, angleRad: number) => setPivotAngle(pivotId, angleRad);
+    hook.setPivotAngle = (jointId: string, angleRad: number) => setPivotAngle(jointId, angleRad);
     hook.getSolve = () => {
       const d = useAppStore.getState().current;
       if (!d) return null;
-      return solve(d, { lengthsLocked: d.lengthsLocked, pivotAngles: pivotAnglesOf(d) }, 'pose');
+      return solve(
+        d,
+        {
+          lengthsLocked: d.lengthsLocked,
+          pivotAngles: pivotAnglesOf(d),
+          jointOrientations: jointOrientationsOf(d),
+        },
+        'pose',
+      );
     };
     // BOM + export/import seams
     hook.getBom = () => {
@@ -278,7 +292,6 @@ export function EditorShell() {
       return d ? exportDesignJson(d) : null;
     };
     hook.importJson = (text: string) => useAppStore.getState().importAndOpen(text);
-    hook.setFabricationSolved = (on: boolean) => useEditorStore.getState().setFabricationSolved(on);
     // physics seams
     hook.setSimulating = (on: boolean) => useEditorStore.getState().setSimulating(on);
     hook.getPhysics = () => physicsNodePositions();
@@ -357,13 +370,18 @@ export function EditorShell() {
       {/* pivot angle sliders + mobility (locked mode, top-right) */}
       <PivotPanel />
 
+      {/* right-click join menu (anchor / wrapped / free) */}
+      <JoinMenu />
+
       {/* top-right: play + undo/redo + view + physics + theme toggles */}
       <div className="absolute top-4 right-4 flex items-center gap-1 rounded-lg border border-border bg-card px-1.5 py-1.5 shadow-sm">
         <button
           type="button"
           onClick={() => setSimulating(!simulating)}
           aria-pressed={simulating}
-          title={simulating ? 'Stop simulation' : 'Play — rigid-body physics'}
+          title={
+            simulating ? 'Stop simulation (Ctrl+Space)' : 'Play — rigid-body physics (Ctrl+Space)'
+          }
           className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium ${
             simulating
               ? 'bg-primary text-primary-foreground'
@@ -412,20 +430,6 @@ export function EditorShell() {
         >
           {lengthsLocked ? <Lock size={14} /> : <LockOpen size={14} />}
           Lengths
-        </button>
-        <button
-          type="button"
-          onClick={() => setFabricationSolved(!fabricationSolved)}
-          aria-pressed={fabricationSolved}
-          title="Solve — show pivot fabrication detail (1 inch pipe extension + endcap)"
-          className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium ${
-            fabricationSolved
-              ? 'bg-accent text-accent-foreground'
-              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-          }`}
-        >
-          <Wrench size={14} />
-          Solve
         </button>
         <div className="mx-0.5 h-5 w-px bg-border" />
         <button

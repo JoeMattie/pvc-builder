@@ -158,8 +158,8 @@ describe('snap settings + Shift-draw-lock', () => {
   });
 });
 
-describe('drawing a branch onto a pipe body forms a heat-wrapped tee', () => {
-  it('wraps the intact run (no split) with a rigid tee', () => {
+describe('drawing a branch onto a pipe body forms an on-body tee', () => {
+  it('wraps the intact run (no split) with a rigid (anchor) tee', () => {
     // run pipe along X (grid-aligned so snapping leaves it unchanged)
     placeDrawPoint(V(0, 0, 0));
     placeDrawPoint(V(0.3048, 0, 0));
@@ -172,9 +172,10 @@ describe('drawing a branch onto a pipe body forms a heat-wrapped tee', () => {
     expect(landed.kind).toBe('on-pipe');
     const d = design();
     expect(d.members).toHaveLength(2); // the run is NOT cut — run + branch
-    expect(d.wraps).toHaveLength(1);
-    expect(d.wraps[0]!.rigid).toBe(true); // screwed by default
-    expect(d.wraps[0]!.throughMember).toBe(runMember);
+    expect(d.joints).toHaveLength(1);
+    expect(d.joints[0]!.mode).toBe('anchor'); // screwed by default
+    expect(d.joints[0]!.onBody).toBe(true);
+    expect(d.joints[0]!.receiver).toBe(runMember);
   });
 });
 

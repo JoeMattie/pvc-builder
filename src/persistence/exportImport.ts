@@ -1,3 +1,4 @@
+import { healBodyJoints } from '../design/docOps';
 import { type Design, designSchema, migrateToLatest } from '../schema';
 
 /** Serialize a design for file export. Validates on the way out so a bug can't
@@ -14,7 +15,8 @@ export function importDesignJson(text: string): Design {
   } catch {
     throw new Error('not a JSON file');
   }
-  return migrateToLatest(raw);
+  // migrate old versions, then repair any branch-on-run that never formed a union
+  return healBodyJoints(migrateToLatest(raw));
 }
 
 /** `<slug>.pvc.json` (planfile §7). */

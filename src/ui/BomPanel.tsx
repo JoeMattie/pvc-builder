@@ -1,5 +1,5 @@
 import { Download, X } from 'lucide-react';
-import { bom, bomToCsv } from '../design/bom';
+import { bom, bomToCsv, JOINT_HARDWARE, JOINT_LABEL } from '../design/bom';
 import { suggestedFileName } from '../persistence/exportImport';
 import { useAppStore } from '../state/appStore';
 import { downloadFile } from './lib/download';
@@ -89,6 +89,22 @@ export function BomPanel({ onClose }: { onClose: () => void }) {
                   </span>
                 </div>
               ))
+            )}
+
+            {b.joints.length > 0 && (
+              <>
+                <div className="mt-3 mb-1 font-medium text-muted-foreground uppercase text-[10.5px] tracking-wide">
+                  Joints
+                </div>
+                {b.joints.map((j) => (
+                  <div key={j.mode} className="flex justify-between">
+                    <span>
+                      {j.count}× {JOINT_LABEL[j.mode]}
+                    </span>
+                    <span className="text-muted-foreground">{JOINT_HARDWARE[j.mode]}</span>
+                  </div>
+                ))}
+              </>
             )}
 
             <div className="mt-3 mb-1 font-medium text-muted-foreground uppercase text-[10.5px] tracking-wide">

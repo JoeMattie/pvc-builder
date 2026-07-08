@@ -4,6 +4,128 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Fitting choice is automatic — removed "Socket fitting / cut the run" (2026-07-08)
+
+Simplified the connection model to a single rule: **a manufactured rigid fitting
+is used whenever one matches the intersection angle; a wrap+bolt union is used
+for every other rigid connection; all pivots are custom (wrap) fabrications.**
+Because the choice is now automatic (a 90° on-body anchor already renders as a
+socket tee via `anchorRendersAsTee`; other angles render as the wrap+pin), the
+manual **"Socket fitting — cut the run"** action was pure confusion and is gone:
+removed `convertJointToFitting` from `docOps`, `editorActions`, the `__pvc` hook,
+the right-click **JoinMenu** item, and the SelectionPanel **Fitting** button (+
+its `teeAvailable` gate). The right-click join menu is now just Anchor / Wrapped
+/ Free. Note the run stays topologically intact (one pipe + an on-body union)
+even where it renders as a tee — switching a branch between rigid and pivot needs
+no cut/uncut, and the tee's cut-list treatment is left to the BOM work.
+
+## Wrapped/rigid joints render as a wrap-arrow indicator, not a collar (2026-07-08)
+
+Replaced the molded slip-saddle **collar** on non-default joints with a lighter,
+schematic **wrap-arrow indicator** that reads the joint's *behaviour* rather than
+faking a fitting:
+- **The branch pipe visually stops ~1" short of the run's surface.** `pipeModel`
+  pulls back a wrapped/anchor branch end by `receiverOD/2 + 1"` (keyed by
+  `${moverId}|${nodeId}` so only the branch end moves, not a run end sharing the
+  node) and now draws an **open bore** there (on-body wrap nodes are no longer
+  suppressed; only `free` ends stay covered by the eye-bolt/ball hardware).
+- **Wrapped pivot → a GREEN arrow** that leaves the open end, loops once around
+  the run, and returns near the start (the grammar of "swivels about the run").
+- **Rigid on-body `anchor` → depends on the angle:** at ~90° (within ~8°) a real
+  socket tee exists, so it renders as a standard **tee fitting** (`AnchorTee`
+  reuses `buildFittingMesh`; the branch sockets in full, no pull-back/bore). At
+  any other angle no off-the-shelf fitting fits, so it uses **the same loop in
+  STEEL, capped by a red locking PIN** instead of an arrowhead ("fixed here").
+  The tee-vs-wrap choice is the pure `anchorRendersAsTee` (`jointStyle.ts`), used
+  by both `JointLayer` and `pipeModel` so pull-back and rendering agree.
+- Geometry is a pure helper `src/ui/scene/wrapArrow.ts` (tested), swept as a
+  `TubeGeometry` in `JointLayer`. Deleted `wrapMesh.ts` + `WrapStrip.tsx` (collar)
+  and their test.
+
+**Branch-on-run unions now actually form.** A tee/wrap only renders where a
+`joint` exists, and a branch whose *start* landed on a pipe never got one — a
+path started on a pipe body calls `startPath` (a node, no member yet), so the
+`addBodyJoint` call found no branch and silently no-op'd. Such a branch read as a
+red overlap instead of a tee. Fixed two ways: (1) the draw tool remembers the run
+a path started on (`editorStore.drawStartWrapMember`) and creates the on-body
+union once the first segment exists; (2) a pure `healBodyJoints(design)` repairs
+any endpoint sitting exactly on another member's span (idempotent) and runs on
+import, so already-saved files gain their unions on reload.
+
+**Unions connect / disconnect live, mid-gesture.** `reconcileBodyJoints(design)`
+(prune any on-body union whose branch left its receiver's span, then heal missing
+ones) runs after every endpoint-moving edit — `dragNodeTo`, `dragMemberEndLength`,
+`setMemberLength`, `translateMember`, `rotateMember` — via an `updateReconciled`
+wrapper. So dragging a branch end onto a run forms a rigid union immediately (and
+clears the red overlap), and dragging it away — or shortening it off the run —
+removes the union at once. A union whose branch still rides the same receiver
+keeps its chosen mode (wrapped/free). Pose IK (`dragLocked`) is exempt.
+
+Also: **removed the "Solve" fabrication-detail toggle entirely** (`fabricationSolved`
+state, button, and the 1" stub/endcap render) — the always-on wrap-arrow makes it
+redundant. The kinematics `solve()` / Lengths-lock / pivot sliders are unchanged.
+And **Ctrl/Cmd+Space now starts/stops playback** (physics) from anywhere.
+
+## Play-mode physics: compound assemblies, lowered floor, no tunnelling (2026-07-08)
+
+Three fixes to the CrashCat sim, all in `src/solver/physics.ts` (+ the visual grid
+in `Scene.tsx`), so Play mode is stable:
+- **Welds → one compound body per assembly, not per-member bodies + fixed
+  constraints.** `build()` now runs the same union-find as the kinematics (weld at
+  shared nodes except a pivot's mover; on-body anchors weld branch→run) and makes
+  each rigid assembly a single dynamic **`staticCompound`** of capsules. Overlapping
+  capsules at a union (the "end unions" the user saw erupt) can no longer fight a
+  redundant `fixedConstraint`. Only pivots create constraints (wrapped→hinge,
+  free→`pointConstraint`); anchors are folded into the compound.
+- **Pipes never collide with each other — only the ground** (`disableCollision(
+  olMoving, olMoving)`). Capsules across a pivot overlap at the joint node; the
+  constraint holds them, so pipe-vs-pipe contacts were only jitter. Different
+  contraptions no longer stack, which is fine here.
+- **Temporary floor drop + no tunnelling.** At sim start the static floor is
+  lowered to `simGroundY(design) = min(0, lowestExtentM − 3mm)` so nothing begins
+  penetrating the ground (the old eruption when a model sat centred on / below
+  y=0); the rendered `GroundGrid` drops with it and both reset when the sim stops
+  (the world is rebuilt each Play). Thin fast pipes stopped tunnelling the floor
+  via **fixed-substep** stepping (1/120 s, capped at 8 substeps/frame) + **CCD**
+  (`MotionQuality.LINEAR_CAST`) + a `maxLinearVelocity` cap on the bodies.
+
+## Pivots reworked: unified joints — wrapped + free, right-click menu (2026-07-08)
+
+- **`pivots` + `wraps` folded into one `joints` array (schema v5).** A joint is
+  *"member `mover` connects to `receiver` at `nodeId` in `mode`"*, where `mode` ∈
+  `anchor` (rigid/welded), `wrapped` (swivels about the receiver's own axis — a
+  revolute pivot, axis DERIVED not stored, so it's "always around the receiving
+  pipe"), or `free` (an eye-bolt + knotted-cord ball joint, 3-DOF `orientation`).
+  `onBody` distinguishes a branch on an intact run (the old wrap) from two ends
+  meeting. Migration `4→5` maps old pivots → wrapped end-to-end joints and old
+  wraps → on-body joints (`rigid` → `anchor`, else `wrapped`).
+- **Only two pivot kinds, chosen by right-clicking a pipe join:** the join menu
+  (`JoinMenu`, raycast in `PipeLayer` → `editorStore.joinMenu`) offers **Wrapped /
+  Free / Anchor** (`joinContext` in docOps gates them). A free pivot works both
+  end-to-end (two eye-bolted ends + a ball) and on-body (the branch ball-joints
+  to a saddle eye bolt clamped on the run). The old **pivot tool is removed**
+  (`Tool` union, Pillbox, `P`
+  hotkey); creation is right-click only. Receiver auto-picks the longer pipe,
+  swappable via ⇄ in the selection panel. Any join is per-pair (a tee can pivot
+  one branch while the rest stay rigid).
+- **Kinematics grew a spherical joint.** `solvePose` handles wrapped (revolute
+  about the receiver world-axis) and free (a stored relative-rotation quaternion)
+  joints together: FK, CCD IK (a free joint rotates straight toward the drag
+  target — free pivots are drag-to-pose only, no sliders), and Grübler mobility
+  (wrapped = 1 DOF, free = 3; planar shortcut only when all joints are wrapped +
+  parallel). `SolveInputs`/`SolveResult` gained `jointOrientations`. **A wrapped
+  loop is spatial** (in-plane axes aren't parallel) so a wrapped square reads as
+  over-constrained −2, unlike the old parallel-Y planar 4-bar — the closed-form
+  acceptance tests were rebuilt around the receiver-axis geometry.
+- **Physics (CrashCat) follows suit:** anchor → fixed, wrapped → hinge about the
+  receiver axis, free → `pointConstraint` (ball). **Rendering:** `JointLayer`
+  replaces `PivotLayer`+`WrapLayer` — wrapped/anchor reuse `buildWrapMesh`
+  (accent swivel vs screwed white), free draws two eye-bolt rings + cord + a ball
+  with the pipe ends pulled back (`pipeModel` shortens at free nodes). **BOM**
+  lists joint hardware (free = 2 eye bolts + ball + cord, with a ~1" eye-bolt
+  take-off per butted end; wrapped/anchor = heat-wrap). Seams: `__pvc.getJoints`,
+  `setJoinMode`, `swapJointReceiver`, `convertJointToFitting`, `setPivotAngle`.
+
 ## Standard socket fitting as a joint option (2026-07-07)
 
 - **A wrap tee can be converted to a standard manufactured socket tee.** The
