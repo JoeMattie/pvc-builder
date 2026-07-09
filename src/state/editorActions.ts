@@ -240,9 +240,18 @@ export function placeDrawPoint(raw: Vec3, lockAxis = false): SnapResult {
   return snap;
 }
 
-/** End the current path (Escape / Enter / right-click / double-click). */
+/** End the current path (Escape / Enter / right-click / double-click). Prunes a
+ * dangling start node — clicking once then aborting leaves a node with no
+ * incident member (an invisible orphan), so drop it. */
 export function finishPath(): void {
   const editor = useEditorStore.getState();
+  const fromId = editor.drawingFromNodeId;
+  if (fromId) {
+    useAppStore.getState().updateCurrent((d) => {
+      const used = d.members.some((m) => m.nodeA === fromId || m.nodeB === fromId);
+      return used ? d : { ...d, nodes: d.nodes.filter((n) => n.id !== fromId) };
+    });
+  }
   editor.setDrawingFrom(null);
   editor.setDrawStartWrap(null);
   editor.setDrawLength('');

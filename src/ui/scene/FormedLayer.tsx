@@ -89,7 +89,9 @@ export function FormedLayer() {
 
   const color = scenePalette(night).pvc;
   const selected = new Set(selectedIds);
-  const onSelect = tool === 'select' ? selectMember : undefined;
+  // click-select in the same tools straight pipes allow (select / move / rotate)
+  const onSelect =
+    tool === 'select' || tool === 'move' || tool === 'rotate' ? selectMember : undefined;
   const at = (id: string): Vec3 | undefined => easedPos(id) ?? nodeById(design, id)?.position;
   // the Bend tool shows draggable control-point handles so bends can be tweaked
   const showHandles = tool === 'bend';
