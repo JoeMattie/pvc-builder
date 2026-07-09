@@ -6,6 +6,37 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 
 ## Post-batch fixes (2026-07-08)
 
+- **Static human mannequin + global damping (schema v9)** (v0.1.17). Project Raptor shared infra — a
+  static human-shaped collision body the design rests/hangs on, plus a global friction-drag slider so
+  the sim settles. **Pure geometry** in `src/design/mannequin.ts`: `mannequinShapes(): MannequinShape[]`
+  (a discriminated union `sphere|capsule|box` of simple primitives — sphere head, box torso, shoulder
+  bar, two arm + two leg capsules, two foot boxes) at the SHARED COORDINATE CONTRACT (metres, y-up,
+  feet y=0, facing −Z), consumed by BOTH the physics build and the render layer so the body you collide
+  with is exactly the body you see. `MANNEQUIN_ANCHORS` exports the named mount points the raptor
+  templates import: shoulder saddles `(±0.23, 1.45, 0)`, hip pivots `(±0.20, 1.00, 0)`, waist y=1.00,
+  neck root `(0, 1.00, −0.45)`, tail root `(0, 1.00, +0.45)`, head center `(0, 1.62, 0)` r 0.10.
+  **Schema v9** adds two OPTIONAL fields — `mannequin: z.boolean().optional()` and `jointDamping:
+  z.number().positive().optional()` — so no required data; migration `8: (doc) => doc` is stamp-only
+  (mirrors the `viewport`/`lengthDisplay` optional pattern). **Physics** (`physics.ts`): when
+  `design.mannequin`, `build()` adds ONE STATIC `staticCompound` of the scaled `mannequinShapes()` on
+  the existing `olStatic` layer (moving pipes already collide with `olStatic`, like the ground), so a
+  pipe across the shoulders hangs instead of dropping to the floor. **Damping**: `build()` reads
+  `design.jointDamping ?? 1` and multiplies the wrapped-pivot `SLIDE_FRICTION_FORCE` /
+  `PIVOT_FRICTION_TORQUE` (baked into the sixDOF constraint) and the per-frame elastic `ELASTIC_DAMPING`
+  (via `sim.damping`) by it — identical at 1.0 (no regression). `physicsTopoHash` now includes
+  `mannequin` + `jointDamping` so toggling either rebuilds the world. Render: `MannequinLayer.tsx`
+  (semi-transparent neutral-gray meshes, non-interactive, shown in edit AND Play) added to `Scene`.
+  UI/actions: `setMannequin`/`setJointDamping` in `editorActions` (both write the doc flag via
+  `updateCurrent`), a person-icon toolbar toggle + a Play-mode "Damping" slider (0.2–5×) in
+  `EditorShell`, and `__pvc` seams `setMannequin`/`setJointDamping`. NOTE (tuning): within the slider's
+  0.2–5× range the wrapped-pivot friction is negligible against gravity's torque, so the joint-friction
+  path is wired + covered but not observably decisive; the damping's measurable, deterministic effect is
+  through the elastic path (the vitest asserts a 25× change moves the settled band gap and that 1×
+  equals undefined). Vitests: mannequin geometry (shapes exist / bounded to ~1.75 m / anchors match the
+  contract), v8→v9 migration, rest-on-mannequin (a pipe stays high with the mannequin vs falls without),
+  and damping-scales-the-sim.
+
+
 - **Documentation + in-app help** (v0.1.16). Added `docs/USER-GUIDE.md` — a complete, screenshot-
   illustrated walkthrough of every tool, interaction, joint mode, group/copy/paste/nudge behaviour,
   units/sizes, Play/physics/debug overlay, BOM/cut-list, and persistence, plus a keyboard-shortcut

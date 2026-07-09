@@ -73,6 +73,9 @@ export const migrations: Record<number, Migration> = {
   6: (doc) => ({ ...doc, groups: Array.isArray(doc.groups) ? doc.groups : [] }),
   // v7 → v8: added `elastics` (spring bands); old docs get an empty array.
   7: (doc) => ({ ...doc, elastics: Array.isArray(doc.elastics) ? doc.elastics : [] }),
+  // v8 → v9: added optional `mannequin` + `jointDamping`. Both optional → an old
+  // doc is already a valid v9 doc; stamp only.
+  8: (doc) => doc,
 };
 
 export class MigrationError extends Error {}

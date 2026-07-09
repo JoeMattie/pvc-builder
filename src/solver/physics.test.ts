@@ -210,6 +210,86 @@ describe('elastic bands', () => {
   });
 });
 
+/** A horizontal pipe hovering above the mannequin's shoulders/head, so it drops
+ * onto the mannequin (when enabled) instead of falling to the floor. */
+function pipeOverMannequin(mannequin: boolean): Design {
+  const d = createEmptyDesign('d', 'rest');
+  d.mannequin = mannequin;
+  // spans x∈[−0.3,0.3] at y=1.9 (clear of the head top ≈1.72), across the shoulders
+  d.nodes.push({ id: 'a', position: V(-0.3, 1.9, 0) }, { id: 'b', position: V(0.3, 1.9, 0) });
+  d.members.push({ id: 'm', kind: 'straight', nodeA: 'a', nodeB: 'b', size: '3/4"' });
+  return d;
+}
+
+describe('static mannequin collision body (schema v9)', () => {
+  it('a pipe rests on the mannequin instead of falling to the floor', () => {
+    startPhysics(pipeOverMannequin(true));
+    for (let i = 0; i < 250; i++) stepPhysics(1 / 60);
+    const p = physicsNodePositions();
+    const minY = Math.min(p.a!.y, p.b!.y);
+    expect(minY).toBeGreaterThan(0.8); // caught high up on the human body
+    for (const n of [p.a!, p.b!]) expect(Number.isFinite(n.y)).toBe(true);
+  });
+
+  it('without the mannequin the same pipe falls to the floor', () => {
+    startPhysics(pipeOverMannequin(false));
+    for (let i = 0; i < 250; i++) stepPhysics(1 / 60);
+    const p = physicsNodePositions();
+    expect(Math.min(p.a!.y, p.b!.y)).toBeLessThan(0.2); // hit the ground
+  });
+});
+
+/** Two far-apart pipes joined by a pre-tensioned band (so the band pulls them
+ * together), with an optional global damping multiplier. */
+function bandRig(jointDamping?: number): Design {
+  const d = createEmptyDesign('d', 'damp');
+  if (jointDamping !== undefined) d.jointDamping = jointDamping;
+  d.nodes.push(
+    { id: 'a0', position: V(-0.9, 0.5, 0) },
+    { id: 'a1', position: V(-0.6, 0.5, 0) },
+    { id: 'b1', position: V(0.6, 0.5, 0) },
+    { id: 'b0', position: V(0.9, 0.5, 0) },
+  );
+  d.members.push(
+    { id: 'ma', kind: 'straight', nodeA: 'a0', nodeB: 'a1', size: '3/4"' },
+    { id: 'mb', kind: 'straight', nodeA: 'b1', nodeB: 'b0', size: '3/4"' },
+  );
+  d.elastics.push({
+    id: 'e',
+    a: { nodeId: 'a1' },
+    b: { nodeId: 'b1' },
+    restLengthM: 0.1,
+    stiffnessNPerM: 100,
+  });
+  return d;
+}
+
+describe('joint/elastic damping multiplier (schema v9)', () => {
+  // converged gap between the two band ends after `n` frames (starts at 1.2 m);
+  // the sim is deterministic, so this is reproducible.
+  const gapAfter = (damping: number | undefined, n: number): number => {
+    startPhysics(bandRig(damping));
+    for (let i = 0; i < n; i++) stepPhysics(1 / 60);
+    const p = physicsNodePositions();
+    const g = Math.hypot(p.a1!.x - p.b1!.x, p.a1!.y - p.b1!.y, p.a1!.z - p.b1!.z);
+    stopPhysics();
+    return g;
+  };
+
+  it('the damping multiplier measurably changes the settled pull', () => {
+    const light = gapAfter(0.2, 250);
+    const heavy = gapAfter(5, 250);
+    // both finite/bounded, and the 25× damping change moves the settled gap
+    expect(Number.isFinite(light) && Number.isFinite(heavy)).toBe(true);
+    for (const g of [light, heavy]) expect(g).toBeLessThan(5);
+    expect(Math.abs(heavy - light)).toBeGreaterThan(0.02);
+  });
+
+  it('is identical at damping 1 vs undefined (no regression)', () => {
+    expect(gapAfter(1, 250)).toBeCloseTo(gapAfter(undefined, 250), 3);
+  });
+});
+
 describe('ground extent helpers', () => {
   it('lowestExtentM is the lowest point minus the pipe radius', () => {
     const odM = 0.02667; // 3/4" OD

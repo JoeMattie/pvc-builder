@@ -21,6 +21,7 @@ applied elsewhere via `appStore.updateCurrent` for undo/autosave.
 | `intersections.ts` (137) | Flag overlapping pipe volumes (capsule-vs-capsule) | `intersectingMembers(design): Set<string>`, `segmentSegmentDistSq` |
 | `marquee.ts` (93) | Screen-space rubber-band hit-testing (window/crossing CAD semantics) | `marqueeFromDrag`, `memberSelectedBy`, `segmentsIntersect` |
 | `ids.ts` (5) | Short prefixed id generator | `makeId(prefix)` → `${prefix}-${8 hex}` |
+| `mannequin.ts` | Pure geometry of the static human collision/render body (schema v9) — the SHARED COORDINATE CONTRACT | `mannequinShapes(): MannequinShape[]` (`sphere`\|`capsule`\|`box` union at contract coords), `MANNEQUIN_ANCHORS` (named mount points: shoulder saddles `(±0.23,1.45,0)`, hip pivots `(±0.20,1.00,0)`, neck/tail roots, head center) |
 
 ## Depends on
 `../geometry/math3`, `../geometry/pipe`, `../schema`. **Exception:** `bom.ts` also imports

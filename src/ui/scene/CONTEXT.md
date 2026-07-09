@@ -30,6 +30,7 @@ glide on snaps — never raw doc positions.
 | `FormedLayer.tsx` (mod) | Heat-bent pipe tubes + Bend-tool control-point handles | dragging orange handles tweaks the bend |
 | `MeasureLayer.tsx` | Persistent tape measures (dimension line + label) | selectable; offset perpendicular |
 | `ElasticLayer.tsx` | Elastic bands (schema v8) — a thin orange tube between the two attachment points at eased positions | selectable (click → `selectElastic`); tints hotter with stretch; a `{memberId,t}` end lerps the member's eased endpoints |
+| `MannequinLayer.tsx` | Static human mannequin (schema v9 `design.mannequin`) — the SAME `mannequinShapes()` the physics collides against, drawn as semi-transparent gray spheres/capsules/boxes | shown in edit AND Play; **not interactive** (no pointer handlers); static → reads the shapes once, no easing |
 | `FormedLayer.tsx` | Heat-bent pipe as Catmull-Rom swept tubes | exports `formedCurve` (also used by IntersectionLayer) |
 | `FittingLayer.tsx` | Auto-resolved socket fittings + conflict markers | `resolveFittings` + `buildFittingMesh`; cap 200 members |
 | `JointLayer.tsx` (mod) | The FEW remaining declarative joints — rigid off-90° wraps (`WrapJoint` pin), anchor tees (`AnchorTee`), on-body free (`FreeJoint`) — + the swap gizmo | end-to-end free → `InstancedFreeHubs`, swivel wrapped → `InstancedWrapJoints` (both skipped here) |

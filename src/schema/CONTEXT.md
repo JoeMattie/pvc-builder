@@ -8,7 +8,7 @@ display-only. Barrel: `index.ts` re-exports all.
 
 | File | Responsibility | Key exports |
 |---|---|---|
-| `design.ts` (134) | Top-level document schema | `SCHEMA_VERSION=8`, `designSchema`, `nodeSchema`, `memberSchema` (discriminated on `kind`: straight/formed), `jointSchema` (discriminated on `mode`), `jointModeSchema`, `measurementSchema`, `groupSchema`, `attachmentSchema`/`elasticSchema`, `viewportSchema`/`cameraPoseSchema`, `createEmptyDesign(id, name)`, types `Design`/`Node`/`Member`/`Joint`/`JointMode`/`Measurement`/`Group`/`Attachment`/`Elastic`/`Viewport` |
+| `design.ts` (134) | Top-level document schema | `SCHEMA_VERSION=9`, `designSchema`, `nodeSchema`, `memberSchema` (discriminated on `kind`: straight/formed), `jointSchema` (discriminated on `mode`), `jointModeSchema`, `measurementSchema`, `groupSchema`, `attachmentSchema`/`elasticSchema`, `viewportSchema`/`cameraPoseSchema`, `createEmptyDesign(id, name)`, types `Design`/`Node`/`Member`/`Joint`/`JointMode`/`Measurement`/`Group`/`Attachment`/`Elastic`/`Viewport` |
 | `migrations.ts` (112) | Version-to-version JSON migration runner | `migrations` (keyed by version-FROM), `migrateToLatest(raw)`, `applyMigrations`, `MigrationError` |
 | `common.ts` (26) | Shared primitive schemas | `vec3Schema`, `quaternionSchema`, `nominalSizeSchema` (`'1/2"'`\|`'3/4"'`), `unitsPreferenceSchema`, `lengthDisplaySchema` (`mm`\|`cm`\|`in`\|`in-frac`), types `Vec3`/`Quaternion`/`NominalSize`/`UnitsPreference`/`LengthDisplay` |
 | `pipeSpec.ts` (48) | Static ASTM SCH 40 dimension table (a const module, NOT Zod) | `PipeSpec` interface, `PIPE_SPECS`, `pipeSpec(size)` |
@@ -24,12 +24,15 @@ display-only. Barrel: `index.ts` re-exports all.
   - `wrapped` — revolute pivot; axis DERIVED from receiver direction, never stored; `angleRad`.
   - `free` — ball joint, 3-DOF; `orientation` quaternion (identity = as drawn).
 
-## Migration chain (v1 → v8)
+## Migration chain (v1 → v9)
 v1 nodes+straight → **2** add `formed` → **3** add `pivots` → **4** add `wraps` → **5** folds
 `pivots`+`wraps` into the unified `joints` array (old pivot→wrapped end-to-end; old wrap→on-body) →
 **6** adds `measurements` (default []), optional `viewport`/`lengthDisplay`, optional
 `joint.manufactured` → **7** adds member `groups` (default []) → **8** adds `elastics` (spring bands
-between two `Attachment`s — a node end or a `{memberId, t}` point along a pipe; default []).
+between two `Attachment`s — a node end or a `{memberId, t}` point along a pipe; default []) →
+**9** adds optional `mannequin` (bool, show/collide against a static human body in Play) + optional
+`jointDamping` (positive number, global sim friction/drag multiplier). Both `.optional()` → migration
+`8` is stamp-only, `createEmptyDesign` unchanged.
 
 ## PipeSpec table (SI; `IN=0.0254`)
 | size | odM | wallM | socketDepthM |

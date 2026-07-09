@@ -851,6 +851,19 @@ export function deleteElastic(id: string): void {
   if (editor.selectedElasticId === id) editor.selectElastic(null);
 }
 
+// ── mannequin + physics damping (schema v9 doc flags) ───────────────────────
+
+/** Toggle the static human mannequin the design rests / hangs on in Play. */
+export function setMannequin(on: boolean): void {
+  useAppStore.getState().updateCurrent((d) => ({ ...d, mannequin: on }));
+}
+
+/** Set the global joint/elastic friction-drag multiplier for the sim (1 = the
+ * default; higher = more drag so the model settles). */
+export function setJointDamping(mult: number): void {
+  useAppStore.getState().updateCurrent((d) => ({ ...d, jointDamping: mult }));
+}
+
 // ── joints (right-click a pipe join → wrapped / free / anchor) ──────────────
 
 /** Set member `moverId`'s connection mode at `nodeId` — the right-click join

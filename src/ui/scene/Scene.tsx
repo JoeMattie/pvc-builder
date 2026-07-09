@@ -50,6 +50,7 @@ import { InstancedFreeHubs } from './InstancedFreeHubs';
 import { InstancedWrapJoints } from './InstancedWrapJoints';
 import { IntersectionLayer } from './IntersectionLayer';
 import { JointLayer } from './JointLayer';
+import { MannequinLayer } from './MannequinLayer';
 import { MeasureLayer } from './MeasureLayer';
 import { PhysicsDebug } from './PhysicsDebug';
 import { PipeLayer } from './PipeLayer';
@@ -146,6 +147,7 @@ export function Scene() {
       <IntersectionLayer />
       <MeasureLayer />
       <ElasticLayer />
+      <MannequinLayer />
 
       {/* ground-plane pointer target + shadow catcher + draw preview */}
       <DrawController />

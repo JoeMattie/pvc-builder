@@ -201,6 +201,37 @@ describe('v7 → v8 (elastic bands)', () => {
   });
 });
 
+describe('v8 → v9 (mannequin + jointDamping)', () => {
+  const v8 = {
+    schemaVersion: 8,
+    id: 'd1',
+    name: 'Cube frame',
+    unitsPreference: 'imperial',
+    enabledSizes: ['1/2"'],
+    lengthsLocked: false,
+    nodes: [{ id: 'n1', position: { x: 0, y: 0, z: 0 } }],
+    members: [],
+    joints: [],
+    measurements: [],
+    groups: [],
+    elastics: [],
+  };
+
+  it('migrates untouched — both new fields stay undefined (optional)', () => {
+    const out = migrateToLatest(JSON.parse(JSON.stringify(v8)));
+    expect(out.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(out.mannequin).toBeUndefined();
+    expect(out.jointDamping).toBeUndefined();
+  });
+
+  it('preserves an explicit mannequin flag + jointDamping when present', () => {
+    const withFlags = { ...v8, mannequin: true, jointDamping: 2.5 };
+    const out = migrateToLatest(JSON.parse(JSON.stringify(withFlags)));
+    expect(out.mannequin).toBe(true);
+    expect(out.jointDamping).toBe(2.5);
+  });
+});
+
 describe('applyMigrations', () => {
   it('chains steps and stamps the schemaVersion after each', () => {
     const registry: Record<number, Migration> = {

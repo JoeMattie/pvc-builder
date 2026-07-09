@@ -17,7 +17,8 @@ There is **no `crashcat/` subdirectory** — `crashcat` is the npm package `cras
 ## Depends on
 `index.ts` → `../schema` (types only), `./kinematics`. `kinematics.ts` → `../geometry/math3`,
 `../schema`. `physics.ts` → `crashcat`, `crashcat/three` (debug renderer, via `ui/scene/PhysicsDebug`),
-`mathcat` (allocation-free `physicsNodePositions` hot path), `../geometry/math3`, `../schema`.
+`mathcat` (allocation-free `physicsNodePositions` hot path), `../geometry/math3`, `../schema`,
+`../design/mannequin` (pure shapes for the static mannequin body).
 
 ## What solve() actually does
 - **Unlocked (`lengthsLocked:false`) is NOT physics** — returns node positions verbatim (identity).
@@ -48,6 +49,14 @@ There is **no `crashcat/` subdirectory** — `crashcat` is the npm package `cras
   bodies skipped; bands only PULL). `kScaled = stiffnessNPerM · ELASTIC_K_SCALE` (`=SCALE²·3`, TUNED —
   softer than the physically-exact SCALE³ to stay stable at 60 fps). `physicsTopoHash` includes
   `elastics` so the sim rebuilds on add/remove/retension.
+- **Mannequin + damping** (schema v9): when `design.mannequin`, `build()` adds ONE STATIC
+  `staticCompound` of the scaled `mannequinShapes()` on the existing `olStatic` layer (moving pipes
+  already collide with `olStatic`, like the ground) so the model hangs on the human body instead of the
+  floor. `const damping = design.jointDamping ?? 1` MULTIPLIES the wrapped-pivot `SLIDE_FRICTION_FORCE`/
+  `PIVOT_FRICTION_TORQUE` (in the sixDOF `maxFriction`) and the per-frame elastic `ELASTIC_DAMPING` (via
+  `sim.damping`) — identical at 1.0. Both feed `physicsTopoHash` (toggling rebuilds). NOTE: in the
+  slider's 0.2–5× range the pivot friction is negligible vs gravity, so damping's observable effect is
+  the elastic path (see `physics.test.ts`).
 
 ## Tests
 - `solver.test.ts` — analytic acceptance: single pivot arc, drag-on-circle, ball-joint sphere,

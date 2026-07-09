@@ -10,7 +10,7 @@ transient UI. `editorActions.ts` is the **single bridge** both the pointer tools
 |---|---|---|
 | `appStore.ts` (189) | Persisted/undoable document; the only write path | `useAppStore`, `createAppStore(store?)`, `updateCurrent(fn)`, `setViewport(patch)` (non-undoable doc-stored UI state), `undo`/`redo`, `beginGesture`/`endGesture`, project lifecycle (`createProject`, `openProject`, `importAndOpen`, …) |
 | `editorStore.ts` (161) | Transient viewport/editing state (never persisted/undone) | `useEditorStore`, `Tool` (`select`\|`draw`\|`formed`\|`move`\|`rotate`\|`measure`\|`bend`\|`elastic`), `Projection`, `selectedJointId`/`selectedMeasurementId`/`selectedElasticId`, `sizeMenu`, `measureFrom`/`measureAdjustId`, `elasticFrom`, `drawLength`/`drawDirection`, `bendLockEndAngles`/`bendLengthLock`, tool/selection/marquee/joinMenu/snap actions |
-| `editorActions.ts` (397) | **The one action layer** — composes pure snapping + docOps, commits via `updateCurrent` | `placeDrawPoint`, `snapDrawPoint`, `finishPath`, `dragNodeTo`, `dragMemberEndLength`, `setMemberLength`, `translateMemberBy`, `rotateMemberBy`, `setJoinMode`, `swapJointReceiver`, `setPivotAngle`, `dragLocked`, `pivotAnglesOf`, `jointOrientationsOf`, `placeElasticPoint`/`setElasticTension`/`deleteElastic` |
+| `editorActions.ts` (397) | **The one action layer** — composes pure snapping + docOps, commits via `updateCurrent` | `placeDrawPoint`, `snapDrawPoint`, `finishPath`, `dragNodeTo`, `dragMemberEndLength`, `setMemberLength`, `translateMemberBy`, `rotateMemberBy`, `setJoinMode`, `swapJointReceiver`, `setPivotAngle`, `dragLocked`, `pivotAnglesOf`, `jointOrientationsOf`, `placeElasticPoint`/`setElasticTension`/`deleteElastic`, `setMannequin`/`setJointDamping` (schema v9 doc flags) |
 | `animStore.ts` (64) | Eased render positions so grid snaps glide (module-global map, outside React) | `useAnim`, `easedPos(id)`, `stepEasing`, `bumpAnim` |
 | `cameraStore.ts` (99) | Camera pose across ortho⇄perspective toggle + view presets + imperative pose requests (module singleton) | `getCameraPose`, `recordPose`, `orthoInit`, `perspInit`, `PERSP_FOV`, `requestPose`/`getPoseVersion`/`resetPose`, `setView`/`VIEW_PRESETS`/`ViewName` |
 | `themeStore.ts` (23) | Day/night preference (localStorage) | `useThemeStore` (`night`, `setNight`, `toggleNight`) |
@@ -45,7 +45,7 @@ Read seams: `getDoc`, `getEditor`, `getFittings` (`{fittings, conflicts}`), `get
 `moveMember`, `rotateMember`, `setJoinMode`, `makeManufacturedJoint`, `makeFreeHub`,
 `bendMember` (optional length-ref arg), `setBendLengthLock`, `setPivotAngle`, `importJson`,
 `setSimulating`, `placeElastic`/`getElastics`/`setElasticTension`/`selectElastic`/`deleteElastic`,
-`setSelection`/`openJoinMenu` (scripted-screenshot/test helpers).
+`setMannequin`/`setJointDamping` (schema v9), `setSelection`/`openJoinMenu` (scripted-screenshot/test helpers).
 (Examples load via `appStore.createFromExample`, not a `__pvc` seam.)
 
 ## Read before editing

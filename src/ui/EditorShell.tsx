@@ -9,6 +9,7 @@ import {
   Lock,
   LockOpen,
   Moon,
+  PersonStanding,
   Play,
   Redo2,
   Square,
@@ -59,7 +60,9 @@ import {
   selectMember,
   setElasticTension,
   setJoinMode,
+  setJointDamping,
   setLengthDisplay,
+  setMannequin,
   setMemberLength,
   setMemberSize,
   setMembersSize,
@@ -153,6 +156,8 @@ export function EditorShell() {
   const setSimulating = useEditorStore((s) => s.setSimulating);
   const physicsDebug = useEditorStore((s) => s.physicsDebug);
   const setPhysicsDebug = useEditorStore((s) => s.setPhysicsDebug);
+  const mannequin = useAppStore((s) => s.current?.mannequin ?? false);
+  const jointDamping = useAppStore((s) => s.current?.jointDamping ?? 1);
 
   // Restore doc-stored view + tool state on open (schema v6 `viewport`), and
   // reset transient state — so a document opens exactly as it was saved and does
@@ -500,6 +505,9 @@ export function EditorShell() {
     hook.setSimulating = (on: boolean) => useEditorStore.getState().setSimulating(on);
     hook.setPhysicsDebug = (on: boolean) => useEditorStore.getState().setPhysicsDebug(on);
     hook.getPhysics = () => physicsNodePositions();
+    // mannequin (static human collision body) + global damping (friction/drag)
+    hook.setMannequin = (on: boolean) => setMannequin(on);
+    hook.setJointDamping = (mult: number) => setJointDamping(mult);
     // perf-lever A/B seams (set BEFORE simulating — baked at world build)
     hook.setPhysicsPrecision = (o: { substeps?: boolean; ccd?: boolean; vcap?: boolean }) =>
       setPhysicsPrecision(o);
@@ -592,6 +600,29 @@ export function EditorShell() {
       {/* pivot angle sliders + mobility (locked mode, top-right) */}
       <PivotPanel />
 
+      {/* global damping (friction/drag) slider — shown while simulating so the
+          model can be made to settle correctly (Play mode, bottom-center) */}
+      {simulating && (
+        <div className="-translate-x-1/2 absolute bottom-24 left-1/2 flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-2 shadow-md">
+          <span className="text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">
+            Damping
+          </span>
+          <input
+            type="range"
+            min={0.2}
+            max={5}
+            step={0.1}
+            value={jointDamping}
+            aria-label="Joint damping"
+            onChange={(e) => setJointDamping(Number(e.target.value))}
+            className="w-40 accent-primary"
+          />
+          <span className="w-10 tabular-nums text-xs text-foreground">
+            {jointDamping.toFixed(1)}×
+          </span>
+        </div>
+      )}
+
       {/* right-click join menu (anchor / wrapped / free) */}
       <JoinMenu />
 
@@ -632,6 +663,23 @@ export function EditorShell() {
             <Bug size={13} />
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => setMannequin(!mannequin)}
+          aria-pressed={mannequin}
+          title={
+            mannequin
+              ? 'Hide the mannequin (static human to mount/rest on)'
+              : 'Show a mannequin — a static human body the design rests / hangs on in Play'
+          }
+          className={`flex items-center rounded-md px-2 py-1.5 ${
+            mannequin
+              ? 'bg-primary text-primary-foreground'
+              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+          }`}
+        >
+          <PersonStanding size={14} />
+        </button>
         <div className="mx-0.5 h-5 w-px bg-border" />
         <button
           type="button"

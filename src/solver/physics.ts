@@ -27,11 +27,13 @@ import {
   registerAll,
   rigidBody,
   sixDOFConstraint,
+  sphere,
   staticCompound,
   updateWorld,
   type World,
 } from 'crashcat';
 import { vec3 } from 'mathcat';
+import { mannequinShapes } from '../design/mannequin';
 import { add, cross, dot, length, normalize, rotate, scale, sub } from '../geometry/math3';
 import { type Attachment, type Design, pipeSpec, type Quaternion, type Vec3 } from '../schema';
 
@@ -153,6 +155,10 @@ interface Sim {
   nodeSource: Map<string, { memberId: string; local: [number, number, number] }>;
   /** resolved elastic bands (spring forces applied each step) */
   elastics: SimElastic[];
+  /** global friction/drag multiplier (design.jointDamping ?? 1) — scales the
+   * elastic axial damping in the per-frame force loop (joint friction is baked
+   * into the constraints at build) */
+  damping: number;
   topoHash: string;
 }
 
@@ -165,6 +171,8 @@ export function physicsTopoHash(design: Design): string {
     j: design.joints,
     n: design.nodes,
     e: design.elastics,
+    man: design.mannequin ?? false,
+    damp: design.jointDamping ?? 1,
   });
 }
 
@@ -229,6 +237,11 @@ function build(design: Design): Sim {
   disableCollision(settings, olMoving, olMoving);
   const world = createWorld(settings);
 
+  // global joint/elastic friction-drag multiplier (higher = more settling).
+  // Baked into the joint constraints below; also scales the elastic axial damping
+  // in the per-frame force loop (stored on the Sim). Identity (1) = no change.
+  const damping = design.jointDamping ?? 1;
+
   // ground: a large static box, temporarily lowered so its top face sits just
   // below the lowest object (nothing starts penetrating). Top face y = groundTop.
   const groundTop = simGroundY(design);
@@ -239,6 +252,50 @@ function build(design: Design): Sim {
     position: [0, groundTop * SCALE - SCALE, 0],
     friction: 0.9,
   });
+
+  // static human MANNEQUIN (schema v9): one STATIC compound of the same simple
+  // primitives the render layer draws (`mannequinShapes()`), on the olStatic
+  // layer so the moving pipes collide with it (olMoving↔olStatic is already
+  // enabled, as with the ground) and rest/hang on it instead of the floor.
+  if (design.mannequin) {
+    const children = mannequinShapes().map((sh) => {
+      if (sh.kind === 'sphere')
+        return {
+          position: s3(sh.center),
+          quaternion: [0, 0, 0, 1] as [number, number, number, number],
+          shape: sphere.create({ radius: sh.r * SCALE }),
+        };
+      if (sh.kind === 'box')
+        return {
+          position: s3(sh.center),
+          quaternion: [0, 0, 0, 1] as [number, number, number, number],
+          shape: box.create({
+            halfExtents: [sh.half.x * SCALE, sh.half.y * SCALE, sh.half.z * SCALE],
+          }),
+        };
+      // capsule: local frame is along +Y, so orient UP → (b−a) and place at the mid
+      const along = sub(sh.b, sh.a);
+      const len = length(along);
+      const dir = len < 1e-6 ? UP : normalize(along);
+      const q = quatFromTo(UP, dir);
+      const r = sh.r * SCALE;
+      return {
+        position: s3(scale(add(sh.a, sh.b), 0.5)),
+        quaternion: [q.x, q.y, q.z, q.w] as [number, number, number, number],
+        shape: capsule.create({
+          halfHeightOfCylinder: Math.max((len / 2) * SCALE - r, 0.01),
+          radius: r,
+        }),
+      };
+    });
+    rigidBody.create(world, {
+      motionType: MotionType.STATIC,
+      shape: staticCompound.create({ children }),
+      objectLayer: olStatic,
+      position: [0, 0, 0],
+      friction: 0.9,
+    });
+  }
 
   const bodyOfMember = new Map<string, number>();
   const nodeSource = new Map<string, { memberId: string; local: [number, number, number] }>();
@@ -429,7 +486,7 @@ function build(design: Design): Sim {
       axisY2: v3(normalA),
       limitMin: [sMin, Infinity, Infinity, -Infinity, Infinity, Infinity],
       limitMax: [sMax, -Infinity, -Infinity, Infinity, -Infinity, -Infinity],
-      maxFriction: [SLIDE_FRICTION_FORCE, 0, 0, PIVOT_FRICTION_TORQUE, 0, 0],
+      maxFriction: [SLIDE_FRICTION_FORCE * damping, 0, 0, PIVOT_FRICTION_TORQUE * damping, 0, 0],
     });
   }
 
@@ -477,7 +534,7 @@ function build(design: Design): Sim {
     });
   }
 
-  return { world, bodyOfMember, nodeSource, elastics, topoHash: physicsTopoHash(design) };
+  return { world, bodyOfMember, nodeSource, elastics, damping, topoHash: physicsTopoHash(design) };
 }
 
 export function startPhysics(design: Design): void {
@@ -537,7 +594,7 @@ function applyElasticForces(): void {
     rigidBody.getVelocityAtPoint(_eva, aBody, _ea);
     rigidBody.getVelocityAtPoint(_evb, bBody, _eb);
     const vRel = (_evb[0] - _eva[0]) * ux + (_evb[1] - _eva[1]) * uy + (_evb[2] - _eva[2]) * uz;
-    const f = e.kScaled * stretch + ELASTIC_DAMPING * vRel;
+    const f = e.kScaled * stretch + ELASTIC_DAMPING * s.damping * vRel;
     const staticA = aBody.motionType === MotionType.STATIC;
     const staticB = bBody.motionType === MotionType.STATIC;
     // pull aBody toward bBody (+u), bBody toward aBody (−u)

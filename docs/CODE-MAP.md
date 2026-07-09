@@ -17,7 +17,7 @@ Durable state in **`persistence`**; samples in **`examples`**.
 
 | Directory | What's there | Context file |
 |---|---|---|
-| `src/schema/` | Zod `Design` schema, migrations (v5), SCH 40 `PipeSpec` table | [CONTEXT](../src/schema/CONTEXT.md) |
+| `src/schema/` | Zod `Design` schema, migrations (v9), SCH 40 `PipeSpec` table | [CONTEXT](../src/schema/CONTEXT.md) |
 | `src/geometry/` | Pure Vec3/Quaternion math + pipe-polyline geometry (from riglab) | [CONTEXT](../src/geometry/CONTEXT.md) |
 | `src/design/` | **Tested core** — docOps, fittings, bom, formed, snapping, dragMath, intersections, marquee | [CONTEXT](../src/design/CONTEXT.md) |
 | `src/solver/` | `solve()` boundary, closed-form kinematics, CrashCat physics subsystem | [CONTEXT](../src/solver/CONTEXT.md) |
@@ -33,7 +33,7 @@ Not documented with a CONTEXT file (small/self-evident): `src/main.tsx` (entry p
 
 ## Fast facts
 - **Everything stored is SI** (metres/radians); imperial is display-only (`src/ui/units.ts`).
-- **`schemaVersion` is 5**; every schema change bumps it + adds a migration (`src/schema/`).
+- **`schemaVersion` is 9**; every schema change bumps it + adds a migration (`src/schema/`).
 - **Pure boundaries that must stay pure**: `resolveFittings`, `bom`, `solve()` — no three/UI/engine types.
 - **`window.__pvc`** (defined in `src/ui/EditorShell.tsx`) is the scripted automation contract.
 - **Definition of done**: `npm run typecheck`, `npm run lint`, `npm run test`, `npm run build` all green.

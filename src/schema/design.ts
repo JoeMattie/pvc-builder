@@ -24,8 +24,11 @@ import {
  *     unions across their boundary. Defaults to [].
  * v8: `elastics` — spring "bands" between two attachment points (a pipe END node
  *     or a point ALONG a member) that pull together in the physics sim. Defaults
- *     to []. */
-export const SCHEMA_VERSION = 8;
+ *     to [].
+ * v9: optional `mannequin` (show/collide against a static human body in Play) +
+ *     optional `jointDamping` (global friction/drag multiplier for the sim).
+ *     Both optional → no required data; old docs migrate untouched. */
+export const SCHEMA_VERSION = 9;
 
 /** A junction where pipe ends meet. Position is SI metres. */
 export const nodeSchema = z.object({
@@ -193,6 +196,10 @@ export const designSchema = z.object({
   lengthDisplay: lengthDisplaySchema.optional(),
   /** v6: doc-stored camera + tool state, restored on open */
   viewport: viewportSchema.optional(),
+  /** v9: show + collide against a static human mannequin in Play (undefined = off) */
+  mannequin: z.boolean().optional(),
+  /** v9: global joint/elastic friction-drag multiplier for the sim (undefined = 1) */
+  jointDamping: z.number().positive().optional(),
 });
 
 export type Node = z.infer<typeof nodeSchema>;

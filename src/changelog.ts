@@ -11,6 +11,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.1.17',
+    date: '2026-07-09',
+    changes: [
+      'Mannequin: toggle a static human body (the person icon in the toolbar) that your design rests and hangs on in Play instead of falling to the floor — sized to a ~1.75 m wearer standing at the origin.',
+      'Damping slider (shown in Play): a global friction/drag multiplier so joints and elastic bands settle correctly. 1× keeps the previous feel; raise it for more drag.',
+    ],
+  },
+  {
     version: '0.1.16',
     date: '2026-07-09',
     changes: [

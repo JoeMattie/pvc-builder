@@ -15,7 +15,7 @@ siblings.
 | File | Responsibility | Notes |
 |---|---|---|
 | `App.tsx` (15) | Top-level router (projects vs editor) | runs `refreshProjects()` on mount |
-| `EditorShell.tsx` (458) | Editor screen — hosts viewport + all chrome, global keyboard/pointer, **defines `window.__pvc`** (lines ~196-298) | huge import surface; **narrow field subscriptions on purpose** |
+| `EditorShell.tsx` (458) | Editor screen — hosts viewport + all chrome, global keyboard/pointer, **defines `window.__pvc`** (lines ~196-298) | huge import surface; **narrow field subscriptions on purpose**; toolbar has a person-icon **mannequin** toggle (`setMannequin`) + a Play-mode **Damping** slider (0.2–5×, `setJointDamping`) — both write doc flags (schema v9) |
 | `BomPanel.tsx` (129) | Cut-list / BOM panel + CSV download | lengths via `formatLength(m, units)` |
 | `SelectionPanel.tsx` (221) | Selected-member inspector — editable length, bend warnings, joint-mode controls | controlled draft string synced from geometry |
 | `PivotPanel.tsx` (101) | Locked-mode pivot controls — mobility readout + per-wrapped-joint angle slider | free joints get no slider (posed by dragging) |
