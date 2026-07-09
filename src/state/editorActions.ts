@@ -462,6 +462,13 @@ export function detachMemberEnd(memberId: string, nodeId: string): string | null
   return r.nodeId;
 }
 
+/** Weld node `fromId` back into `intoId` (the inverse of a detach) — used when
+ * Ctrl is toggled OFF mid-drag to re-attach a detached end to its shared node.
+ * Reconciles so any on-body union heals. */
+export function weldNodesInto(fromId: string, intoId: string): void {
+  updateReconciled((d) => weldNodes(d, fromId, intoId));
+}
+
 /** Set the display-only length format (the units pill). Never changes stored SI. */
 export function setLengthDisplay(display: LengthDisplay): void {
   useAppStore.getState().updateCurrent((d) => ({ ...d, lengthDisplay: display }));

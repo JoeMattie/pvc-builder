@@ -17,6 +17,7 @@ import {
   rotateMembersBy,
   translateMembersBy,
   weldDroppedNode,
+  weldNodesInto,
 } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
@@ -33,8 +34,13 @@ import { dominantAxisNormal, rayToGround, rayToPlane } from './ground';
  * the drag alive anywhere and guarantees the pointerup runs. OrbitControls is
  * suspended for the duration (no setPointerCapture, so nothing fights it).
  */
+/** Live modifier state during a drag. Toggleable: seeded from the pointer-down,
+ * then each PRESS of Shift/Ctrl mid-drag flips it (releases are ignored) — so a
+ * press-and-release switches modes without holding the key down. */
+export type DragMods = { shift: boolean; ctrl: boolean };
+
 function useGroundDrag(
-  onMove: (point: Vec3, ev: PointerEvent) => void,
+  onMove: (point: Vec3, mods: DragMods) => void,
   opts?: {
     // when it returns a point, the drag rides a view-facing plane through that
     // point (Blender-style) instead of the y = 0 ground — so a floating node
@@ -74,6 +80,12 @@ function useGroundDrag(
       plane = { point: origin, normal: dominantAxisNormal({ x: fwd.x, y: fwd.y, z: fwd.z }) };
     }
 
+    // toggleable modifier state (see DragMods): seeded from the pointer-down,
+    // flipped by a mid-drag key PRESS, re-applied to the last point so the mode
+    // switches even without moving the mouse
+    const mods: DragMods = { shift: e.nativeEvent.shiftKey, ctrl: e.nativeEvent.ctrlKey };
+    let lastG: Vec3 | null = null;
+
     const move = (ev: PointerEvent) => {
       const rect = el.getBoundingClientRect();
       ndc.set(
@@ -86,12 +98,31 @@ function useGroundDrag(
         : plane
           ? rayToPlane(rc.ray, plane.point, plane.normal)
           : rayToGround(rc.ray);
-      if (g) onMove(g, ev);
+      if (g) {
+        lastG = g;
+        onMove(g, mods);
+      }
+    };
+    const onKeyDown = (ev: KeyboardEvent) => {
+      if (ev.repeat) return; // auto-repeat while held must not re-toggle
+      let changed = false;
+      if (ev.key === 'Shift') {
+        mods.shift = !mods.shift;
+        changed = true;
+      } else if (ev.key === 'Control' || ev.key === 'Meta') {
+        mods.ctrl = !mods.ctrl;
+        changed = true;
+      }
+      if (changed) {
+        ev.preventDefault();
+        if (lastG) onMove(lastG, mods); // switch modes in place
+      }
     };
     const up = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
+      window.removeEventListener('keydown', onKeyDown);
       if (controls) controls.enabled = true;
       opts?.onEnd?.(); // still inside the gesture, so the weld is one undo step
       useAppStore.getState().endGesture();
@@ -100,6 +131,7 @@ function useGroundDrag(
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', up);
+    window.addEventListener('keydown', onKeyDown);
   };
 
   return { start, dragging };
@@ -161,18 +193,24 @@ function MoveHandle({
 }) {
   const anchor = useRef<Vec3 | null>(null);
   const dragId = useRef<string>(nodeId);
-  const pendingDetach = useRef(false);
   const { start, dragging } = useGroundDrag(
-    (g, ev) => {
-      // detach on the first move frame, so it's inside the drag's single gesture
-      if (pendingDetach.current) {
-        dragId.current = detachMemberEnd(memberId, nodeId) ?? nodeId;
-        pendingDetach.current = false;
+    (g, mods) => {
+      // Ctrl is a live toggle between "move the shared node" and "detach this
+      // member's end and move it alone" — so pressing/releasing Ctrl mid-drag
+      // breaks the union or re-welds it, both inside the drag's single gesture.
+      if (!locked) {
+        const detached = dragId.current !== nodeId;
+        if (mods.ctrl && !detached) {
+          dragId.current = detachMemberEnd(memberId, nodeId) ?? nodeId;
+        } else if (!mods.ctrl && detached) {
+          weldNodesInto(dragId.current, nodeId); // re-attach to the shared node
+          dragId.current = nodeId;
+        }
       }
       const id = dragId.current;
       return locked
         ? dragLocked(id, g)
-        : dragNodeTo(id, g, { lockAxis: ev.shiftKey, anchor: anchor.current ?? undefined });
+        : dragNodeTo(id, g, { lockAxis: mods.shift, anchor: anchor.current ?? undefined });
     },
     // free move rides a view-facing plane through the node so a floating node
     // keeps its height; locked-mode IK stays on the ground plane
@@ -189,7 +227,6 @@ function MoveHandle({
         onPointerDown={(e) => {
           anchor.current = pos;
           dragId.current = nodeId;
-          pendingDetach.current = !locked && e.nativeEvent.ctrlKey;
           start(e);
         }}
       >

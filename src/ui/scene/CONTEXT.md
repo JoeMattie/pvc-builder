@@ -49,7 +49,9 @@ NEW/untracked: `JointLayer.tsx`. DELETED: `PivotLayer.tsx`, `WrapLayer.tsx` (bot
   without touching R3F code.
 - **Two independent window-listener drag systems** (DrawController inline + SelectionHandles
   `useGroundDrag`) exist for the same r3f reason (mesh drops pointerup when the ray leaves the mesh).
-  If you change one, mirror the other.
+  If you change one, mirror the other. `useGroundDrag` passes a live **`DragMods`** (toggleable
+  Shift/Ctrl — seeded at pointer-down, flipped by each mid-drag key press) to its `onMove`, not the
+  raw event; the MoveHandle uses it for axis-lock (Shift) + detach/re-weld (Ctrl).
 - **`MAX_*_MEMBERS=800` (JointLayer/FittingLayer/IntersectionLayer) / `MAX_ANIMATED_NODES=160`**
   are perf guards for huge designs; layers early-return above the cap. The 541-pipe quad T-rex
   fits the 800 member cap (renders all layers) but exceeds the 160-node animation cap on purpose
