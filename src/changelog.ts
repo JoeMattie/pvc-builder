@@ -11,6 +11,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.1.5',
+    date: '2026-07-08',
+    changes: ['Backfilled the changelog with the full pre-0.1 version history'],
+  },
+  {
     version: '0.1.4',
     date: '2026-07-08',
     changes: [
@@ -54,6 +59,48 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Ctrl/Shift are toggleable mid-drag (press to switch modes without holding)',
       'New 3-way (corner) elbow fitting; free ball-joint hubs for any number of pipes',
       'T-rex examples rebuilt as detailed quad wireframes',
+    ],
+  },
+  {
+    version: '0.0.3',
+    date: '2026-07-08',
+    changes: [
+      'Deployed to the web (Cloudflare Pages)',
+      'Display units pill: mm / cm / decimal & fractional inch, with length parsing',
+      'Right-click menus: pick a join type at a junction, switch pipe size on a run',
+      'Multi-select move/rotate gizmos; Ctrl-drag to break a union',
+      'Camera view presets; the document remembers its camera, tool, and units',
+      'Draw-mode snap indicators + type an exact length while drawing',
+      'Tape-measure tool; new Bend tool to curve existing pipes; draw-on-a-plane tool',
+      'Manufactured joints (snap to a standard elbow/coupling); BOM wrap + end-cap allowances',
+      'Free pivots articulate as true 3-DOF ball joints inside closed loops',
+      'Bundled T-rex example models',
+    ],
+  },
+  {
+    version: '0.0.2',
+    date: '2026-07-07',
+    changes: [
+      'Move (M) and Rotate tools with 3-axis gizmos',
+      'Marquee (rubber-band) select with CAD window/crossing semantics',
+      'Click-and-drag drawing; 3D drawing with Shift-lock to any axis',
+      'View-aware endpoint dragging — floating nodes keep their height',
+      'Real hollow pipe ends; heat-wrapped tees / molded saddle fittings',
+      'Closed-loop kinematics — squares articulate with lengths preserved',
+      'Velocity-aware, cursor-anchored zoom; snap-settings pill',
+    ],
+  },
+  {
+    version: '0.0.1',
+    date: '2026-07-07',
+    changes: [
+      'Initial build — a 3D-first PVC design studio (SketchUp-for-PVC)',
+      'Draw straight pipe with snapping/inference, PBR render at true OD, editable lengths',
+      'SCH 40 fittings inferred and drawn automatically, with conflicts flagged',
+      'Heat-formed (bent) pipe as smooth splines with a bend schedule + min-radius check',
+      'Pivots with a deterministic kinematic solver: sliders + drag-to-rotate, lengths preserved',
+      'BOM / cut-list with socket take-offs + CSV; JSON export/import; example models',
+      'Rigid-body physics simulation (Play mode)',
     ],
   },
 ];
