@@ -15,14 +15,14 @@ chrome in draggable `chrome/FloatingIsland` wrappers.
 | File | Responsibility | Notes |
 |---|---|---|
 | `App.tsx` (15) | Top-level router (projects vs editor) | runs `refreshProjects()` on mount |
-| `EditorShell.tsx` | Editor screen — hosts viewport + all floating chrome, restores/persists doc viewport state | **narrow field subscriptions on purpose**; masks camera restore (and the renderer-effects toggle) with a short blurred overlay; Simulate-specific controls live in `editor/SimulationPanel.tsx`; Document panel (pinned top-left, `draggable`/`collapsible` false) holds back/name/export/import + workspace-reset + `EditorStatusChips` |
-| `chrome/` | Shared editor chrome wrappers | `FloatingIsland` provides top/inline title chrome, collapse, title-bar drag/resize, saved positions/sizes/collapse (sizes only apply when `resizable`), magnetic edge snapping (`snapFloatingPos` — panels MAY overlap; no overlap avoidance), workspace reset, viewport clamping, `draggable={false}` pinning (no handle, no saved pos), and measured default stacks (`stackId`+`stackOrder` place non-user-moved panels under lower-order peers; mount + reset run a double rAF "settle" pass). Pure helpers tested in `FloatingIsland.test.ts` |
+| `EditorShell.tsx` | Editor screen — hosts viewport + all floating chrome, restores/persists doc viewport state | **narrow field subscriptions on purpose**; masks camera restore (and the renderer-effects toggle) with a short blurred overlay; Simulate-specific controls live in `editor/SimulationPanel.tsx`; Document panel (pinned top-left, `draggable`/`collapsible` false) holds back/name/export/import + workspace-reset + `EditorStatusChips`; `useCompactChrome()` (<640) reflows for phones — see "Compact chrome" below |
+| `chrome/` | Shared editor chrome wrappers | `FloatingIsland` provides top/inline title chrome, collapse, title-bar drag/resize, saved positions/sizes/collapse (sizes only apply when `resizable`), magnetic edge snapping (`snapFloatingPos` — panels MAY overlap; no overlap avoidance), workspace reset, viewport clamping, `draggable={false}` pinning (no handle, no saved pos), measured default stacks (`stackId`+`stackOrder` place non-user-moved panels under lower-order peers; mount + reset run a double rAF "settle" pass), a `bottom-right` placement, and `defaultCollapsed` (start collapsed when no collapse state is saved — reset restores it). Inline title text is icon-only below `lg`. Pure helpers tested in `FloatingIsland.test.ts` |
 | `editor/` | Extracted editor-shell helpers | workflow/status chrome, simulation panel, global hotkeys, and `PvcAutomationBridge` for `window.__pvc`; read `editor/CONTEXT.md` before editing |
 | `BomPanel.tsx` | Cut-list / BOM panel + CSV download | lengths via `formatLength(m, units)`; cut rows dominate — assumptions/sources are a collapsed-by-default `<details>` disclosure at the bottom |
 | `SelectionPanel.tsx` (221) | Selected-member inspector — editable length, bend warnings, joint-mode controls | controlled draft string synced from geometry |
 | `PivotPanel.tsx` (101) | Locked-mode pivot controls — mobility readout + per-wrapped-joint angle slider | free joints get no slider (posed by dragging) |
 | `ElasticPanel.tsx` (—) | Selected elastic-band controls — tension (stiffness) slider + current/rest span + delete | shown when `selectedElasticId` set; drives `setElasticTension` |
-| `Pillbox.tsx` | Tool + size pillbox + Group/Ungroup + "Drag lock" (`design.lengthsLocked`) toggle | horizontal/vertical layouts (`editorStore.toolPaletteLayout` + a toggle button); horizontal wraps, labels ≥lg, hotkey kbds ≥2xl; its island is non-resizable/content-sized so every button stays visible; sizes hardcoded `['1/2"','3/4"']` |
+| `Pillbox.tsx` | Tool + size pillbox + Group/Ungroup + "Drag lock" (`design.lengthsLocked`) toggle | horizontal/vertical layouts (`editorStore.toolPaletteLayout` + a toggle button); `compact` prop = icons-only vertical rail (labels `sr-only`, no kbds, no layout toggle) for phone chrome; horizontal wraps, labels ≥lg, hotkey kbds ≥2xl; its island is non-resizable/content-sized so every button stays visible; sizes hardcoded `['1/2"','3/4"']` |
 | `ObjectTree.tsx` | Left-side tree of pipes + groups — click/Ctrl-click selects, grouped click auto-enters the group, per-group colour swatch/picker | subscribes to a STRUCTURAL doc signature (not positions) so a drag doesn't churn the list |
 | `HelpPanel.tsx` (—) | Self-contained modal help / keyboard-shortcut reference (no network) | opened by the editor `?` button (EditorShell top-right) + the ProjectList "Guide" button; keep the shortcut list in sync with `editor/useEditorHotkeys.ts` |
 | `ConfirmDialog.tsx` | Small Radix AlertDialog confirmation primitive | used for destructive project delete flow; prefer this over native `window.confirm` |
@@ -50,8 +50,14 @@ chrome in draggable `chrome/FloatingIsland` wrappers.
   islands need stable `id` values because drag positions, optional sizes, and collapse states persist
   in `localStorage`; the reset button (in the Document panel) clears those keys and reflows mounted
   islands. Islands join measured default stacks via `stackId`+`stackOrder` (left: Document 0 /
-  Workflow 1 / Objects 2; right: View 0 / Simulate 1 / Cut list 2). The Document panel is pinned
-  (`draggable={false}`); Document, Workflow, Snap, and View islands are `collapsible={false}`.
+  Workflow 1 / Objects 2 / Snap 3; right: View 0 / Simulate 1 / Cut list 2). The Document panel is
+  pinned (`draggable={false}`); Document, Workflow, Snap, and View islands are `collapsible={false}`.
+- **Compact chrome (<640, `useCompactChrome`)** is responsive-only, no settings: the document row is
+  a single line (export/import/reset hidden <`lg`, save chip icon-only <`lg`, narrower name); the
+  tool palette docks into the left measured stack (order 4) as an icons-only vertical rail
+  (`Pillbox compact`); Objects mounts `defaultCollapsed`; the inspector and the Simulate/Cut-list
+  islands move to `bottom-center`/`bottom-right` (no `stackId`); Snap + View stay `hidden sm:block`.
+  Desktop ≥`lg` is visually unchanged — keep it that way when editing.
 - **Right mouse button is globally hijacked** by `editor/useEditorHotkeys.ts` to end a path + suppress
   the native context menu; scene pipe/joint menus open on right-button up through
   `scene/rightClickGesture.ts` only when a rotate drag did not happen. Keyboard shortcuts (V/D/P/C/M/R/B/T/Q/E/W/G, space,
