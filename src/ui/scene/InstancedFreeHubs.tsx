@@ -161,6 +161,19 @@ export function InstancedFreeHubs() {
           .openJoinMenu({ nodeId: hub.nodeId, moverId: hub.moverId, x: ne.clientX, y: ne.clientY });
       }
     : undefined;
+  const onBallHover = editing
+    ? (ev: ThreeEvent<PointerEvent>) => {
+        if (ev.instanceId == null) return;
+        const jointId = spec.hubs[ev.instanceId]?.jointId;
+        if (jointId) useEditorStore.getState().setHoveredSceneItem({ kind: 'joint', id: jointId });
+      }
+    : undefined;
+  const onBallHoverOut = editing
+    ? () => {
+        const store = useEditorStore.getState();
+        if (store.hoveredSceneItem?.kind === 'joint') store.setHoveredSceneItem(null);
+      }
+    : undefined;
 
   return (
     <>
@@ -173,6 +186,8 @@ export function InstancedFreeHubs() {
         castShadow
         onClick={onBallClick}
         onContextMenu={onBallContext}
+        onPointerMove={onBallHover}
+        onPointerOut={onBallHoverOut}
       >
         <sphereGeometry args={[1, 20, 16]} />
         <meshPhysicalMaterial roughness={0.3} metalness={0.1} clearcoat={0.6} />

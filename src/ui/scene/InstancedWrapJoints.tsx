@@ -122,8 +122,10 @@ const anyPerp = (u: Vec3): Vec3 => {
 
 export function InstancedWrapJoints() {
   const design = useAppStore((s) => s.current);
-  const selectable = useEditorStore((s) => s.tool === 'select');
+  const tool = useEditorStore((s) => s.tool);
   const selectedJointId = useEditorStore((s) => s.selectedJointId);
+  const editing = tool === 'select' || tool === 'move' || tool === 'rotate';
+  const selectable = tool === 'select';
 
   const spec = useMemo(() => buildWrapSpec(design), [design]);
   const loopRef = useRef<InstancedMesh>(null);
@@ -179,6 +181,19 @@ export function InstancedWrapJoints() {
         if (id) useEditorStore.getState().selectJoint(id);
       }
     : undefined;
+  const onHover = editing
+    ? (ev: ThreeEvent<PointerEvent>) => {
+        if (ev.instanceId == null) return;
+        const id = spec[ev.instanceId]?.jointId;
+        if (id) useEditorStore.getState().setHoveredSceneItem({ kind: 'joint', id });
+      }
+    : undefined;
+  const onHoverOut = editing
+    ? () => {
+        const store = useEditorStore.getState();
+        if (store.hoveredSceneItem?.kind === 'joint') store.setHoveredSceneItem(null);
+      }
+    : undefined;
 
   return (
     <>
@@ -189,6 +204,8 @@ export function InstancedWrapJoints() {
         frustumCulled={false}
         castShadow
         onClick={onSelect}
+        onPointerMove={onHover}
+        onPointerOut={onHoverOut}
       >
         <meshStandardMaterial roughness={0.5} metalness={0.15} />
       </instancedMesh>
@@ -196,6 +213,8 @@ export function InstancedWrapJoints() {
         ref={coneRef}
         args={[CANON_CONE, undefined, spec.length]}
         frustumCulled={false}
+        onPointerMove={onHover}
+        onPointerOut={onHoverOut}
       >
         <meshStandardMaterial roughness={0.5} metalness={0.1} />
       </instancedMesh>

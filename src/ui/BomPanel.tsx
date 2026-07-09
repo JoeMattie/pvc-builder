@@ -1,9 +1,13 @@
-import { Download, X } from 'lucide-react';
-import { bom, bomToCsv, JOINT_HARDWARE, JOINT_LABEL } from '../design/bom';
+import { AlertTriangle, Download, X } from 'lucide-react';
+import { Fragment } from 'react';
+import { bom, bomToCsv, cutSourceSummary, JOINT_HARDWARE, JOINT_LABEL } from '../design/bom';
 import { suggestedFileName } from '../persistence/exportImport';
 import { useAppStore } from '../state/appStore';
 import { downloadFile } from './lib/download';
 import { formatLengthDisplay } from './units';
+
+const RAD2DEG = 180 / Math.PI;
+const trim = (v: number, dp: number): string => String(Number(v.toFixed(dp)));
 
 /** BOM / cut-list panel (planfile §8): per-pipe cut lengths, fitting counts,
  * totals, and a CSV download. */
@@ -12,9 +16,10 @@ export function BomPanel({ onClose }: { onClose: () => void }) {
   if (!design) return null;
   const b = bom(design);
   const fmt = (m: number) => formatLengthDisplay(m, design.lengthDisplay);
+  const angle = (rad: number) => `${trim(rad * RAD2DEG, 1)} deg`;
 
   return (
-    <div className="absolute top-16 right-4 flex max-h-[70vh] w-80 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-lg">
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg bg-card/70">
       <div className="flex items-center justify-between border-border border-b px-3 py-2">
         <span className="text-sm font-medium">Cut list</span>
         <div className="flex items-center gap-1">
@@ -42,13 +47,32 @@ export function BomPanel({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      <div className="overflow-y-auto px-3 py-2 text-xs">
+      <div className="scrollbar-minimal min-h-0 flex-1 overflow-y-auto px-3 py-2 text-xs">
         {b.cuts.length === 0 ? (
           <p className="py-4 text-center text-muted-foreground">
             Draw some pipe to see a cut list.
           </p>
         ) : (
           <>
+            {b.warnings.length > 0 && (
+              <div className="mb-3 rounded-md border border-border bg-muted/40 p-2">
+                <div className="mb-1 flex items-center gap-1.5 font-medium text-[11px] text-foreground uppercase tracking-wide">
+                  <AlertTriangle size={13} />
+                  Assumptions
+                </div>
+                <div className="space-y-1 text-muted-foreground">
+                  {b.warnings.map((w) => (
+                    <div
+                      key={w.key}
+                      className={w.severity === 'fabrication' ? 'text-destructive' : undefined}
+                    >
+                      {w.message}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <table className="w-full tabular-nums">
               <thead className="text-muted-foreground">
                 <tr>
@@ -61,25 +85,61 @@ export function BomPanel({ onClose }: { onClose: () => void }) {
                 {b.cuts.map((c, i) => {
                   const extra = c.wrapAllowanceM + c.endCapM;
                   const base = c.cutLengthM - extra;
+                  const sources = cutSourceSummary(c);
+                  const hasBends = (c.bendSchedule?.length ?? 0) > 0;
+                  const hasDetails = sources.length > 0 || hasBends;
                   return (
-                    <tr key={`${c.memberId}-${c.segment ?? 'x'}`}>
-                      <td>
-                        P{i + 1}
-                        {c.kind === 'formed' ? ' ·bent' : ''}
-                        {c.segment !== undefined ? ' ·tee split' : ''}
-                      </td>
-                      <td>{c.size}</td>
-                      <td className="text-right">
-                        {extra > 1e-6 ? (
-                          // base + fabrication allowance = cut — write this on the pipe
-                          <span title="pipe + wrap/end-cap allowance">
-                            {fmt(base)} + {fmt(extra)} = <b>{fmt(c.cutLengthM)}</b>
-                          </span>
-                        ) : (
-                          fmt(c.cutLengthM)
-                        )}
-                      </td>
-                    </tr>
+                    <Fragment key={`${c.memberId}-${c.segment ?? 'x'}`}>
+                      <tr>
+                        <td>
+                          P{i + 1}
+                          {c.kind === 'formed' ? ' ·bent' : ''}
+                          {c.segment !== undefined ? ' ·tee split' : ''}
+                        </td>
+                        <td>{c.size}</td>
+                        <td className="text-right">
+                          {extra > 1e-6 ? (
+                            // base + fabrication allowance = cut — write this on the pipe
+                            <span title="pipe + wrap/end-cap allowance">
+                              {fmt(base)} + {fmt(extra)} = <b>{fmt(c.cutLengthM)}</b>
+                            </span>
+                          ) : (
+                            fmt(c.cutLengthM)
+                          )}
+                        </td>
+                      </tr>
+                      {hasDetails && (
+                        <tr>
+                          <td colSpan={3} className="pb-2 text-muted-foreground">
+                            <div className="mt-0.5 space-y-1 border-border border-l pl-2">
+                              {hasBends && (
+                                <div>
+                                  <span className="font-medium text-foreground">Bends:</span>{' '}
+                                  {c.bendSchedule!.map((bend) => (
+                                    <span
+                                      key={bend.bend}
+                                      className={bend.belowMin ? 'text-destructive' : undefined}
+                                    >
+                                      B{bend.bend} {angle(bend.deflectionRad)}, twist{' '}
+                                      {angle(bend.dihedralRad)}, R{' '}
+                                      {bend.radiusM > 1e-9 ? fmt(bend.radiusM) : 'unspecified'}
+                                      {bend.belowMin ? ` (min ${fmt(bend.minRadiusM)})` : ''}
+                                      {bend.bend === c.bendSchedule!.length ? '' : '; '}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                              {sources.length > 0 && (
+                                <div className="break-words">
+                                  <span className="font-medium text-foreground">Sources:</span>{' '}
+                                  {sources.join('; ')}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })}
               </tbody>

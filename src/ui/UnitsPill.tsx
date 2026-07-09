@@ -41,7 +41,7 @@ export function UnitsPill() {
   return (
     <div ref={ref} className="relative">
       {open && (
-        <div className="mb-2 w-44 rounded-xl border border-border bg-card p-1 shadow-md">
+        <div className="absolute bottom-full left-0 mb-2 w-44 rounded-xl border border-border bg-card p-1 shadow-md">
           <div className="px-2 pt-1 pb-1 text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">
             Display units
           </div>

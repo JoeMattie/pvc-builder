@@ -1,88 +1,31 @@
 import {
   Box,
-  Bug,
   ChevronLeft,
   ClipboardList,
   FileDown,
   FileUp,
   HelpCircle,
-  Lock,
-  LockOpen,
   Moon,
-  PersonStanding,
-  Play,
   Redo2,
-  Square,
+  RefreshCcw,
   Sun,
   Undo2,
   Waypoints,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { bom } from '../design/bom';
-import { memberById, memberLengthM } from '../design/docOps';
-import { resolveFittings } from '../design/fittings';
-import { analyzeFormed } from '../design/formed';
-import { intersectingMembers } from '../design/intersections';
 import { exportDesignJson, suggestedFileName } from '../persistence/exportImport';
-import type { Vec3 } from '../schema';
-import { solve } from '../solver';
-import { physicsNodePositions, setPhysicsPrecision, setPhysicsTuning } from '../solver/physics';
 import { useAppStore } from '../state/appStore';
-import { requestPose, resetPose, setView, type ViewName } from '../state/cameraStore';
-import {
-  bendMemberAt,
-  cancelGuideDraft,
-  clearGuides,
-  clearSelection,
-  copySelection,
-  cutSelection,
-  deleteElastic,
-  deleteMeasurement,
-  deleteMembers,
-  detachMemberEnd,
-  dragNodeTo,
-  enterGroup,
-  exitGroup,
-  finishFormed,
-  finishPath,
-  groupSelection,
-  hasClipboard,
-  jointOrientationsOf,
-  makeFreeHub,
-  makeManufacturedJoint,
-  moveFormedControlPoint,
-  pasteClipboard,
-  pivotAnglesOf,
-  placeDrawAtDistance,
-  placeDrawPoint,
-  placeElasticPoint,
-  placeFormedPoint,
-  placeGuide,
-  placeGuideAtOffset,
-  placeMeasurePoint,
-  rotateMemberBy,
-  selectMember,
-  setElasticTension,
-  setJoinMode,
-  setJointDamping,
-  setLengthDisplay,
-  setMannequin,
-  setMemberLength,
-  setMemberSize,
-  setMembersSize,
-  setPivotAngle,
-  snapDrawPoint,
-  swapJointReceiver,
-  translateMemberBy,
-  translateMembersBy,
-  ungroupSelection,
-  weldDroppedNode,
-} from '../state/editorActions';
+import { requestPose, resetPose } from '../state/cameraStore';
 import { useEditorStore } from '../state/editorStore';
 import { useThemeStore } from '../state/themeStore';
 import { BendPill } from './BendPill';
 import { BomPanel } from './BomPanel';
+import { FloatingIsland, resetFloatingLayout } from './chrome/FloatingIsland';
 import { ElasticPanel } from './ElasticPanel';
+import { EditorWorkflowStatus } from './editor/EditorWorkflowStatus';
+import { PvcAutomationBridge } from './editor/PvcAutomationBridge';
+import { SimulationPanel } from './editor/SimulationPanel';
+import { useEditorHotkeys } from './editor/useEditorHotkeys';
 import { HelpPanel } from './HelpPanel';
 import { JoinMenu } from './JoinMenu';
 import { downloadFile } from './lib/download';
@@ -94,8 +37,39 @@ import { SizeMenu } from './SizeMenu';
 import { SnapPill } from './SnapPill';
 import { Viewport } from './scene/Viewport';
 import { UnitsPill } from './UnitsPill';
-import { parseLength } from './units';
 import { ViewMenu } from './ViewMenu';
+
+const OBJECT_TREE_SIZE = { width: 304, height: 220 };
+const OBJECT_TREE_COMPACT_SIZE = { width: 304, height: 150 };
+const OBJECT_TREE_MIN_SIZE = { width: 224, height: 150 };
+const OBJECT_TREE_MAX_SIZE = { width: 520, height: 620 };
+const OBJECT_TREE_DOCKED_MAX_SIZE = { width: 350, height: 620 };
+const OBJECT_TREE_COMPACT_MAX_SIZE = { width: 330, height: 220 };
+const BOM_SIZE = { width: 384, height: 420 };
+const BOM_COMPACT_SIZE = { width: 300, height: 220 };
+const BOM_MIN_SIZE = { width: 280, height: 220 };
+const BOM_MAX_SIZE = { width: 560, height: 620 };
+const BOM_DOCKED_MAX_SIZE = { width: 384, height: 620 };
+const BOM_COMPACT_MAX_SIZE = { width: 320, height: 240 };
+const TOOLBAR_MIN_SIZE = { width: 240, height: 64 };
+const TOOLBAR_MAX_SIZE = { width: 960, height: 180 };
+const TOOLBAR_COMPACT_MAX_SIZE = { width: 330, height: 110 };
+const WORKFLOW_COMPACT_OFFSET = { y: 48 };
+
+function useCompactChrome() {
+  const [compact, setCompact] = useState(() =>
+    typeof window === 'undefined' ? false : window.innerWidth < 640,
+  );
+
+  useEffect(() => {
+    const sync = () => setCompact(window.innerWidth < 640);
+    sync();
+    window.addEventListener('resize', sync);
+    return () => window.removeEventListener('resize', sync);
+  }, []);
+
+  return compact;
+}
 
 /** The rubber-band selection rectangle (screen overlay). Blue solid when
  * dragging left→right (window / contained), green dashed right→left (crossing /
@@ -131,12 +105,14 @@ export function EditorShell() {
   // mutates the doc every frame — doesn't re-render the chrome.
   const hasDesign = useAppStore((s) => s.current !== null);
   const designName = useAppStore((s) => s.current?.name ?? '');
-  const lengthsLocked = useAppStore((s) => s.current?.lengthsLocked ?? false);
   const closeProject = useAppStore((s) => s.closeProject);
-  const updateCurrent = useAppStore((s) => s.updateCurrent);
   const importAndOpen = useAppStore((s) => s.importAndOpen);
   const undo = useAppStore((s) => s.undo);
   const redo = useAppStore((s) => s.redo);
+  const hasPivotPanel = useAppStore((s) => {
+    const d = s.current;
+    return !!d?.lengthsLocked && d.joints.some((j) => j.mode === 'wrapped' || j.mode === 'free');
+  });
 
   const [bomOpen, setBomOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -158,13 +134,13 @@ export function EditorShell() {
   const tool = useEditorStore((s) => s.tool);
   const drawSize = useEditorStore((s) => s.drawSize);
   const simulating = useEditorStore((s) => s.simulating);
-  const setSimulating = useEditorStore((s) => s.setSimulating);
-  const physicsDebug = useEditorStore((s) => s.physicsDebug);
-  const setPhysicsDebug = useEditorStore((s) => s.setPhysicsDebug);
+  const workflow = useEditorStore((s) => s.sceneStatus);
+  const setWorkflow = useEditorStore((s) => s.setSceneStatus);
   const wireframe = useEditorStore((s) => s.wireframe);
   const toggleWireframe = useEditorStore((s) => s.toggleWireframe);
-  const mannequin = useAppStore((s) => s.current?.mannequin ?? false);
-  const jointDamping = useAppStore((s) => s.current?.jointDamping ?? 1);
+  const selectedCount = useEditorStore((s) => s.selectedIds.length);
+  const selectedJointId = useEditorStore((s) => s.selectedJointId);
+  const selectedElasticId = useEditorStore((s) => s.selectedElasticId);
 
   // Restore doc-stored view + tool state on open (schema v6 `viewport`), and
   // reset transient state — so a document opens exactly as it was saved and does
@@ -176,6 +152,7 @@ export function EditorShell() {
     if (!doc) return;
     const ed = useEditorStore.getState();
     ed.resetTransient();
+    ed.setSceneStatus('design');
     const vp = doc.viewport;
     if (vp?.projection === 'perspective' || vp?.projection === 'ortho')
       ed.setProjection(vp.projection);
@@ -201,494 +178,221 @@ export function EditorShell() {
 
   const night = useThemeStore((s) => s.night);
   const toggleNight = useThemeStore((s) => s.toggleNight);
+  const compactChrome = useCompactChrome();
 
-  const setLengthsLocked = (locked: boolean) =>
-    updateCurrent((doc) => ({ ...doc, lengthsLocked: locked }));
+  useEditorHotkeys({ undo, redo });
 
-  // keyboard: tool switches, finish/cancel a path, delete, undo/redo
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const editor = useEditorStore.getState();
-      const typing =
-        e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
-      const mod = e.metaKey || e.ctrlKey;
+    if (simulating) setWorkflow('simulate');
+  }, [simulating, setWorkflow]);
 
-      if (mod && e.key.toLowerCase() === 'z') {
-        e.preventDefault();
-        if (e.shiftKey) redo();
-        else undo();
-        return;
-      }
-      if (mod && e.key.toLowerCase() === 'y') {
-        e.preventDefault();
-        redo();
-        return;
-      }
-      // Ctrl/Cmd+Space → start/stop playback (physics simulation)
-      if (mod && (e.key === ' ' || e.code === 'Space')) {
-        e.preventDefault();
-        editor.setSimulating(!editor.simulating);
-        return;
-      }
-      if (typing) return;
-
-      // copy / cut / paste the selection (mod-gated, so it also beats the plain
-      // 'c'/'v' tool hotkeys below)
-      if (mod && e.key.toLowerCase() === 'c') {
-        if (copySelection()) e.preventDefault();
-        return;
-      }
-      if (mod && e.key.toLowerCase() === 'x') {
-        if (cutSelection()) e.preventDefault();
-        return;
-      }
-      if (mod && e.key.toLowerCase() === 'v') {
-        if (pasteClipboard()) e.preventDefault();
-        return;
-      }
-
-      // arrow / numpad nudge of the selected pipe(s) by one grid step. Arrows +
-      // numpad-arrows move in the X/Z ground plane; Ctrl+Up/Down (or the numpad
-      // Home/PgUp = up, End/PgDn = down) move vertically in Y.
-      if (editor.selectedIds.length && !editor.drawingFromNodeId) {
-        const s = editor.snap.gridStepM;
-        const K = e.key;
-        const C = e.code;
-        let d: Vec3 | null = null;
-        if (mod && K === 'ArrowUp') d = { x: 0, y: s, z: 0 };
-        else if (mod && K === 'ArrowDown') d = { x: 0, y: -s, z: 0 };
-        else if (K === 'Home' || K === 'PageUp' || C === 'Numpad7' || C === 'Numpad9')
-          d = { x: 0, y: s, z: 0 };
-        else if (K === 'End' || K === 'PageDown' || C === 'Numpad1' || C === 'Numpad3')
-          d = { x: 0, y: -s, z: 0 };
-        else if (K === 'ArrowLeft' || C === 'Numpad4') d = { x: -s, y: 0, z: 0 };
-        else if (K === 'ArrowRight' || C === 'Numpad6') d = { x: s, y: 0, z: 0 };
-        else if (K === 'ArrowUp' || C === 'Numpad8') d = { x: 0, y: 0, z: -s };
-        else if (K === 'ArrowDown' || C === 'Numpad2') d = { x: 0, y: 0, z: s };
-        if (d) {
-          e.preventDefault();
-          translateMembersBy(editor.selectedIds, d);
-          return;
-        }
-      }
-
-      // typed-length entry: while a draw path is open, digits/units type into the
-      // length pill; Enter commits the segment at that distance (must run BEFORE
-      // the tool hotkeys so e.g. "10cm" doesn't trigger the Curve tool on 'c')
-      if (editor.tool === 'draw' && editor.drawingFromNodeId) {
-        if (e.key === 'Enter' && editor.drawLength) {
-          const doc = useAppStore.getState().current;
-          const m = doc ? parseLength(editor.drawLength, doc.lengthDisplay) : null;
-          if (m && m > 0 && placeDrawAtDistance(m)) {
-            e.preventDefault();
-            return;
-          }
-        } else if (e.key === 'Backspace' && editor.drawLength) {
-          editor.setDrawLength(editor.drawLength.slice(0, -1));
-          e.preventDefault();
-          return;
-        } else if (e.key === 'Escape' && editor.drawLength) {
-          editor.setDrawLength('');
-          e.preventDefault();
-          return;
-        } else if (e.key.length === 1 && /[0-9./'" a-z]/i.test(e.key)) {
-          editor.setDrawLength(editor.drawLength + e.key);
-          e.preventDefault();
-          return;
-        }
-      }
-
-      // Shift+Q clears every placed guide line (works in any tool / mid-draft)
-      if (e.key === 'Q' && e.shiftKey) {
-        clearGuides();
-        e.preventDefault();
-        return;
-      }
-      // guide tool typed-offset entry: digits/units type into the guide length
-      // pill; Enter commits the guide at that perpendicular offset (must run
-      // BEFORE the tool hotkeys so 'q'/units don't switch tools mid-entry)
-      if (editor.tool === 'guide' && editor.guideDraft) {
-        const cursor = editor.guideCursor;
-        if (e.key === 'Enter' && cursor) {
-          if (editor.guideLength) {
-            const doc = useAppStore.getState().current;
-            const m = doc ? parseLength(editor.guideLength, doc.lengthDisplay) : null;
-            if (m && m > 0 && placeGuideAtOffset(cursor, m)) {
-              e.preventDefault();
-              return;
-            }
-          } else {
-            placeGuide(cursor);
-            e.preventDefault();
-            return;
-          }
-        } else if (e.key === 'Backspace' && editor.guideLength) {
-          editor.setGuideLength(editor.guideLength.slice(0, -1));
-          e.preventDefault();
-          return;
-        } else if (e.key === 'Escape') {
-          cancelGuideDraft();
-          e.preventDefault();
-          return;
-        } else if (e.key.length === 1 && /[0-9./'" a-z]/i.test(e.key)) {
-          editor.setGuideLength(editor.guideLength + e.key);
-          e.preventDefault();
-          return;
-        }
-      }
-
-      if (e.key === 'Escape' || e.key === 'Enter') {
-        if (editor.drawingFromNodeId) finishPath();
-        else if (editor.formedPoints.length) finishFormed();
-        else if (editor.measureFrom || editor.measureAdjustId) {
-          editor.setMeasureFrom(null);
-          editor.setMeasureAdjustId(null);
-        } else if (editor.elasticFrom) editor.setElasticFrom(null);
-        else if (e.key === 'Escape' && editor.enteredGroupId) exitGroup();
-        else clearSelection();
-      } else if (e.key === 'g' || e.key === 'G') {
-        // G groups the selection; Shift+G ungroups it (auto-solves boundary unions)
-        if (e.shiftKey) ungroupSelection();
-        else groupSelection();
-      } else if (e.key === ' ') {
-        // spacebar → back to the select tool
-        e.preventDefault();
-        editor.setTool('select');
-      } else if (e.key === 'v' || e.key === 'V') {
-        editor.setTool('select');
-      } else if (e.key === 'd' || e.key === 'D') {
-        editor.setTool('draw');
-      } else if (e.key === 'm' || e.key === 'M') {
-        editor.setTool('move');
-      } else if (e.key === 'c' || e.key === 'C') {
-        // the heat-formed spline tool, now labelled "Curve"
-        editor.setTool('formed');
-      } else if (e.key === 'b' || e.key === 'B') {
-        editor.setTool('bend');
-      } else if (e.key === 't' || e.key === 'T') {
-        editor.setTool('measure');
-      } else if (e.key === 'e' || e.key === 'E') {
-        editor.setTool('elastic');
-      } else if (e.key === 'r' || e.key === 'R') {
-        editor.setTool('rotate');
-      } else if (e.key === 'p' || e.key === 'P') {
-        editor.setTool('extend');
-      } else if (e.key === 'q' || e.key === 'Q') {
-        editor.setTool('guide');
-      } else if (e.key === 'w' || e.key === 'W') {
-        editor.toggleWireframe();
-      } else if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (editor.selectedMeasurementId) deleteMeasurement(editor.selectedMeasurementId);
-        else if (editor.selectedElasticId) deleteElastic(editor.selectedElasticId);
-        else if (editor.selectedIds.length) {
-          deleteMembers(editor.selectedIds);
-          clearSelection();
-        }
-      }
-    };
-    // right button ends any path in progress (and never opens a context menu);
-    // right-drag still rotates via OrbitControls
-    const onPointerDown = (e: PointerEvent) => {
-      if (e.button !== 2) return;
-      const s = useEditorStore.getState();
-      if (s.drawingFromNodeId) finishPath();
-      else if (s.formedPoints.length) finishFormed();
-    };
-    const onContextMenu = (e: MouseEvent) => e.preventDefault();
-    window.addEventListener('keydown', onKey);
-    window.addEventListener('pointerdown', onPointerDown);
-    window.addEventListener('contextmenu', onContextMenu);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('pointerdown', onPointerDown);
-      window.removeEventListener('contextmenu', onContextMenu);
-    };
-  }, [undo, redo]);
-
-  // test/debug hook (planfile §7): drives exactly what the tools drive, so a
-  // scripted check can draw a path and assert the resulting geometry. Merged,
-  // not replaced.
+  const chromeLayoutSignature = `${bomOpen}:${compactChrome}:${hasPivotPanel}:${workflow}`;
   useEffect(() => {
-    const w = window as unknown as { __pvc?: Record<string, unknown> };
-    if (!w.__pvc) w.__pvc = {};
-    const hook = w.__pvc;
-    hook.getDoc = () => useAppStore.getState().current;
-    hook.getEditor = () => {
-      const s = useEditorStore.getState();
-      return {
-        tool: s.tool,
-        projection: s.projection,
-        selectedIds: s.selectedIds,
-        selectedJointId: s.selectedJointId,
-        drawSize: s.drawSize,
-        drawingFromNodeId: s.drawingFromNodeId,
-        snap: s.snap,
-        night: useThemeStore.getState().night,
-      };
-    };
-    hook.setSnap = (patch: Record<string, unknown>) =>
-      useEditorStore.getState().setSnap(patch as never);
-    hook.getFittings = () => {
-      const d = useAppStore.getState().current;
-      return d ? resolveFittings(d) : { fittings: [], conflicts: [] };
-    };
-    hook.getMembers = () => {
-      const d = useAppStore.getState().current;
-      if (!d) return [];
-      return d.members.map((m) => ({
-        id: m.id,
-        size: m.size,
-        nodeA: m.nodeA,
-        nodeB: m.nodeB,
-        lengthM: memberLengthM(d, m),
-      }));
-    };
-    hook.setTool = (
-      tool:
-        | 'select'
-        | 'draw'
-        | 'formed'
-        | 'move'
-        | 'rotate'
-        | 'measure'
-        | 'bend'
-        | 'elastic'
-        | 'extend'
-        | 'guide',
-    ) => useEditorStore.getState().setTool(tool);
-    hook.setProjection = (p: 'ortho' | 'perspective') => useEditorStore.getState().setProjection(p);
-    hook.setView = (name: ViewName) => setView(name);
-    hook.setDrawSize = (size: '1/2"' | '3/4"') => useEditorStore.getState().setDrawSize(size);
-    hook.setLengthsLocked = (locked: boolean) =>
-      useAppStore.getState().updateCurrent((doc) => ({ ...doc, lengthsLocked: locked }));
-    hook.setNight = (on: boolean) => useThemeStore.getState().setNight(on);
-    // drawing / editing seams (world ground points)
-    hook.snap = (raw: Vec3, lockAxis?: boolean) => snapDrawPoint(raw, !!lockAxis);
-    hook.draw = (raw: Vec3, lockAxis?: boolean) => placeDrawPoint(raw, !!lockAxis);
-    hook.finishPath = () => finishPath();
-    hook.drawFormed = (raw: Vec3) => placeFormedPoint(raw);
-    hook.finishFormed = () => finishFormed();
-    hook.measure = (raw: Vec3) => placeMeasurePoint(raw);
-    hook.getMeasurements = () => useAppStore.getState().current?.measurements ?? [];
-    hook.deleteMeasurement = (id: string) => deleteMeasurement(id);
-    // elastic-band seams (place two attachment points → a spring band)
-    hook.placeElastic = (raw: Vec3) => placeElasticPoint(raw);
-    hook.getElastics = () => useAppStore.getState().current?.elastics ?? [];
-    hook.setElasticTension = (id: string, stiffnessNPerM: number) =>
-      setElasticTension(id, stiffnessNPerM);
-    hook.selectElastic = (id: string | null) => useEditorStore.getState().selectElastic(id);
-    hook.deleteElastic = (id: string) => deleteElastic(id);
-    hook.bendMember = (
-      memberId: string,
-      t: number,
-      perpOffset: Vec3,
-      lengthRef?: { axisDir: Vec3; lengthM: number },
-    ) => bendMemberAt(memberId, t, perpOffset, lengthRef);
-    hook.setBendLengthLock = (on: boolean) => useEditorStore.getState().setBendLengthLock(on);
-    hook.moveControlPoint = (memberId: string, index: number, raw: Vec3) =>
-      moveFormedControlPoint(memberId, index, raw);
-    hook.selectMember = (id: string) => selectMember(id);
-    hook.setSelection = (ids: string[]) => useEditorStore.getState().setSelection(ids);
-    hook.openJoinMenu = (menu: { nodeId: string; moverId: string; x: number; y: number }) =>
-      useEditorStore.getState().openJoinMenu(menu);
-    hook.copySelection = () => copySelection();
-    hook.cutSelection = () => cutSelection();
-    hook.pasteClipboard = () => pasteClipboard();
-    hook.hasClipboard = () => hasClipboard();
-    hook.groupSelection = () => groupSelection();
-    hook.ungroupSelection = () => ungroupSelection();
-    hook.enterGroup = (id: string) => enterGroup(id);
-    hook.exitGroup = () => exitGroup();
-    hook.getEnteredGroup = () => useEditorStore.getState().enteredGroupId;
-    hook.selectJoint = (id: string | null) => useEditorStore.getState().selectJoint(id);
-    hook.clearSelection = () => clearSelection();
-    hook.deleteMembers = (ids: string[]) => deleteMembers(ids);
-    hook.setMemberLength = (id: string, lengthM: number) => setMemberLength(id, lengthM);
-    hook.setMemberSize = (id: string, size: '1/2"' | '3/4"') => setMemberSize(id, size);
-    hook.setMembersSize = (ids: string[], size: '1/2"' | '3/4"') => setMembersSize(ids, size);
-    hook.setLengthDisplay = (d: 'mm' | 'cm' | 'in' | 'in-frac') => setLengthDisplay(d);
-    hook.detachMemberEnd = (memberId: string, nodeId: string) => detachMemberEnd(memberId, nodeId);
-    hook.weldDroppedNode = (nodeId: string) => weldDroppedNode(nodeId);
-    hook.dragNode = (id: string, raw: Vec3) => dragNodeTo(id, raw);
-    hook.moveMember = (id: string, delta: Vec3) => translateMemberBy(id, delta);
-    hook.rotateMember = (id: string, axis: Vec3, angleRad: number, pivot: Vec3) =>
-      rotateMemberBy(id, axis, angleRad, pivot);
-    hook.getIntersections = () => {
-      const d = useAppStore.getState().current;
-      return d ? [...intersectingMembers(d)] : [];
-    };
-    hook.getFormed = (id: string) => {
-      const d = useAppStore.getState().current;
-      const m = d ? memberById(d, id) : undefined;
-      return d && m && m.kind === 'formed' ? analyzeFormed(d, m) : null;
-    };
-    // joint seams (right-click a join → anchor / wrapped / free)
-    hook.getJoints = () => useAppStore.getState().current?.joints ?? [];
-    hook.setJoinMode = (
-      nodeId: string,
-      moverId: string,
-      mode: 'anchor' | 'wrapped' | 'free',
-      receiverId?: string,
-    ) => setJoinMode(nodeId, moverId, mode, receiverId);
-    hook.swapJointReceiver = (jointId: string) => swapJointReceiver(jointId);
-    hook.makeManufacturedJoint = (nodeId: string, moverId: string) =>
-      makeManufacturedJoint(nodeId, moverId);
-    hook.makeFreeHub = (nodeId: string) => makeFreeHub(nodeId);
-    // opt-in: logs what the draw cursor / a dragged endpoint snaps to
-    hook.setSnapDebug = (on: boolean) => {
-      hook.snapDebug = on;
-    };
-    // pivots / solver seams
-    hook.setPivotAngle = (jointId: string, angleRad: number) => setPivotAngle(jointId, angleRad);
-    hook.getSolve = () => {
-      const d = useAppStore.getState().current;
-      if (!d) return null;
-      return solve(
-        d,
-        {
-          lengthsLocked: d.lengthsLocked,
-          pivotAngles: pivotAnglesOf(d),
-          jointOrientations: jointOrientationsOf(d),
-        },
-        'pose',
-      );
-    };
-    // BOM + export/import seams
-    hook.getBom = () => {
-      const d = useAppStore.getState().current;
-      return d ? bom(d) : null;
-    };
-    hook.exportJson = () => {
-      const d = useAppStore.getState().current;
-      return d ? exportDesignJson(d) : null;
-    };
-    hook.importJson = (text: string) => useAppStore.getState().importAndOpen(text);
-    // physics seams
-    hook.setSimulating = (on: boolean) => useEditorStore.getState().setSimulating(on);
-    hook.setPhysicsDebug = (on: boolean) => useEditorStore.getState().setPhysicsDebug(on);
-    hook.setWireframe = (on: boolean) => useEditorStore.getState().setWireframe(on);
-    hook.getPhysics = () => physicsNodePositions();
-    // mannequin (static human collision body) + global damping (friction/drag)
-    hook.setMannequin = (on: boolean) => setMannequin(on);
-    hook.setJointDamping = (mult: number) => setJointDamping(mult);
-    // perf-lever A/B seams (set BEFORE simulating — baked at world build)
-    hook.setPhysicsPrecision = (o: { substeps?: boolean; ccd?: boolean; vcap?: boolean }) =>
-      setPhysicsPrecision(o);
-    hook.setPhysicsTuning = (o: {
-      velocityIterations?: number;
-      positionIterations?: number;
-      allowSleeping?: boolean;
-    }) => setPhysicsTuning(o);
-  }, []);
+    if (!hasDesign) return;
+    void chromeLayoutSignature;
+    const frame = requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+    return () => cancelAnimationFrame(frame);
+  }, [chromeLayoutSignature, hasDesign]);
 
   if (!hasDesign) return null;
 
+  const showInspector =
+    selectedCount > 0 || !!selectedJointId || !!selectedElasticId || tool === 'bend';
+  const rightDockOpen = workflow === 'simulate' || hasPivotPanel;
+  const objectTreeMaxSize = rightDockOpen
+    ? compactChrome
+      ? OBJECT_TREE_COMPACT_MAX_SIZE
+      : OBJECT_TREE_DOCKED_MAX_SIZE
+    : compactChrome
+      ? OBJECT_TREE_COMPACT_MAX_SIZE
+      : OBJECT_TREE_MAX_SIZE;
+  const bomMaxSize = compactChrome
+    ? BOM_COMPACT_MAX_SIZE
+    : rightDockOpen
+      ? BOM_DOCKED_MAX_SIZE
+      : BOM_MAX_SIZE;
+  const objectTreeOffsetY = compactChrome ? 190 : 148;
+  const bomOffsetY = rightDockOpen ? (compactChrome ? 352 : 318) : compactChrome ? 352 : 0;
+
   return (
     <div className="relative h-full w-full overflow-hidden">
+      <PvcAutomationBridge />
       <Viewport />
       <MarqueeOverlay />
 
+      <button
+        type="button"
+        onClick={resetFloatingLayout}
+        aria-label="Reset workspace layout"
+        title="Reset workspace layout"
+        className="absolute top-2 left-2 z-[80] flex h-7 w-7 items-center justify-center rounded-md border border-border/80 bg-card/85 text-muted-foreground shadow-md backdrop-blur-md hover:text-foreground"
+      >
+        <RefreshCcw size={14} />
+      </button>
+
       {/* top-left: back + design name */}
-      <div className="absolute top-4 left-4 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => void closeProject()}
-          aria-label="Back to projects"
-          className="border-border bg-card text-foreground flex items-center gap-1 rounded-lg border px-2.5 py-2 text-sm shadow-sm"
+      <FloatingIsland
+        id="document-controls"
+        placement="top-left"
+        offset={{ x: 32 }}
+        handleLabel="Move document controls"
+      >
+        <div className="flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void closeProject()}
+            aria-label="Back to projects"
+            className="flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-2 text-sm text-foreground shadow-sm"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <div className="flex max-w-[16rem] items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-sm">
+            <Box size={16} className="shrink-0 text-muted-foreground" />
+            <span className="truncate text-sm font-medium">{designName}</span>
+          </div>
+          <div className="flex items-center gap-0.5 rounded-lg border border-border bg-card px-1.5 py-1.5 shadow-sm">
+            <button
+              type="button"
+              onClick={() => {
+                if (!bomOpen) setWorkflow('fabricate');
+                setBomOpen((open) => !open);
+              }}
+              aria-pressed={bomOpen}
+              title="Cut list / BOM"
+              className={`rounded-md p-1.5 ${bomOpen ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}`}
+            >
+              <ClipboardList size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={exportJson}
+              aria-label="Export JSON"
+              title="Export .pvc.json"
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            >
+              <FileDown size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Import JSON"
+              title="Import .pvc.json"
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            >
+              <FileUp size={16} />
+            </button>
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={onImportFile}
+          />
+        </div>
+      </FloatingIsland>
+
+      <FloatingIsland
+        id="workflow-stack"
+        placement="left-stack"
+        offset={compactChrome ? WORKFLOW_COMPACT_OFFSET : undefined}
+        handleLabel="Move workflow panel"
+      >
+        <div className="flex w-[min(92vw,19rem)] flex-col gap-2">
+          <EditorWorkflowStatus
+            activeWorkflow={workflow}
+            onWorkflowChange={setWorkflow}
+            onOpenBom={() => {
+              setWorkflow('fabricate');
+              setBomOpen(true);
+            }}
+          />
+        </div>
+      </FloatingIsland>
+
+      <FloatingIsland
+        id="object-tree"
+        placement="left-stack"
+        offset={{ y: objectTreeOffsetY }}
+        defaultSize={compactChrome ? OBJECT_TREE_COMPACT_SIZE : OBJECT_TREE_SIZE}
+        maxSize={objectTreeMaxSize}
+        minSize={OBJECT_TREE_MIN_SIZE}
+        resizable
+        handleLabel="Move objects panel"
+        resizeLabel="Resize objects panel"
+      >
+        <div className="h-full w-full">
+          <ObjectTree />
+        </div>
+      </FloatingIsland>
+
+      {showInspector && (
+        <FloatingIsland
+          id="inspector-stack"
+          placement="top-center"
+          handleLabel="Move inspector panels"
         >
-          <ChevronLeft size={16} />
-        </button>
-        <div className="border-border bg-card flex items-center gap-2 rounded-lg border px-3 py-2 shadow-sm">
-          <Box size={16} className="text-muted-foreground" />
-          <span className="text-sm font-medium">{designName}</span>
-        </div>
-        <div className="border-border bg-card flex items-center gap-0.5 rounded-lg border px-1.5 py-1.5 shadow-sm">
-          <button
-            type="button"
-            onClick={() => setBomOpen((o) => !o)}
-            aria-pressed={bomOpen}
-            title="Cut list / BOM"
-            className={`rounded-md p-1.5 ${bomOpen ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}`}
-          >
-            <ClipboardList size={16} />
-          </button>
-          <button
-            type="button"
-            onClick={exportJson}
-            aria-label="Export JSON"
-            title="Export .pvc.json"
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-          >
-            <FileDown size={16} />
-          </button>
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            aria-label="Import JSON"
-            title="Import .pvc.json"
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-          >
-            <FileUp size={16} />
-          </button>
-        </div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".json,application/json"
-          className="hidden"
-          onChange={onImportFile}
-        />
-      </div>
-
-      {bomOpen && <BomPanel onClose={() => setBomOpen(false)} />}
-
-      {/* object / group tree (left, below the title bar) */}
-      <div className="pointer-events-none absolute top-16 left-4">
-        <ObjectTree />
-      </div>
-
-      {/* selected-member inspector (top-center) */}
-      <SelectionPanel />
-
-      {/* Bend-tool options (top-center) */}
-      <BendPill />
-
-      {/* selected elastic-band tension slider (top-center) */}
-      <ElasticPanel />
+          <div className="flex max-w-[calc(100vw-2rem)] flex-col items-center gap-2">
+            <SelectionPanel />
+            <BendPill />
+            <ElasticPanel />
+          </div>
+        </FloatingIsland>
+      )}
 
       {/* tool pillbox (bottom-center) */}
-      <Pillbox />
+      <FloatingIsland
+        id="tool-pillbox"
+        placement="bottom-center"
+        maxSize={compactChrome ? TOOLBAR_COMPACT_MAX_SIZE : TOOLBAR_MAX_SIZE}
+        minSize={TOOLBAR_MIN_SIZE}
+        resizable
+        handleLabel="Move tool palette"
+        resizeLabel="Resize tool palette"
+      >
+        <Pillbox />
+      </FloatingIsland>
 
       {/* snapping settings + display-units (bottom-left, side by side) */}
-      <div className="absolute bottom-5 left-4 flex items-end gap-2">
-        <SnapPill />
-        <UnitsPill />
-      </div>
-
-      {/* pivot angle sliders + mobility (locked mode, top-right) */}
-      <PivotPanel />
-
-      {/* global damping (friction/drag) slider — shown while simulating so the
-          model can be made to settle correctly (Play mode, bottom-center) */}
-      {simulating && (
-        <div className="-translate-x-1/2 absolute bottom-24 left-1/2 flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-2 shadow-md">
-          <span className="text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">
-            Damping
-          </span>
-          <input
-            type="range"
-            min={0.2}
-            max={5}
-            step={0.1}
-            value={jointDamping}
-            aria-label="Joint damping"
-            onChange={(e) => setJointDamping(Number(e.target.value))}
-            className="w-40 accent-primary"
-          />
-          <span className="w-10 tabular-nums text-xs text-foreground">
-            {jointDamping.toFixed(1)}×
-          </span>
+      <FloatingIsland
+        id="snap-units"
+        placement="bottom-left"
+        className="hidden sm:block"
+        handleLabel="Move snap and units controls"
+      >
+        <div className="flex max-w-[calc(100vw-2rem)] flex-wrap items-end gap-2">
+          <SnapPill />
+          <UnitsPill />
         </div>
+      </FloatingIsland>
+
+      {rightDockOpen ? (
+        <FloatingIsland
+          id="right-stack"
+          placement="right-stack"
+          handleLabel="Move simulation and fabrication panels"
+        >
+          <div className="scrollbar-minimal flex max-h-[calc(100vh-7rem)] flex-col items-end gap-2 overflow-y-auto pr-1">
+            {workflow === 'simulate' && <SimulationPanel />}
+            <PivotPanel />
+          </div>
+        </FloatingIsland>
+      ) : null}
+
+      {bomOpen && (
+        <FloatingIsland
+          id="bom-panel"
+          placement="right-stack"
+          offset={{ y: bomOffsetY }}
+          defaultSize={compactChrome ? BOM_COMPACT_SIZE : BOM_SIZE}
+          maxSize={bomMaxSize}
+          minSize={BOM_MIN_SIZE}
+          resizable
+          handleLabel="Move BOM panel"
+          resizeLabel="Resize BOM panel"
+        >
+          <BomPanel onClose={() => setBomOpen(false)} />
+        </FloatingIsland>
       )}
 
       {/* right-click join menu (anchor / wrapped / free) */}
@@ -697,130 +401,72 @@ export function EditorShell() {
       {/* right-click size switcher (1/2" ↔ 3/4") */}
       <SizeMenu />
 
-      {/* top-right: play + undo/redo + view + physics + theme toggles */}
-      <div className="absolute top-4 right-4 flex items-center gap-1 rounded-lg border border-border bg-card px-1.5 py-1.5 shadow-sm">
-        <button
-          type="button"
-          onClick={() => setSimulating(!simulating)}
-          aria-pressed={simulating}
-          title={
-            simulating ? 'Stop simulation (Ctrl+Space)' : 'Play — rigid-body physics (Ctrl+Space)'
-          }
-          className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium ${
-            simulating
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-          }`}
-        >
-          {simulating ? <Square size={13} /> : <Play size={13} />}
-          {simulating ? 'Stop' : 'Play'}
-        </button>
-        {/* physics debug overlay — only while simulating (crashcat/three) */}
-        {simulating && (
+      {/* top-right: undo/redo + view + theme toggles */}
+      <FloatingIsland
+        id="view-toolbar"
+        placement="top-right"
+        className="hidden sm:block"
+        handleLabel="Move view toolbar"
+      >
+        <div className="flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-1 rounded-lg border border-border bg-card px-1.5 py-1.5 shadow-sm">
           <button
             type="button"
-            onClick={() => setPhysicsDebug(!physicsDebug)}
-            aria-pressed={physicsDebug}
-            title="Toggle physics debug overlay (bodies + constraints)"
+            onClick={undo}
+            aria-label="Undo"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          >
+            <Undo2 size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={redo}
+            aria-label="Redo"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          >
+            <Redo2 size={16} />
+          </button>
+          <div className="mx-0.5 h-5 w-px bg-border" />
+          <ViewMenu />
+          <button
+            type="button"
+            onClick={toggleProjection}
+            className="rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          >
+            {projection === 'ortho' ? 'Isometric' : 'Perspective'}
+          </button>
+          <button
+            type="button"
+            onClick={toggleWireframe}
+            aria-pressed={wireframe}
+            title="Wireframe view (W)"
             className={`flex items-center rounded-md px-2 py-1.5 ${
-              physicsDebug
-                ? 'bg-primary text-primary-foreground'
+              wireframe
+                ? 'bg-accent text-accent-foreground'
                 : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
             }`}
           >
-            <Bug size={13} />
+            <Waypoints size={15} />
           </button>
-        )}
-        <button
-          type="button"
-          onClick={() => setMannequin(!mannequin)}
-          aria-pressed={mannequin}
-          title={
-            mannequin
-              ? 'Hide the mannequin (static human to mount/rest on)'
-              : 'Show a mannequin — a static human body the design rests / hangs on in Play'
-          }
-          className={`flex items-center rounded-md px-2 py-1.5 ${
-            mannequin
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-          }`}
-        >
-          <PersonStanding size={14} />
-        </button>
-        <div className="mx-0.5 h-5 w-px bg-border" />
-        <button
-          type="button"
-          onClick={undo}
-          aria-label="Undo"
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-        >
-          <Undo2 size={16} />
-        </button>
-        <button
-          type="button"
-          onClick={redo}
-          aria-label="Redo"
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-        >
-          <Redo2 size={16} />
-        </button>
-        <div className="mx-0.5 h-5 w-px bg-border" />
-        <ViewMenu />
-        <button
-          type="button"
-          onClick={toggleProjection}
-          className="rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-        >
-          {projection === 'ortho' ? 'Isometric' : 'Perspective'}
-        </button>
-        <button
-          type="button"
-          onClick={toggleWireframe}
-          aria-pressed={wireframe}
-          title="Wireframe view (W)"
-          className={`flex items-center rounded-md px-2 py-1.5 ${
-            wireframe
-              ? 'bg-accent text-accent-foreground'
-              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-          }`}
-        >
-          <Waypoints size={15} />
-        </button>
-        <div className="mx-0.5 h-5 w-px bg-border" />
-        <button
-          type="button"
-          onClick={() => setLengthsLocked(!lengthsLocked)}
-          aria-pressed={lengthsLocked}
-          title={lengthsLocked ? 'Lengths locked' : 'Lengths free'}
-          className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium ${
-            lengthsLocked
-              ? 'bg-accent text-accent-foreground'
-              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-          }`}
-        >
-          {lengthsLocked ? <Lock size={14} /> : <LockOpen size={14} />}
-          Lengths
-        </button>
-        <div className="mx-0.5 h-5 w-px bg-border" />
-        <button
-          type="button"
-          onClick={() => setHelpOpen(true)}
-          aria-label="Help & shortcuts"
-          title="Help & keyboard shortcuts"
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-        >
-          <HelpCircle size={16} />
-        </button>
-        <button
-          type="button"
-          onClick={toggleNight}
-          aria-label="Toggle day/night"
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-        >
-          {night ? <Sun size={16} /> : <Moon size={16} />}
-        </button>
-      </div>
+          <div className="mx-0.5 h-5 w-px bg-border" />
+          <button
+            type="button"
+            onClick={() => setHelpOpen(true)}
+            aria-label="Help & shortcuts"
+            title="Help & keyboard shortcuts"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          >
+            <HelpCircle size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={toggleNight}
+            aria-label="Toggle day/night"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          >
+            {night ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+        </div>
+      </FloatingIsland>
 
       <HelpPanel open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>

@@ -1,22 +1,30 @@
 import {
+  Activity,
   ChevronDown,
   ChevronRight,
+  Circle,
   Group as GroupIcon,
   ListTree,
+  Lock,
   LogIn,
   LogOut,
   Minus,
+  Rotate3d,
+  Ruler,
   Spline,
   Ungroup,
 } from 'lucide-react';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { groupColorOf, groupOfMember } from '../design/docOps';
 import { useAppStore } from '../state/appStore';
 import {
   enterGroup,
   exitGroup,
   groupSelection,
+  selectTreeElastic,
   selectTreeGroup,
+  selectTreeJoint,
+  selectTreeMeasurement,
   selectTreeMember,
   setGroupColor,
   ungroupSelection,
@@ -26,13 +34,14 @@ import { useEditorStore } from '../state/editorStore';
 /** Max ungrouped rows rendered before collapsing the tail (huge models). */
 const MAX_ROWS = 300;
 
-/** A left-side tree of every object (pipe) and group. Clicking selects; a
- * grouped object auto-enters its group (siblings grey out); each group carries a
- * subtle colour cast set from an inline colour picker. Ctrl/⌘-click multi-selects.
+/** A left-side tree of every object: pipes/groups plus inspectable joints,
+ * measurements, and elastics. Clicking selects; a grouped object auto-enters its
+ * group (siblings grey out); each group carries a subtle colour cast set from an
+ * inline colour picker. Ctrl/⌘-click multi-selects member rows.
  *
  * Subscribes only to a STRUCTURAL signature of the doc (ids + sizes + group
- * membership + colour), not positions — so a per-frame drag doesn't re-render
- * the whole list. */
+ * membership + colour + non-pipe object ids), not positions — so a per-frame
+ * drag doesn't re-render the whole list. */
 export function ObjectTree() {
   // structural signature: unchanged string ⇒ zustand skips the re-render, so a
   // drag (which rewrites positions every frame) never churns the tree
@@ -43,9 +52,22 @@ export function ObjectTree() {
     for (const m of d.members) out += `${m.id}${m.kind[0]}${m.size};`;
     out += '|';
     for (const g of d.groups) out += `${g.id}:${g.color ?? ''}:${g.memberIds.join('.')};`;
+    out += '|';
+    for (const j of d.joints) {
+      out += `${j.id}:${j.nodeId}:${j.receiver}:${j.mover}:${j.mode}:${j.onBody ? 1 : 0}:${
+        j.manufactured ? 1 : 0
+      };`;
+    }
+    out += '|';
+    for (const m of d.measurements) out += `${m.id};`;
+    out += '|';
+    for (const e of d.elastics) out += `${e.id};`;
     return out;
   });
   const selectedIds = useEditorStore((s) => s.selectedIds);
+  const selectedJointId = useEditorStore((s) => s.selectedJointId);
+  const selectedMeasurementId = useEditorStore((s) => s.selectedMeasurementId);
+  const selectedElasticId = useEditorStore((s) => s.selectedElasticId);
   const enteredGroupId = useEditorStore((s) => s.enteredGroupId);
   const [open, setOpen] = useState(true);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
@@ -63,6 +85,11 @@ export function ObjectTree() {
   };
   const grouped = new Set(design.groups.flatMap((g) => g.memberIds));
   const ungrouped = design.members.filter((m) => !grouped.has(m.id));
+  const hasObjects =
+    design.members.length > 0 ||
+    design.joints.length > 0 ||
+    design.measurements.length > 0 ||
+    design.elastics.length > 0;
 
   // a grouped member is bright only INSIDE its own group; an ungrouped member is
   // dimmed while you're focused inside some group (planfile: grey out the rest)
@@ -90,8 +117,38 @@ export function ObjectTree() {
           : 'text-foreground hover:bg-accent'
     }`;
 
+  const section = (id: string, title: string, count: number, icon: ReactNode) => {
+    const isCollapsed = collapsed.has(id);
+    return (
+      <button
+        type="button"
+        onClick={() => toggleCollapse(id)}
+        aria-label={isCollapsed ? `Expand ${title}` : `Collapse ${title}`}
+        className="mt-1 flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground hover:bg-accent"
+      >
+        {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+        {icon}
+        <span>{title}</span>
+        <span className="ml-auto text-[10px] tabular-nums">{count}</span>
+      </button>
+    );
+  };
+
+  const jointIcon = (mode: string) => {
+    if (mode === 'wrapped')
+      return <Rotate3d size={12} className="shrink-0 text-muted-foreground" />;
+    if (mode === 'free') return <Circle size={12} className="shrink-0 text-muted-foreground" />;
+    return <Lock size={12} className="shrink-0 text-muted-foreground" />;
+  };
+
+  const jointModeLabel = (mode: string) => {
+    if (mode === 'wrapped') return 'Wrapped';
+    if (mode === 'free') return 'Free';
+    return 'Anchor';
+  };
+
   return (
-    <div className="pointer-events-auto w-56 rounded-xl border border-border bg-card shadow-md">
+    <div className="pointer-events-auto flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg bg-card/70">
       {/* header */}
       <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
         <button
@@ -128,8 +185,8 @@ export function ObjectTree() {
       </div>
 
       {open && (
-        <div className="max-h-[52vh] overflow-y-auto p-1">
-          {design.members.length === 0 && (
+        <div className="scrollbar-minimal min-h-0 flex-1 overflow-y-auto p-1">
+          {!hasObjects && (
             <p className="px-2 py-3 text-center text-xs text-muted-foreground">No objects yet.</p>
           )}
 
@@ -230,6 +287,82 @@ export function ObjectTree() {
             <p className="px-2 py-1 text-[10px] text-muted-foreground">
               +{ungrouped.length - MAX_ROWS} more…
             </p>
+          )}
+
+          {design.joints.length > 0 && (
+            <>
+              {section(
+                'section:joints',
+                'Joints',
+                design.joints.length,
+                <Rotate3d size={12} className="shrink-0" />,
+              )}
+              {!collapsed.has('section:joints') &&
+                design.joints.map((j, i) => (
+                  <button
+                    key={j.id}
+                    type="button"
+                    onClick={() => selectTreeJoint(j.id)}
+                    className={rowBtn(selectedJointId === j.id, false)}
+                  >
+                    {jointIcon(j.mode)}
+                    <span className="truncate">
+                      {jointModeLabel(j.mode)} {i + 1}
+                    </span>
+                    <span className="ml-auto max-w-24 shrink-0 truncate text-[10px] text-muted-foreground">
+                      {j.onBody ? 'on-body' : 'end'} {j.manufactured ? 'mfg' : ''}
+                    </span>
+                  </button>
+                ))}
+            </>
+          )}
+
+          {design.measurements.length > 0 && (
+            <>
+              {section(
+                'section:measurements',
+                'Measurements',
+                design.measurements.length,
+                <Ruler size={12} className="shrink-0" />,
+              )}
+              {!collapsed.has('section:measurements') &&
+                design.measurements.map((m, i) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => selectTreeMeasurement(m.id)}
+                    className={rowBtn(selectedMeasurementId === m.id, false)}
+                  >
+                    <Ruler size={12} className="shrink-0 text-muted-foreground" />
+                    <span className="truncate">Measure {i + 1}</span>
+                    <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">tape</span>
+                  </button>
+                ))}
+            </>
+          )}
+
+          {design.elastics.length > 0 && (
+            <>
+              {section(
+                'section:elastics',
+                'Elastics',
+                design.elastics.length,
+                <Activity size={12} className="shrink-0" />,
+              )}
+              {!collapsed.has('section:elastics') &&
+                design.elastics.map((e, i) => (
+                  <button
+                    key={e.id}
+                    type="button"
+                    onClick={() => selectTreeElastic(e.id)}
+                    className={rowBtn(selectedElasticId === e.id, false)}
+                  >
+                    <Activity size={12} className="shrink-0 text-muted-foreground" />
+                    <span className="truncate">Elastic {i + 1}</span>
+                    <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">band</span>
+                  </button>
+                ))}
+            </>
           )}
         </div>
       )}

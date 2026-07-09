@@ -13,6 +13,7 @@ import {
   selectMember,
   setMemberLength,
   snapDrawPoint,
+  startExtend,
 } from './editorActions';
 import { useEditorStore } from './editorStore';
 
@@ -81,6 +82,26 @@ describe('draw tool integration (snapping → docOps → store)', () => {
     placeDrawPoint(V(0, 0, 0));
     placeDrawPoint(V(0.3048, 0, 0));
     expect(design().members[0]!.size).toBe('1/2"');
+  });
+
+  it('keeps Extend active while using the draw path for an axis-locked segment', () => {
+    placeDrawPoint(V(0, 0, 0));
+    placeDrawPoint(V(0.3048, 0, 0));
+    finishPath();
+    const anchor = design().members[0]!.nodeB;
+
+    useEditorStore.getState().setTool('extend');
+    startExtend(anchor, V(1, 0, 0));
+    expect(useEditorStore.getState().tool).toBe('extend');
+    expect(useEditorStore.getState().drawingFromNodeId).toBe(anchor);
+
+    placeDrawPoint(V(0.5, 0, 0.2));
+    expect(useEditorStore.getState().tool).toBe('extend');
+    expect(useEditorStore.getState().drawAxisLock).toBeNull();
+    expect(design().members).toHaveLength(2);
+    const extended = design().nodes.find((n) => n.id === design().members[1]!.nodeB)!;
+    expect(extended.position.z).toBeCloseTo(0, 9);
+    expect(extended.position.x).toBeGreaterThan(0.3048);
   });
 });
 

@@ -56,6 +56,7 @@ import { MannequinLayer } from './MannequinLayer';
 import { MeasureLayer } from './MeasureLayer';
 import { PhysicsDebug } from './PhysicsDebug';
 import { PipeLayer } from './PipeLayer';
+import { SceneLabels } from './SceneLabels';
 import { MoveGizmo, RotateGizmo, SelectionHandles } from './SelectionHandles';
 import { WireframeLayer } from './WireframeLayer';
 
@@ -96,6 +97,7 @@ export function Scene() {
   // every frame) from re-rendering the grid, gizmo, cameras, and lights.
   const projection = useEditorStore((s) => s.projection);
   const tool = useEditorStore((s) => s.tool);
+  const drawingFromNodeId = useEditorStore((s) => s.drawingFromNodeId);
   const wireframe = useEditorStore((s) => s.wireframe);
   const night = useThemeStore((s) => s.night);
   const pal = scenePalette(night);
@@ -161,6 +163,7 @@ export function Scene() {
       <ElasticLayer />
       <MannequinLayer />
       <GuideLayer />
+      <SceneLabels />
 
       {/* ground-plane pointer target + shadow catcher + draw preview */}
       <DrawController />
@@ -171,7 +174,7 @@ export function Scene() {
       {tool === 'move' && <MoveGizmo />}
       {tool === 'rotate' && <RotateGizmo />}
       {/* extend-tool push cylinders on pipe ends */}
-      {tool === 'extend' && <ExtendLayer />}
+      {tool === 'extend' && !drawingFromNodeId && <ExtendLayer />}
 
       {/* middle = pan, right = free rotate; left is reserved (drawing / select
           / future marquee), so it never orbits. `key={projection}` remounts the

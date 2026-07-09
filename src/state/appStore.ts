@@ -4,7 +4,11 @@ import { EXAMPLES } from '../examples';
 import { createAutosaver } from '../persistence/autosave';
 import { importDesignJson } from '../persistence/exportImport';
 import { getUnitsPref, setLastProjectId } from '../persistence/prefs';
-import { ProjectStore, type ProjectSummary } from '../persistence/projectStore';
+import {
+  type ProjectRevisionSummary,
+  ProjectStore,
+  type ProjectSummary,
+} from '../persistence/projectStore';
 import type { Design } from '../schema';
 
 // Project lifecycle + the single document-mutation path (updateCurrent).
@@ -25,6 +29,9 @@ export interface AppState {
   openProject(id: string): Promise<void>;
   closeProject(): Promise<void>;
   renameProject(id: string, name: string): Promise<void>;
+  duplicateProject(id: string, name?: string): Promise<void>;
+  listProjectRevisions(id: string): Promise<ProjectRevisionSummary[]>;
+  restoreRevision(projectId: string, revId: number): Promise<void>;
   deleteProject(id: string): Promise<void>;
   /** Apply a document change; persisted via debounced autosave. */
   updateCurrent(update: (doc: Design) => Design): void;
@@ -105,6 +112,26 @@ export function createAppStore(store: ProjectStore = new ProjectStore()) {
 
           async renameProject(id, name) {
             await store.renameProject(id, name);
+            const cur = get().current;
+            if (cur?.id === id) set({ current: { ...cur, name }, saveState: 'saved' });
+            await get().refreshProjects();
+          },
+
+          async duplicateProject(id, name) {
+            await store.duplicateProject(id, name);
+            await get().refreshProjects();
+          },
+
+          async listProjectRevisions(id) {
+            return store.listRevisions(id);
+          },
+
+          async restoreRevision(projectId, revId) {
+            const doc = await store.restoreRevision(projectId, revId);
+            if (get().current?.id === projectId) {
+              set({ current: doc, saveState: 'saved' });
+              useStore.temporal.getState().clear();
+            }
             await get().refreshProjects();
           },
 
@@ -136,7 +163,7 @@ export function createAppStore(store: ProjectStore = new ProjectStore()) {
           },
 
           async importProject(fileText) {
-            const doc = importDesignJson(fileText);
+            const doc: Design = { ...importDesignJson(fileText), id: crypto.randomUUID() };
             await store.saveProject(doc);
             await get().refreshProjects();
           },

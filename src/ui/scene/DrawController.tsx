@@ -32,11 +32,8 @@ import { GROUND_SIZE_M, scenePalette } from '../theme';
 import { formatLengthDisplay } from '../units';
 import { placeAxis } from './axis';
 import { dominantAxisNormal, rayToGround, rayToPlane } from './ground';
+import { CLICK_SLOP_PX, startWindowPointerDrag } from './interactions';
 import { pickSnapPoint, SNAP_PX, snapDebug } from './pipePick';
-
-// A click and an orbit-drag both start with a pointerdown on the ground; only
-// treat a pointerup as a "click" if the pointer barely moved.
-const CLICK_SLOP_PX = 6;
 
 const AXIS_COLOR = { x: '#d64545', y: '#3d9950', z: '#2a78d6' } as const;
 const SNAP_GREEN = '#12b886'; // snap indicator (dot / pill / pipe outline)
@@ -146,8 +143,11 @@ export function DrawController() {
   // pointer rides a view-facing plane through it (3D drawing: draw up a wall in a
   // side view, Shift-lock to any axis incl. Y), matching how endpoint drags work.
   // The FIRST point of a path has no `from`, so it lands on the y = 0 ground.
+  const extendDrawing = tool === 'extend' && !!fromPos;
+  const drawLike = tool === 'draw' || extendDrawing;
+
   const fromPoint = (): Vec3 | undefined => {
-    if (tool === 'draw') return fromPos;
+    if (drawLike) return fromPos;
     if (tool === 'formed' && formedPoints.length) return formedPoints[formedPoints.length - 1];
     return undefined;
   };
@@ -253,7 +253,7 @@ export function DrawController() {
       setGuideCursor(g);
       return;
     }
-    if (tool === 'draw') {
+    if (drawLike) {
       const snap = snapDrawPoint(g, e.nativeEvent.shiftKey);
       setPreview(snap);
       // record the aim direction so a typed length can be committed along it
@@ -343,8 +343,11 @@ export function DrawController() {
     }
     // any non-drawing tool marquee-selects on an empty-canvas drag; move/rotate
     // additionally switch to the select tool so the drag reads as a selection
+    const liveDrawLike =
+      liveTool === 'draw' ||
+      (liveTool === 'extend' && !!useEditorStore.getState().drawingFromNodeId);
     const nonDrawing =
-      liveTool !== 'draw' &&
+      !liveDrawLike &&
       liveTool !== 'formed' &&
       liveTool !== 'measure' &&
       liveTool !== 'elastic' &&
@@ -367,7 +370,7 @@ export function DrawController() {
       }
       const g = targetFromClient(ev.clientX, ev.clientY, ev.shiftKey);
       if (!g) return;
-      if (liveTool === 'draw') setPreview(snapDrawPoint(g, ev.shiftKey));
+      if (liveDrawLike) setPreview(snapDrawPoint(g, ev.shiftKey));
       else if (liveTool === 'formed') setPreview(snapFormedPoint(g));
       else if (liveTool === 'measure') {
         if (useEditorStore.getState().measureAdjustId) updateMeasureOffset(g);
@@ -375,9 +378,6 @@ export function DrawController() {
       } else if (liveTool === 'elastic') setPreview(snapMeasurePoint(g));
     };
     const up = (ev: PointerEvent) => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-      window.removeEventListener('pointercancel', up);
       if (ev.button !== 0) return;
       const moved = Math.hypot(ev.clientX - startX, ev.clientY - startY);
       if (liveTool === 'guide') {
@@ -409,7 +409,7 @@ export function DrawController() {
       }
       const g = targetFromClient(ev.clientX, ev.clientY, ev.shiftKey);
       if (!g) return;
-      if (liveTool === 'draw') {
+      if (liveDrawLike) {
         // a drag ends the segment; a click that didn't start the path extends it
         // (two-click); a click that started the path leaves it open for click 2
         if (moved > CLICK_SLOP_PX || !startedPath) setPreview(placeDrawPoint(g, ev.shiftKey));
@@ -425,12 +425,10 @@ export function DrawController() {
         if (moved > CLICK_SLOP_PX || !startedElastic) placeElasticPoint(g);
       }
     };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-    window.addEventListener('pointercancel', up);
+    startWindowPointerDrag({ onMove: move, onUp: up, onCancel: up });
   };
 
-  const showPreview = tool === 'draw' && preview;
+  const showPreview = drawLike && preview;
   // formed preview: a spline through the committed points + the cursor
   const formedPreview =
     tool === 'formed' && preview
@@ -463,8 +461,9 @@ export function DrawController() {
       </mesh>
 
       {/* snap indicator (dot + End/On Pipe pill + outline) for draw + formed + measure + elastic */}
-      {(tool === 'draw' || tool === 'formed' || tool === 'measure' || tool === 'elastic') &&
-        preview && <SnapHint preview={preview} night={night} />}
+      {(drawLike || tool === 'formed' || tool === 'measure' || tool === 'elastic') && preview && (
+        <SnapHint preview={preview} night={night} />
+      )}
 
       {/* elastic-band rubber band: first attachment → cursor (orange, like a band) */}
       {tool === 'elastic' &&

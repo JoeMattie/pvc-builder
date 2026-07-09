@@ -340,12 +340,12 @@ export function placeDrawAtDistance(distanceM: number): boolean {
 }
 
 /** Begin an axis-locked draw out of an end (the Extend tool clicks a cylinder):
- * switch to the draw tool, anchor the path at `nodeId`, and lock the FIRST
- * segment to `dir` (the cylinder's direction). Thereafter it's a normal draw. */
+ * keep the Extend tool active, anchor the path at `nodeId`, and lock the FIRST
+ * segment to `dir` (the cylinder's direction). The draw controller treats this
+ * as an in-progress draw path while the pillbox still reads Extend. */
 export function startExtend(nodeId: string, dir: Vec3): void {
   const ed = useEditorStore.getState();
   const u = normalize(dir);
-  ed.setTool('draw'); // clears any prior draw state incl. the axis lock
   ed.setDrawingFrom(nodeId);
   ed.setDrawStartWrap(null);
   ed.setDrawAxisLock(u); // first segment locked to the cylinder direction
@@ -590,6 +590,28 @@ export function selectTreeGroup(groupId: string): void {
   const ed = useEditorStore.getState();
   if (ed.enteredGroupId) ed.setEnteredGroup(null);
   ed.setSelection(groupMemberIds(design, groupId));
+}
+
+/** Object-tree click on a joint row: leave any group focus and inspect that
+ * joint hardware as a first-class object. */
+export function selectTreeJoint(jointId: string): void {
+  const ed = useEditorStore.getState();
+  if (ed.enteredGroupId) ed.setEnteredGroup(null);
+  ed.selectJoint(jointId);
+}
+
+/** Object-tree click on a tape-measure row. */
+export function selectTreeMeasurement(measurementId: string): void {
+  const ed = useEditorStore.getState();
+  if (ed.enteredGroupId) ed.setEnteredGroup(null);
+  ed.selectMeasurement(measurementId);
+}
+
+/** Object-tree click on an elastic-band row. */
+export function selectTreeElastic(elasticId: string): void {
+  const ed = useEditorStore.getState();
+  if (ed.enteredGroupId) ed.setEnteredGroup(null);
+  ed.selectElastic(elasticId);
 }
 
 /** Add newly-drawn members to the entered group (so intra-group draws union). */

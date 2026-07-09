@@ -39,7 +39,7 @@ export function Pillbox() {
   const setDrawSize = useEditorStore((s) => s.setDrawSize);
 
   return (
-    <div className="-translate-x-1/2 absolute bottom-5 left-1/2 flex items-center gap-1 rounded-xl border border-border bg-card px-1.5 py-1.5 shadow-md">
+    <div className="scrollbar-minimal flex h-full min-h-full min-w-full max-w-[18rem] flex-wrap items-center justify-center gap-1 overflow-auto rounded-lg bg-card/70 px-1.5 py-1.5 sm:max-w-[min(calc(100vw-2rem),56rem)]">
       {TOOLS.map(({ id, icon: Icon, label, key }) => {
         const active = tool === id;
         return (
@@ -55,10 +55,10 @@ export function Pillbox() {
                 : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
             }`}
           >
-            <Icon size={15} /> {label}
+            <Icon size={15} /> <span className="hidden sm:inline">{label}</span>
             {key && (
               <kbd
-                className={`ml-0.5 rounded px-1 py-px font-mono text-[10px] leading-none ${
+                className={`ml-0.5 hidden rounded px-1 py-px font-mono text-[10px] leading-none md:inline ${
                   active
                     ? 'bg-primary-foreground/20 text-primary-foreground'
                     : 'bg-muted text-muted-foreground'

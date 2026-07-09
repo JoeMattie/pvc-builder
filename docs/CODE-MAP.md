@@ -30,16 +30,17 @@ Durable state in **`persistence`**; samples in **`examples`**.
 
 Not documented with a CONTEXT file (small/self-evident): `src/main.tsx` (entry point), `src/index.css`
 (Tailwind v4 tokens), root config (`package.json`, `vite.config.ts`, `tsconfig.json`, `biome.json`,
-`playwright.config.ts`), `e2e/smoke.spec.ts` (Playwright smoke driving `window.__pvc` on the built app).
+`playwright.config.ts`), `e2e/*.spec.ts` (Playwright smoke + interaction checks against the built app).
 The **dev-only live bridge** to a running session also lives outside `src/`: `vite/pvcBridgePlugin.ts`
 (the `apply:'serve'` relay hub, `/__pvc/*` HTTP+SSE, unit-tested) and `tools/pvc-mcp/` (the MCP
 front-end + `.mcp.json`) — see `src/dev/CONTEXT.md` and `tools/pvc-mcp/README.md`.
 
 ## Fast facts
 - **Everything stored is SI** (metres/radians); imperial is display-only (`src/ui/units.ts`).
-- **`schemaVersion` is 9**; every schema change bumps it + adds a migration (`src/schema/`).
+- **`schemaVersion` is 10**; every schema change bumps it + adds a migration (`src/schema/`).
 - **Pure boundaries that must stay pure**: `resolveFittings`, `bom`, `solve()` — no three/UI/engine types.
-- **`window.__pvc`** (defined in `src/ui/EditorShell.tsx`) is the scripted automation contract.
+- **`window.__pvc`** (registered in `src/ui/editor/PvcAutomationBridge.tsx`) is the scripted
+  automation contract.
 - **Live dev bridge** (dev-only): an external process can query state + drive every `__pvc` seam
   over `/__pvc/*` (`vite/pvcBridgePlugin.ts`) via the MCP server in `tools/pvc-mcp/`. Never in prod.
 - **Definition of done**: `npm run typecheck`, `npm run lint`, `npm run test`, `npm run build` all green.

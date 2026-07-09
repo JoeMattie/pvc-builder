@@ -11,6 +11,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.0',
+    date: '2026-07-09',
+    changes: [
+      'Reworked the editor into clearer Design, Fabricate, and Simulate workflows: simulation now has its own compact control panel, fabrication/BOM stays focused on shop output, and the status chrome makes the active geometry state easier to read.',
+      'Improved fabrication confidence with richer cut-list detail, pipe labels that match BOM rows, bend schedules, source/assumption notes, and clearer fitting/joint diagnostics.',
+      'Added resettable, draggable, and resizable workspace panels: the tool palette, object list, and BOM can be resized, floating panels use left-side drag rails, panel positions/sizes are remembered, and the top-left reset icon restores the default layout.',
+      'Polished editor chrome with minimal scrollbars, responsive pillboxes, automatic overlap avoidance, and fixes that keep Extend active until another tool is explicitly selected.',
+    ],
+  },
+  {
     version: '0.2.0',
     date: '2026-07-09',
     changes: [
