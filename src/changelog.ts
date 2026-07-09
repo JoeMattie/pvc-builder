@@ -11,6 +11,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.1.7',
+    date: '2026-07-08',
+    changes: [
+      'Much faster rendering on dense articulated models (e.g. T-rex universal pivots): pipes and ball-joint hubs now draw as instanced meshes with per-frame updates — ~97% fewer draw calls, no per-frame React churn',
+    ],
+  },
+  {
     version: '0.1.6',
     date: '2026-07-08',
     changes: ['Dark mode is the default; day/night toggle added to the main screen'],

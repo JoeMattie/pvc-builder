@@ -15,6 +15,7 @@ glide on snaps — never raw doc positions.
 | `ground.ts` | Raycasting helpers | `rayToGround`, `rayToPlane`, `dominantAxisNormal` |
 | `pipePick.ts` | Screen-space snap: nearest node/pipe under the cursor (draw + endpoint drag, any height) | `pickSnapPoint`, `SNAP_PX`, `snapDebug` |
 | `axis.ts` | Place a unit-Y primitive along a segment (from riglab) | `placeAxis(a,b)`, `orientY(dir)`, `orientZ(dir)` |
+| `instancing.ts` | Compose per-instance matrices for `InstancedMesh` from UNIT base geometry (radius/height 1) | `cylinderMatrix(out,a,b,r)`, `sphereMatrix`, `ringMatrix`, `hideMatrix` |
 
 ## Impure R3F components
 
@@ -22,20 +23,21 @@ glide on snaps — never raw doc positions.
 |---|---|---|
 | `Viewport.tsx` | The `<Canvas>` host | soft shadows, wraps `<Scene>` |
 | `Scene.tsx` (mod) | Composes everything: cameras, lights, layers, gizmos, headless drivers | **does NOT subscribe to the doc** — each layer subscribes itself |
-| `PipeLayer.tsx` (mod) | Straight pipe cylinders + hollow bores (PBR) + Bend-tool drag + ghost end-cap extensions | click-select; right-click routes join/size menu; press-drag bends (Bend tool); translucent BOM end-cap ghosts |
+| `PipeLayer.tsx` (mod) | Straight pipe bodies as ONE `InstancedMesh` (imperative useFrame transforms) + declarative hollow bores/ghost caps (`PipeDecorations`) | `InstancedPipes` routes select/context/bend/double-click via ray `instanceId`; selection is a per-instance colour; press-drag bends (Bend tool) |
+| `InstancedFreeHubs.tsx` (**NEW**) | End-to-end FREE (ball) hubs as 3 `InstancedMesh` (balls + eye bolts + cords), imperative useFrame transforms | the dominant mesh cost on dense models; ball click/context selects the joint; replaces JointLayer's old `FreeHub` |
 | `FormedLayer.tsx` (mod) | Heat-bent pipe tubes + Bend-tool control-point handles | dragging orange handles tweaks the bend |
 | `MeasureLayer.tsx` | Persistent tape measures (dimension line + label) | selectable; offset perpendicular |
 | `FormedLayer.tsx` | Heat-bent pipe as Catmull-Rom swept tubes | exports `formedCurve` (also used by IntersectionLayer) |
 | `FittingLayer.tsx` | Auto-resolved socket fittings + conflict markers | `resolveFittings` + `buildFittingMesh`; cap 200 members |
-| `JointLayer.tsx` (**NEW**) | Unified joints from `design.joints[]` — wrapped/anchor/free | dispatches `WrapJoint`/`FreeJoint`/`FreeHub`; end-to-end free joints at one node draw as ONE shared ball (`FreeHub`), backed by the pairwise records |
+| `JointLayer.tsx` | Unified joints from `design.joints[]` — wrapped/anchor/on-body free | dispatches `WrapJoint`/`AnchorTee`/`FreeJoint`; end-to-end free hubs moved to `InstancedFreeHubs`; keeps the swap gizmo |
 | `WrapStrip.tsx` (mod) | Renderer for a `WrapMesh` (slip-saddle body + screws) | **name is legacy** — no longer a swept strip |
 | `IntersectionLayer.tsx` | Red overlap shells | `intersectingMembers`; cap 200 |
 | `DrawController.tsx` | Draw/formed preview + pointer target + marquee | window-listener drag; screen-space pipe/node snap (`pipePick`); Shift locks to a world axis line (incl. Y) |
 | `SelectionHandles.tsx` | Endpoint drag handles + `MoveGizmo` + `RotateGizmo` | `useGroundDrag` window-listener hook wraps `beginGesture`/`endGesture` |
 
 ## Git state of this dir
-NEW/untracked: `JointLayer.tsx`. DELETED: `PivotLayer.tsx`, `WrapLayer.tsx` (both folded into
-`JointLayer`). Modified: `Scene.tsx`, `PipeLayer.tsx`, `WrapStrip.tsx`, `pipeModel.ts`.
+NEW: `InstancedFreeHubs.tsx`, `instancing.ts`. Modified: `Scene.tsx` (adds `<InstancedFreeHubs>`
++ `__pvc.sceneStats`), `PipeLayer.tsx` (now instanced), `JointLayer.tsx` (free hubs removed).
 
 ## Depends on
 `../../design/*`, `../../geometry/math3`, `../../schema`, `../../solver`, `../../solver/physics`,
@@ -48,6 +50,14 @@ NEW/untracked: `JointLayer.tsx`. DELETED: `PivotLayer.tsx`, `WrapLayer.tsx` (bot
   grid/gizmo/cameras. Preserve this.
 - **Three CAD-swap seams**: `fittingMesh.ts`, `wrapMesh.ts`, `pipeModel.ts` — swap real CAD here
   without touching R3F code.
+- **Instanced layers (`PipeLayer`/`InstancedFreeHubs`) do NOT subscribe to `useAnim`.** They build
+  a *structural* spec (which instances exist + `instanceId→id` map) with `useMemo(…, [design])`, then
+  refresh instance matrices imperatively in `useFrame` from `easedPos` — so per-frame motion (easing,
+  pose, physics) costs no React re-render and the whole model is a handful of draw calls. Base
+  geometry is UNIT-sized (see `instancing.ts`); size/length ride the instance matrix scale. Selection
+  = per-instance colour (material `color` is white; `instanceColor` carries theme/select). Pointer
+  events resolve the member/joint from `ev.instanceId`; set `frustumCulled={false}` (dynamic
+  matrices). Verify draw-call collapse with `window.__pvc.sceneStats()` → `{meshes, instanced, instances}`.
 - **Two independent window-listener drag systems** (DrawController inline + SelectionHandles
   `useGroundDrag`) exist for the same r3f reason (mesh drops pointerup when the ray leaves the mesh).
   If you change one, mirror the other. `useGroundDrag` passes a live **`DragMods`** (toggleable

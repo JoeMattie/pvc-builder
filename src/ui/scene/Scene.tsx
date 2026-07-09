@@ -41,6 +41,7 @@ import { GROUND_SIZE_M, scenePalette } from '../theme';
 import { DrawController } from './DrawController';
 import { FittingLayer } from './FittingLayer';
 import { FormedLayer } from './FormedLayer';
+import { InstancedFreeHubs } from './InstancedFreeHubs';
 import { IntersectionLayer } from './IntersectionLayer';
 import { JointLayer } from './JointLayer';
 import { MeasureLayer } from './MeasureLayer';
@@ -133,6 +134,7 @@ export function Scene() {
       <FormedLayer />
       <FittingLayer />
       <JointLayer />
+      <InstancedFreeHubs />
       <IntersectionLayer />
       <MeasureLayer />
 
@@ -337,6 +339,7 @@ function GeometryAnimator() {
 function DebugBridge() {
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
   const controls = useThree((s) => s.controls) as {
     enabled: boolean;
     target?: { x: number; y: number; z: number };
@@ -354,6 +357,21 @@ function DebugBridge() {
         ? { x: controls.target.x, y: controls.target.y, z: controls.target.z }
         : null;
     w.__pvc.isControlsEnabled = () => (controls ? controls.enabled : null);
+    // scene mesh census — for verifying instancing keeps draw calls low: plain
+    // meshes vs InstancedMesh count vs total instances across all instanced meshes
+    w.__pvc.sceneStats = () => {
+      let meshes = 0;
+      let instanced = 0;
+      let instances = 0;
+      scene.traverse((o) => {
+        const m = o as { isInstancedMesh?: boolean; isMesh?: boolean; count?: number };
+        if (m.isInstancedMesh) {
+          instanced++;
+          instances += m.count ?? 0;
+        } else if (m.isMesh) meshes++;
+      });
+      return { meshes, instanced, instances };
+    };
     w.__pvc.getEasedPos = (id: string) => easedPos(id) ?? null;
     // orthographic zoom factor (rises as you zoom in) — for verifying wheel zoom
     w.__pvc.getZoom = () => (camera as { zoom?: number }).zoom ?? null;

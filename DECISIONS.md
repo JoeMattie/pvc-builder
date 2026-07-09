@@ -6,6 +6,24 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 
 ## Post-batch fixes (2026-07-08)
 
+- **Instanced rendering + imperative per-frame updates** (v0.1.7). Dense articulated models were
+  render-bound: the T-rex universal-pivots example drew ~3,064 separate meshes (541 pipes + a ball,
+  eye bolt, and cord per hub) and re-reconciled the whole React tree every animation frame (all
+  layers subscribed to `useAnim`). Fix (planned items #1 + #2): draw the repeated geometry from a
+  few `InstancedMesh` and refresh transforms imperatively. `PipeLayer` now draws all pipe bodies as
+  ONE instanced mesh (`InstancedPipes`); the new `InstancedFreeHubs` draws end-to-end free hubs as
+  three instanced meshes (balls/eyes/cords). Both build a *structural* spec (`useMemo(…, [design])`)
+  that fixes the instance order + `instanceId→id` map, then set instance matrices in `useFrame` from
+  `easedPos` — **no `useAnim` subscription, so per-frame motion costs zero React re-render**. Base
+  geometry is unit-sized (`instancing.ts`); size/length ride the matrix scale. Selection is a
+  per-instance colour (material `color` white, `instanceColor` carries theme/select-blue); pointer
+  events resolve the member/joint from `ev.instanceId`; `frustumCulled={false}` (dynamic matrices).
+  Measured on trex-pivots: **~3,064 plain meshes → 97 plain + 4 instanced (2,967 instances)** — a
+  ~97% draw-call cut, verified via the new `window.__pvc.sceneStats()` seam. `JointLayer`'s old
+  `FreeHub` was removed (moved to `InstancedFreeHubs`); on-body free + wrap/anchor joints stay
+  declarative in `JointLayer` (few). Bores/ghost caps stay declarative in `PipeDecorations` (few).
+- **Dark mode by default** (v0.1.6). `getNightPref()` returns dark when unset and now persists an
+  explicit day choice (`'0'`) so it sticks; the day/night toggle is on the project-list header.
 - **Bend length-lock on already-bent pipes** (v0.1.4, Option B). The Bend tool's tube press-drag
   now works on FORMED pipes too (a new `FormedTube` mirrors `PipeLayer.onBend` with a click-vs-drag
   slop): dragging re-bends the pipe as one fresh bend, and with lock-length on it conserves the
