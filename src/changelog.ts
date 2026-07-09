@@ -11,6 +11,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.1.6',
+    date: '2026-07-08',
+    changes: ['Dark mode is the default; day/night toggle added to the main screen'],
+  },
+  {
     version: '0.1.5',
     date: '2026-07-08',
     changes: ['Backfilled the changelog with the full pre-0.1 version history'],

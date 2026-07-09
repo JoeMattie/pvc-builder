@@ -31,18 +31,15 @@ function safeStorage(): Storage | Map<string, string> {
 
 export function getNightPref(): boolean {
   const s = safeStorage();
-  return (s instanceof Map ? (s.get(NIGHT_KEY) ?? null) : s.getItem(NIGHT_KEY)) === '1';
+  const v = s instanceof Map ? (s.get(NIGHT_KEY) ?? null) : s.getItem(NIGHT_KEY);
+  return v === null ? true : v === '1'; // default to DARK when unset; '0' = explicit day
 }
 
 export function setNightPref(night: boolean): void {
   const s = safeStorage();
-  if (s instanceof Map) {
-    if (night) s.set(NIGHT_KEY, '1');
-    else s.delete(NIGHT_KEY);
-  } else {
-    if (night) s.setItem(NIGHT_KEY, '1');
-    else s.removeItem(NIGHT_KEY);
-  }
+  const v = night ? '1' : '0'; // store both states so an explicit day choice sticks
+  if (s instanceof Map) s.set(NIGHT_KEY, v);
+  else s.setItem(NIGHT_KEY, v);
 }
 
 // Snap settings are a workspace preference (like night), read at editor-store

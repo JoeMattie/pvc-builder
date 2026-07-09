@@ -1,8 +1,9 @@
-import { ChevronDown, ChevronRight, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Moon, Plus, Sparkles, Sun, Trash2 } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { APP_VERSION, CHANGELOG } from '../changelog';
 import { EXAMPLES } from '../examples';
 import { useAppStore } from '../state/appStore';
+import { useThemeStore } from '../state/themeStore';
 
 /** "What's new" — the changelog, newest release expanded, older ones collapsed. */
 function Changelog() {
@@ -50,6 +51,8 @@ export function ProjectList() {
   const createFromExample = useAppStore((s) => s.createFromExample);
   const openProject = useAppStore((s) => s.openProject);
   const deleteProject = useAppStore((s) => s.deleteProject);
+  const night = useThemeStore((s) => s.night);
+  const toggleNight = useThemeStore((s) => s.toggleNight);
   const [name, setName] = useState('');
 
   const onCreate = async (e: FormEvent) => {
@@ -66,6 +69,15 @@ export function ProjectList() {
         <h1 className="font-sans text-2xl font-semibold">PVC Builder</h1>
         <span className="text-muted-foreground text-xs font-medium">v{APP_VERSION}</span>
         <p className="text-muted-foreground ml-auto text-sm">A 3D-first PVC design studio.</p>
+        <button
+          type="button"
+          onClick={toggleNight}
+          aria-label="Toggle day/night"
+          title="Toggle day/night"
+          className="text-muted-foreground hover:text-foreground self-center rounded-md p-1.5"
+        >
+          {night ? <Sun size={16} /> : <Moon size={16} />}
+        </button>
       </header>
 
       <form onSubmit={onCreate} className="flex gap-2">
