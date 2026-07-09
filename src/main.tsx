@@ -14,6 +14,12 @@ import { applyTheme } from './ui/theme';
 applyTheme(useThemeStore.getState().night ? 'night' : 'day');
 useThemeStore.subscribe((s) => applyTheme(s.night ? 'night' : 'day'));
 
+// Dev-only bridge to the running session (query state / drive `__pvc` from an
+// external process). Statically dropped from production builds.
+if (import.meta.env.DEV) {
+  void import('./dev/bridgeClient');
+}
+
 const container = document.getElementById('root');
 if (!container) throw new Error('missing #root element');
 

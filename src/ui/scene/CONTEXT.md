@@ -37,7 +37,10 @@ glide on snaps — never raw doc positions.
 | `WrapStrip.tsx` (mod) | Renderer for a `WrapMesh` (slip-saddle body + screws) | **name is legacy** — no longer a swept strip |
 | `IntersectionLayer.tsx` | Red overlap shells | `intersectingMembers`; cap 200 |
 | `DrawController.tsx` | Draw/formed preview + pointer target + marquee | window-listener drag; screen-space pipe/node snap (`pipePick`); Shift locks to a world axis line (incl. Y) |
-| `SelectionHandles.tsx` | Endpoint drag handles + `MoveGizmo` + `RotateGizmo` | `useGroundDrag` window-listener hook wraps `beginGesture`/`endGesture` |
+| `SelectionHandles.tsx` | Endpoint drag handles + `MoveGizmo` + `RotateGizmo` | `useGroundDrag` window-listener hook wraps `beginGesture`/`endGesture`; endpoint handles are **single-select only** (a group/multi selection shows none — Move/Rotate the group as a unit or enter it) |
+| `WireframeLayer.tsx` | Wireframe view (`W`) — pipes as 10px fat lines (drei `<Segments>`=Line2, one draw call) + junctions as 14px round `Points` dots | replaces the solid pipe/fitting/joint layers while `editorStore.wireframe` |
+| `ExtendLayer.tsx` | Extend tool (`P`) push-cylinder gizmos on pipe ends (from `design/extend.extendDirections`); click → `startExtend` (axis-locked draw) | shown only in the `extend` tool; caps to selected-member ends on big models |
+| `GuideLayer.tsx` | Placed guide lines (`Q`) — long dashed axis-coloured lines, always visible as snap aids | reads `editorStore.guides`; the in-progress draft preview lives in `DrawController` |
 
 ## Git state of this dir
 NEW: `InstancedFreeHubs.tsx`, `InstancedWrapJoints.tsx`, `PhysicsDebug.tsx`, `instancing.ts`.

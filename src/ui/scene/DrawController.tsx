@@ -3,8 +3,9 @@ import type { ThreeEvent } from '@react-three/fiber';
 import { useThree } from '@react-three/fiber';
 import { useMemo, useState } from 'react';
 import { CatmullRomCurve3, type Ray, Raycaster, Vector2, Vector3 } from 'three';
-import { attachmentPos, memberById, nodeById } from '../../design/docOps';
+import { attachmentPos, incidentMembers, memberById, nodeById } from '../../design/docOps';
 import { closestAxisPointToRay } from '../../design/dragMath';
+import { guideDrawSpan, perpOffsetM } from '../../design/guides';
 import { marqueeFromDrag, memberSelectedBy, type Pt } from '../../design/marquee';
 import type { SnapResult } from '../../design/snapping';
 import { add, dot, length, scale, sub } from '../../geometry/math3';
@@ -13,9 +14,11 @@ import { easedPos } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
 import {
   clearSelection,
+  pickGuideRef,
   placeDrawPoint,
   placeElasticPoint,
   placeFormedPoint,
+  placeGuide,
   placeMeasurePoint,
   setSelectionGroupAware,
   snapDrawPoint,
@@ -54,7 +57,14 @@ function OutlineCyl({ a, b, r }: { a: Vec3; b: Vec3; r: number }) {
  * an outline around the pipe(s) being snapped TO (planfile draw-mode snapping). */
 function SnapHint({ preview, night }: { preview: SnapResult; night: boolean }) {
   const design = useAppStore.getState().current;
-  const label = preview.kind === 'node' ? 'End' : preview.kind === 'on-pipe' ? 'On Pipe' : null;
+  const label =
+    preview.kind === 'guide'
+      ? 'Guide intersection'
+      : preview.kind === 'node'
+        ? 'End'
+        : preview.kind === 'on-pipe'
+          ? 'On Pipe'
+          : null;
   if (!design || !label) return null;
   const at = (id: string): Vec3 | undefined => easedPos(id) ?? nodeById(design, id)?.position;
   const outlines: { a: Vec3; b: Vec3; r: number }[] = [];
@@ -119,6 +129,10 @@ export function DrawController() {
   const drawLength = useEditorStore((s) => s.drawLength);
   const measureFrom = useEditorStore((s) => s.measureFrom);
   const elasticFrom = useEditorStore((s) => s.elasticFrom);
+  const guideDraft = useEditorStore((s) => s.guideDraft);
+  const guideLength = useEditorStore((s) => s.guideLength);
+  const guideCursor = useEditorStore((s) => s.guideCursor);
+  const setGuideCursor = useEditorStore((s) => s.setGuideCursor);
   const [preview, setPreview] = useState<SnapResult | null>(null);
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
@@ -235,6 +249,10 @@ export function DrawController() {
     if (e.nativeEvent.buttons !== 0) return; // a press drives its own window move
     const g = targetOf(e.ray, e.nativeEvent.clientX, e.nativeEvent.clientY, e.nativeEvent.shiftKey);
     if (!g) return;
+    if (tool === 'guide') {
+      setGuideCursor(g);
+      return;
+    }
     if (tool === 'draw') {
       const snap = snapDrawPoint(g, e.nativeEvent.shiftKey);
       setPreview(snap);
@@ -304,14 +322,39 @@ export function DrawController() {
         startedElastic = true;
       }
     }
+    // guide tool: the FIRST press picks the reference pipe under the cursor; the
+    // second click (pointerup, below) drops the parallel guide
+    let startedGuide = false;
+    if (liveTool === 'guide' && !useEditorStore.getState().guideDraft) {
+      const hit = snapUnderCursor(e.nativeEvent.clientX, e.nativeEvent.clientY);
+      if (hit) {
+        const design = useAppStore.getState().current;
+        const memberId =
+          hit.kind === 'pipe'
+            ? hit.id
+            : design
+              ? incidentMembers(design, hit.id).find((m) => m.kind === 'straight')?.id
+              : undefined;
+        if (memberId) {
+          pickGuideRef(memberId, hit.point);
+          startedGuide = true;
+        }
+      }
+    }
     // any non-drawing tool marquee-selects on an empty-canvas drag; move/rotate
     // additionally switch to the select tool so the drag reads as a selection
     const nonDrawing =
       liveTool !== 'draw' &&
       liveTool !== 'formed' &&
       liveTool !== 'measure' &&
-      liveTool !== 'elastic';
+      liveTool !== 'elastic' &&
+      liveTool !== 'guide';
     const move = (ev: PointerEvent) => {
+      if (liveTool === 'guide') {
+        const g = targetFromClient(ev.clientX, ev.clientY);
+        if (g) setGuideCursor(g);
+        return;
+      }
       if (nonDrawing) {
         if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > CLICK_SLOP_PX) {
           if (useEditorStore.getState().tool !== 'select')
@@ -337,6 +380,14 @@ export function DrawController() {
       window.removeEventListener('pointercancel', up);
       if (ev.button !== 0) return;
       const moved = Math.hypot(ev.clientX - startX, ev.clientY - startY);
+      if (liveTool === 'guide') {
+        // a click while positioning commits the guide; the pick-click doesn't
+        if (useEditorStore.getState().guideDraft && !startedGuide) {
+          const g = targetFromClient(ev.clientX, ev.clientY);
+          if (g) placeGuide(g);
+        }
+        return;
+      }
       if (nonDrawing) {
         if (moved > CLICK_SLOP_PX) {
           // rubber-band: left→right = contained, right→left = touching (CAD)
@@ -476,6 +527,52 @@ export function DrawController() {
                 <sphereGeometry args={[0.012, 12, 10]} />
                 <meshBasicMaterial color="#e08a00" />
               </mesh>
+            </>
+          );
+        })()}
+
+      {/* guide-line placement preview: a parallel axis-snapped line through the
+          cursor + the perpendicular-offset distance (live-typable) */}
+      {tool === 'guide' &&
+        guideDraft &&
+        guideCursor &&
+        (() => {
+          const g = { id: '', origin: guideCursor, dir: guideDraft.dir };
+          const [s0, s1] = guideDrawSpan(g);
+          const axis: 'x' | 'y' | 'z' =
+            guideDraft.dir.x === 1 ? 'x' : guideDraft.dir.y === 1 ? 'y' : 'z';
+          const off = perpOffsetM(guideDraft.refOrigin, guideDraft.dir, guideCursor);
+          return (
+            <>
+              <Line
+                points={[
+                  [s0.x, s0.y, s0.z],
+                  [s1.x, s1.y, s1.z],
+                ]}
+                color={AXIS_COLOR[axis]}
+                lineWidth={1.5}
+                dashed
+                dashSize={0.04}
+                gapSize={0.03}
+              />
+              <Html position={[guideCursor.x, guideCursor.y, guideCursor.z]} center>
+                <div
+                  style={{
+                    padding: '2px 6px',
+                    borderRadius: 6,
+                    font: "500 12px 'IBM Plex Mono', monospace",
+                    background: night ? '#1e2128' : '#fff',
+                    color: night ? '#e8eaf0' : '#1a1d24',
+                    border: `1px solid ${guideLength ? '#2a78d6' : night ? '#33363f' : '#e4e4e7'}`,
+                    boxShadow: guideLength ? '0 0 0 2px rgba(42,120,214,0.35)' : 'none',
+                    whiteSpace: 'nowrap',
+                    pointerEvents: 'none',
+                    transform: 'translate(14px, -14px)',
+                  }}
+                >
+                  {guideLength ? `${guideLength}▏` : formatLengthDisplay(off, lengthDisplay)}
+                </div>
+              </Html>
             </>
           );
         })()}

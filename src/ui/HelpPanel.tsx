@@ -19,10 +19,13 @@ const SHORTCUT_GROUPS: { title: string; items: Shortcut[] }[] = [
     items: [
       { keys: ['V'], label: 'Select tool' },
       { keys: ['D'], label: 'Draw straight pipe' },
+      { keys: ['P'], label: 'Extend / push a pipe out of an end' },
       { keys: ['C'], label: 'Curve (heat-formed spline)' },
       { keys: ['M'], label: 'Move tool (3-axis gizmo)' },
+      { keys: ['R'], label: 'Rotate tool (ring gizmo)' },
       { keys: ['B'], label: 'Bend an existing pipe' },
       { keys: ['T'], label: 'Measure / tape' },
+      { keys: ['Q'], label: 'Guide line' },
       { keys: ['E'], label: 'Elastic band' },
       { keys: ['Space'], label: 'Back to the Select tool' },
     ],
@@ -58,10 +61,17 @@ const SHORTCUT_GROUPS: { title: string; items: Shortcut[] }[] = [
     ],
   },
   {
+    title: 'Guides',
+    items: [
+      { keys: ['Q'], label: 'Guide tool — click a pipe, then place a parallel line' },
+      { keys: ['Shift', 'Q'], label: 'Clear all guide lines' },
+    ],
+  },
+  {
     title: 'Simulate & view',
     items: [
       { keys: ['Ctrl', 'Space'], label: 'Play / stop the physics simulation' },
-      { keys: ['R'], label: 'Reset all pivots (locked mode)' },
+      { keys: ['W'], label: 'Wireframe view (lines + junction dots)' },
       { keys: ['Right-click'], label: 'Open the join / size menu at a junction or pipe' },
     ],
   },
@@ -71,7 +81,15 @@ const SHORTCUT_GROUPS: { title: string; items: Shortcut[] }[] = [
 const CONCEPTS: { title: string; body: string }[] = [
   {
     title: 'Tools',
-    body: 'Draw (D) lays straight SCH 40 pipe; click to place points, or click-drag for one segment. Curve (C) draws heat-formed splines. Move (M) and Rotate translate/spin the selection with a gizmo. Bend (B) drags a bend into an existing pipe. Measure (T) drops a tape dimension. Band (E) adds an elastic.',
+    body: 'Draw (D) lays straight SCH 40 pipe; click to place points, or click-drag for one segment. Extend (P) shows push-cylinders on a pipe end — click one to draw a new pipe locked to that direction. Curve (C) draws heat-formed splines. Move (M) and Rotate (R) translate/spin the selection with a gizmo. Bend (B) drags a bend into an existing pipe. Measure (T) drops a tape dimension. Band (E) adds an elastic. Toggle Wireframe (W) for a lines-and-dots skeleton.',
+  },
+  {
+    title: 'Object tree',
+    body: 'The panel on the left lists every pipe and group. Click to select (Ctrl-click to multi-select); clicking a grouped object enters its group and greys out the rest. Each group carries a subtle colour cast set from its swatch, and the tree has Group / Ungroup buttons.',
+  },
+  {
+    title: 'Guide lines',
+    body: 'With the Guide tool (Q), click a pipe then move the mouse to drop an infinite construction line parallel to it (snapped to the nearest axis); type a distance for an exact offset, click or Enter to place, Shift+Q to clear all. While guides exist, drawing tools snap to where a guide crosses a pipe (shown as "Guide intersection").',
   },
   {
     title: 'Joints',

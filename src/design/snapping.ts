@@ -10,7 +10,15 @@
 import { add, dot, length, scale, sub } from '../geometry/math3';
 import type { Vec3 } from '../schema';
 
-export type SnapKind = 'node' | 'axis-x' | 'axis-y' | 'axis-z' | 'on-pipe' | 'grid' | 'free';
+export type SnapKind =
+  | 'node'
+  | 'axis-x'
+  | 'axis-y'
+  | 'axis-z'
+  | 'on-pipe'
+  | 'grid'
+  | 'free'
+  | 'guide';
 
 export interface SnapNode {
   id: string;
@@ -32,6 +40,9 @@ export interface SnapContext {
   segments: SnapSegment[];
   /** the path's start point, when drawing — enables axis inference */
   fromNode?: Vec3;
+  /** intersection points of guide lines with pipes — snapped to like an END
+   * (highest priority), but reported as kind 'guide' ("Guide intersection") */
+  guidePoints?: Vec3[];
   /** world grid step (m); 0 disables grid snapping */
   gridStepM: number;
   /** radius (m) within which the cursor snaps to a node (a pipe END) */
@@ -80,6 +91,17 @@ export function closestPointOnSegment(p: Vec3, a: Vec3, b: Vec3): Vec3 {
 
 /** Resolve a raw pointer point to a snapped drawing point. */
 export function snapPoint(raw: Vec3, ctx: SnapContext): SnapResult {
+  // 0. guide-line ∩ pipe intersection — treated as an END (highest priority), so
+  //    drawing latches onto where a construction guide crosses a pipe.
+  if (ctx.guidePoints && ctx.pointRadiusM > 0) {
+    let bestGuide: { d: number; p: Vec3 } | null = null;
+    for (const p of ctx.guidePoints) {
+      const d = length(sub(raw, p));
+      if (d <= ctx.pointRadiusM && (!bestGuide || d < bestGuide.d)) bestGuide = { d, p };
+    }
+    if (bestGuide) return { position: bestGuide.p, kind: 'guide' };
+  }
+
   // 1. existing node
   let best: { d: number; node: SnapNode } | null = null;
   for (const n of ctx.nodes) {

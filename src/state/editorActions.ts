@@ -24,6 +24,7 @@ import {
   makeManufacturedJoint as makeManufacturedJointOp,
   measurementEndPos,
   measurePerp,
+  memberById,
   memberEndpoints,
   moveControlPoint,
   nodeById,
@@ -34,8 +35,10 @@ import {
   removeMeasurement,
   resetJoints as resetJointsOp,
   rotateMember,
+  rotateMembers,
   type Subgraph,
   setElasticStiffness as setElasticStiffnessOp,
+  setGroupColor as setGroupColorOp,
   setJoinMode as setJoinModeOp,
   setJointAngle as setJointAngleOp,
   setMeasurementOffset,
@@ -46,6 +49,7 @@ import {
   subgraphExtent,
   swapReceiver as swapReceiverOp,
   translateMember,
+  translateMembers,
   ungroupMembers as ungroupMembersOp,
   weldNodes,
 } from '../design/docOps';
@@ -56,6 +60,8 @@ import {
   nearestAxisKey,
 } from '../design/dragMath';
 import { MIN_BEND_RADIUS_FACTOR } from '../design/formed';
+import { type GuideSegment, guideIntersections, perpUnit, snapDirToAxis } from '../design/guides';
+import { makeId } from '../design/ids';
 import {
   AXIS_BAND_M,
   POINT_RADIUS_M,
@@ -116,6 +122,21 @@ function snapTol(): Pick<SnapContext, 'gridStepM' | 'pointRadiusM' | 'pipeRadius
   };
 }
 
+/** Guide∩pipe intersection points for the CURRENT guides + straight pipes — the
+ * END-priority "Guide intersection" snap targets injected into every draw/measure
+ * snap context. Empty when no guides are placed. */
+function guideSnapPoints(design: Design): Vec3[] {
+  const guides = useEditorStore.getState().guides;
+  if (!guides.length) return [];
+  const segs: GuideSegment[] = [];
+  for (const m of design.members) {
+    if (m.kind !== 'straight') continue;
+    const e = memberEndpoints(design, m);
+    if (e) segs.push({ a: e.a, b: e.b });
+  }
+  return guideIntersections(guides, segs);
+}
+
 function segmentsOf(design: Design, excludeNode?: string): SnapContext['segments'] {
   const out: SnapContext['segments'] = [];
   for (const m of design.members) {
@@ -139,6 +160,7 @@ export function buildDrawSnapContext(): SnapContext {
     nodes: design ? design.nodes.map((n) => ({ id: n.id, position: n.position })) : [],
     segments: design ? segmentsOf(design) : [],
     fromNode: from,
+    guidePoints: design ? guideSnapPoints(design) : [],
     ...snapTol(),
   };
 }
@@ -164,6 +186,23 @@ function prevSegmentDir(fromId: string | null, fromPos: Vec3): Vec3 | null {
  * the cursor runs most along. Overrides proximity inference. */
 export function snapDrawPoint(raw: Vec3, lockAxis = false): SnapResult {
   const ctx = buildDrawSnapContext();
+  // Extend tool: the first segment from the anchor end is hard-locked to the
+  // clicked cylinder's direction — project the cursor onto that ray, grid-snap
+  // the length, and never fall back to proximity/axis inference.
+  const axisLock = useEditorStore.getState().drawAxisLock;
+  if (axisLock && ctx.fromNode) {
+    const dir = normalize(axisLock);
+    const t = dot(sub(raw, ctx.fromNode), dir);
+    const grid = ctx.gridStepM;
+    const snapped = grid > 0 ? Math.round(t / grid) * grid : t;
+    const position = clampGround(add(ctx.fromNode, scale(dir, Math.max(snapped, 0))));
+    const axis = nearestAxisKey(dir);
+    return {
+      position,
+      kind: `axis-${axis}` as SnapResult['kind'],
+      guide: { axis, from: ctx.fromNode, to: position },
+    };
+  }
   if (lockAxis && ctx.fromNode) {
     const fromId = useEditorStore.getState().drawingFromNodeId;
     const extra: Vec3[] = [];
@@ -246,6 +285,8 @@ export function placeDrawPoint(raw: Vec3, lockAxis = false): SnapResult {
     editor.setDrawingFrom(nextId);
   }
   if (startWrap) editor.setDrawStartWrap(null);
+  // the axis lock governs only the FIRST extend segment — release it once placed
+  if (editor.drawAxisLock) editor.setDrawAxisLock(null);
   return snap;
 }
 
@@ -265,6 +306,7 @@ export function finishPath(): void {
   editor.setDrawStartWrap(null);
   editor.setDrawLength('');
   editor.setDrawDirection(null);
+  editor.setDrawAxisLock(null);
 }
 
 /** Complete the current draw segment at an EXACT distance (typed into the length
@@ -297,6 +339,83 @@ export function placeDrawAtDistance(distanceM: number): boolean {
   return true;
 }
 
+/** Begin an axis-locked draw out of an end (the Extend tool clicks a cylinder):
+ * switch to the draw tool, anchor the path at `nodeId`, and lock the FIRST
+ * segment to `dir` (the cylinder's direction). Thereafter it's a normal draw. */
+export function startExtend(nodeId: string, dir: Vec3): void {
+  const ed = useEditorStore.getState();
+  const u = normalize(dir);
+  ed.setTool('draw'); // clears any prior draw state incl. the axis lock
+  ed.setDrawingFrom(nodeId);
+  ed.setDrawStartWrap(null);
+  ed.setDrawAxisLock(u); // first segment locked to the cylinder direction
+  ed.setDrawDirection(u); // so a typed length commits along it right away
+}
+
+// ── guide lines (Q tool: pick a pipe → drop a parallel axis-snapped guide) ───
+
+/** Guide tool step 1: pick a reference pipe (`memberId`) at `point`. Sets the
+ * guide's axis-snapped direction (parallel to the pipe, snapped to the nearest
+ * world axis) and its reference origin, entering placement. */
+export function pickGuideRef(memberId: string, point: Vec3): void {
+  const design = useAppStore.getState().current;
+  if (!design) return;
+  const m = memberById(design, memberId);
+  if (!m) return;
+  const e = memberEndpoints(design, m);
+  if (!e) return;
+  const raw = sub(e.b, e.a);
+  if (length(raw) < 1e-9) return;
+  const dir = snapDirToAxis(normalize(raw));
+  const ed = useEditorStore.getState();
+  ed.setGuideDraft({ refOrigin: point, dir });
+  ed.setGuideLength('');
+}
+
+/** Guide tool step 2: commit a guide through `cursor`, parallel to the picked
+ * pipe (axis-snapped). Clears the in-progress draft. */
+export function placeGuide(cursor: Vec3): void {
+  const ed = useEditorStore.getState();
+  const draft = ed.guideDraft;
+  if (!draft) return;
+  ed.addGuide({ id: makeId('guide'), origin: cursor, dir: draft.dir });
+  ed.setGuideDraft(null);
+  ed.setGuideLength('');
+}
+
+/** Guide tool: commit a guide at an EXACT perpendicular offset (typed distance)
+ * from the reference pipe, on the side of the line the `cursor` is on. Returns
+ * whether a guide was placed. */
+export function placeGuideAtOffset(cursor: Vec3, distanceM: number): boolean {
+  const ed = useEditorStore.getState();
+  const draft = ed.guideDraft;
+  if (!draft || distanceM <= 0) return false;
+  const pu = perpUnit(draft.refOrigin, draft.dir, cursor);
+  if (!pu) return false;
+  ed.addGuide({
+    id: makeId('guide'),
+    origin: add(draft.refOrigin, scale(pu, distanceM)),
+    dir: draft.dir,
+  });
+  ed.setGuideDraft(null);
+  ed.setGuideLength('');
+  return true;
+}
+
+/** Remove every placed guide line (Shift+Q). */
+export function clearGuides(): void {
+  useEditorStore.getState().clearGuides();
+}
+
+/** Abandon an in-progress guide draft without placing it (Esc in the Q tool). */
+export function cancelGuideDraft(): boolean {
+  const ed = useEditorStore.getState();
+  if (!ed.guideDraft) return false;
+  ed.setGuideDraft(null);
+  ed.setGuideLength('');
+  return true;
+}
+
 /** Snap a formed-tool point: like drawing, with axis inference anchored at the
  * previous committed point. */
 export function snapFormedPoint(raw: Vec3): SnapResult {
@@ -307,6 +426,7 @@ export function snapFormedPoint(raw: Vec3): SnapResult {
     nodes: design ? design.nodes.map((n) => ({ id: n.id, position: n.position })) : [],
     segments: design ? segmentsOf(design) : [],
     fromNode,
+    guidePoints: design ? guideSnapPoints(design) : [],
     ...snapTol(),
   });
   return { ...snap, position: clampGround(snap.position) };
@@ -437,6 +557,39 @@ export function exitGroup(): boolean {
   editor.setEnteredGroup(null);
   editor.setSelection([]);
   return true;
+}
+
+/** Set (or clear) a group's colour cast — the object-tree colour picker. */
+export function setGroupColor(groupId: string, color: string | undefined): void {
+  useAppStore.getState().updateCurrent((d) => setGroupColorOp(d, groupId, color));
+}
+
+/** Object-tree click on a member: select it. If it belongs to a group you are
+ * NOT inside, auto-enter that group first (so its siblings grey out and you can
+ * edit the member individually). `additive` toggles it in the current selection. */
+export function selectTreeMember(memberId: string, additive = false): void {
+  const design = useAppStore.getState().current;
+  if (!design) return;
+  const ed = useEditorStore.getState();
+  const g = groupOfMember(design, memberId);
+  if (g && g.id !== ed.enteredGroupId) ed.setEnteredGroup(g.id);
+  else if (!g && ed.enteredGroupId) ed.setEnteredGroup(null);
+  if (additive) {
+    const cur = ed.selectedIds;
+    ed.setSelection(
+      cur.includes(memberId) ? cur.filter((x) => x !== memberId) : [...cur, memberId],
+    );
+  } else ed.setSelection([memberId]);
+}
+
+/** Object-tree click on a group header: select the whole group as a unit (does
+ * NOT enter it — that's a double-click / the enter button). */
+export function selectTreeGroup(groupId: string): void {
+  const design = useAppStore.getState().current;
+  if (!design) return;
+  const ed = useEditorStore.getState();
+  if (ed.enteredGroupId) ed.setEnteredGroup(null);
+  ed.setSelection(groupMemberIds(design, groupId));
 }
 
 /** Add newly-drawn members to the entered group (so intra-group draws union). */
@@ -572,22 +725,22 @@ export function rotateMemberBy(memberId: string, axis: Vec3, angleRad: number, p
 }
 
 /** Translate several members together by `delta` in one undo step (multi-select
- * move). Shared endpoints move once; distinct members each shift. */
+ * / group move). Rigid-body: each unique endpoint/control-point shifts ONCE, so
+ * a node shared by two selected members isn't moved twice (which skews the group). */
 export function translateMembersBy(memberIds: string[], delta: Vec3): void {
-  updateReconciled((d) => memberIds.reduce((acc, id) => translateMember(acc, id, delta), d));
+  updateReconciled((d) => translateMembers(d, memberIds, delta));
 }
 
-/** Rotate several members together about a common `pivot`/`axis` (multi-select
- * rotate), one undo step. */
+/** Rotate several members together about a common `pivot`/`axis` (multi-select /
+ * group rotate), one undo step. Rigid-body: each unique node/control-point turns
+ * ONCE, so a shared node isn't rotated twice (which skews the group). */
 export function rotateMembersBy(
   memberIds: string[],
   axis: Vec3,
   angleRad: number,
   pivot: Vec3,
 ): void {
-  updateReconciled((d) =>
-    memberIds.reduce((acc, id) => rotateMember(acc, id, axis, angleRad, pivot), d),
-  );
+  updateReconciled((d) => rotateMembers(d, memberIds, axis, angleRad, pivot));
 }
 
 /** Delete every selected member in one undo step (multi-select delete). */
@@ -664,6 +817,7 @@ export function snapMeasurePoint(raw: Vec3): SnapResult {
     nodes: design ? design.nodes.map((n) => ({ id: n.id, position: n.position })) : [],
     segments: design ? segmentsOf(design) : [],
     fromNode: undefined,
+    guidePoints: design ? guideSnapPoints(design) : [],
     ...snapTol(),
   });
   return { ...snap, position: clampGround(snap.position) };

@@ -11,6 +11,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.2.0',
+    date: '2026-07-09',
+    changes: [
+      'Fixed a bug where moving or rotating a group skewed the parts inside it (a node shared by two grouped pipes was being transformed twice) — groups now move and spin as one rigid body. Corrupt models with a broken pipe reference are also auto-repaired on load.',
+      'New Object tree on the left lists every pipe and group: click to select, Ctrl-click to multi-select, and clicking a grouped part enters its group and greys out the rest. Each group gets a subtle colour cast you can change with its colour swatch, plus Group / Ungroup buttons.',
+      'Groups now lock their contents: you can only move/rotate a group as a whole until you double-click to enter it. Rotate is now its own tool (R).',
+      'New Extend tool (P): hover a pipe end to see push-cylinders in every open direction, then click one to draw a new pipe locked to that axis.',
+      'New Guide lines (Q): click a pipe to drop an endless construction line parallel to it; type an exact offset, then click to place. Drawing snaps to where guides cross pipes; Shift+Q clears them.',
+      'New Wireframe view (W): see the whole model as clean lines and junction dots.',
+    ],
+  },
+  {
     version: '0.1.19',
     date: '2026-07-09',
     changes: [

@@ -27,8 +27,11 @@ import {
  *     to [].
  * v9: optional `mannequin` (show/collide against a static human body in Play) +
  *     optional `jointDamping` (global friction/drag multiplier for the sim).
- *     Both optional → no required data; old docs migrate untouched. */
-export const SCHEMA_VERSION = 9;
+ *     Both optional → no required data; old docs migrate untouched.
+ * v10: optional `group.color` — a per-group colour cast (hex string) shown in
+ *     the object tree + as a subtle tint in the viewport. Optional → old docs
+ *     migrate untouched (a group with no colour gets an auto-assigned one). */
+export const SCHEMA_VERSION = 10;
 
 /** A junction where pipe ends meet. Position is SI metres. */
 export const nodeSchema = z.object({
@@ -146,6 +149,9 @@ export const viewportSchema = z.object({
 export const groupSchema = z.object({
   id: idSchema,
   memberIds: z.array(idSchema),
+  /** v10: a per-group colour cast (hex, e.g. '#e0794d') shown in the object
+   * tree and as a subtle tint in the viewport. Undefined → auto-assigned. */
+  color: z.string().optional(),
 });
 
 /** v8: one end of an elastic band. Either pinned to a node (`{nodeId}`, a pipe

@@ -51,7 +51,7 @@ export function PivotPanel() {
           <button
             type="button"
             onClick={() => resetPivots()}
-            title="Reset all pivots (R)"
+            title="Reset all pivots"
             aria-label="Reset pivots"
             className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
           >

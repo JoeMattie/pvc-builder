@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 ## Current state
 
@@ -151,14 +151,7 @@ physics logic can be tested and reasoned about without three.js/React/engine typ
 - **Browser verification is scripted, not driven**: assert state through the `window.__pvc` debug hook
   in a single `page.evaluate` (seams: `getDoc`, `getEditor`, `resolveFittings`, `getSolve`,
   `getConflicts`, `setTool`, `setSize`, `setLengthsLocked`, `setPivotAngle`, `loadExample`).
-  Interactive driving only for gesture-feel checks (drag/snap). (The live hook is larger than this
-  list — `getFittings` returns `{fittings, conflicts}`; there is no `loadExample` seam. See
-  `src/state/CONTEXT.md` for the current inventory.)
-- **Live dev bridge (dev-only)**: to debug a *running* session from outside the browser (e.g. from
-  Claude Code), the `apply:'serve'` Vite plugin `vite/pvcBridgePlugin.ts` relays HTTP+SSE over
-  `/__pvc/*` to the browser half in `src/dev/bridgeClient.ts`, which drives `window.__pvc` and can
-  return a full state dump (`__state`). An MCP front-end lives in `tools/pvc-mcp/` (auto-loaded via
-  `.mcp.json`). Never ships to production (tree-shaken / `apply:'serve'`). See `tools/pvc-mcp/README.md`.
+  Interactive driving only for gesture-feel checks (drag/snap).
 - **No creature-specific identifiers or UI strings** — generic examples only (e.g. "camera tripod",
   "cube frame", "articulated arm"), carrying riglab's rule.
 - Log the already-made architectural decisions in **DECISIONS.md** at Phase 0 (see planfile §10).

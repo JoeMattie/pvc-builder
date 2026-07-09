@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { Guide } from '../design/guides';
 import { DEFAULT_GRID_M } from '../design/snapping';
 import { getSnapPref, setSnapPref } from '../persistence/prefs';
 import type { Attachment, MeasurementEnd, NominalSize, Vec3 } from '../schema';
@@ -51,7 +52,9 @@ export type Tool =
   | 'rotate'
   | 'measure'
   | 'bend'
-  | 'elastic';
+  | 'elastic'
+  | 'extend'
+  | 'guide';
 
 /** Camera projection: orthographic isometric by default, one-toggle
  * perspective (planfile §1). */
@@ -96,13 +99,30 @@ export interface EditorState {
   /** the current draw direction (unit, from the path cursor toward the preview) —
    * so a typed length can be committed along it */
   drawDirection: Vec3 | null;
+  /** Extend tool: while set, the FIRST draw segment from the anchor end is locked
+   * to this unit direction (the clicked extend-cylinder). Cleared after one
+   * segment / on finishPath / tool change. */
+  drawAxisLock: Vec3 | null;
   /** running the CrashCat rigid-body simulation (Play mode) */
   simulating: boolean;
   /** dev overlay: draw the physics world (bodies + constraints) via crashcat/three */
   physicsDebug: boolean;
+  /** wireframe view: draw pipes as fat lines + junctions as dots (no solids) */
+  wireframe: boolean;
   /** the group currently ENTERED for editing (double-click) — its members are
    * interactive, everything else fades + is inert. null = not inside any group. */
   enteredGroupId: string | null;
+  /** construction guide lines placed with the Q tool (transient, session-only —
+   * never in the document). Drawing tools snap to guide∩pipe intersections. */
+  guides: Guide[];
+  /** Guide tool: after picking a reference pipe, the line's origin (the picked
+   * point) + axis-snapped direction, while positioning the parallel guide. */
+  guideDraft: { refOrigin: Vec3; dir: Vec3 } | null;
+  /** Guide tool: the typed perpendicular-offset string (like `drawLength`). */
+  guideLength: string;
+  /** Guide tool: the live cursor world point while positioning a guide (in the
+   * store so a typed-length Enter can commit at it). */
+  guideCursor: Vec3 | null;
   /** the in-progress rubber-band selection rectangle (screen/client px), or null */
   marquee: { x0: number; y0: number; x1: number; y1: number } | null;
   /** an open right-click join menu: the pipe end being edited + screen anchor */
@@ -130,9 +150,17 @@ export interface EditorState {
   setBendLengthLock(on: boolean): void;
   setDrawLength(s: string): void;
   setDrawDirection(v: Vec3 | null): void;
+  setDrawAxisLock(v: Vec3 | null): void;
   setSimulating(on: boolean): void;
   setPhysicsDebug(on: boolean): void;
+  setWireframe(on: boolean): void;
+  toggleWireframe(): void;
   setEnteredGroup(groupId: string | null): void;
+  addGuide(guide: Guide): void;
+  clearGuides(): void;
+  setGuideDraft(draft: { refOrigin: Vec3; dir: Vec3 } | null): void;
+  setGuideLength(s: string): void;
+  setGuideCursor(p: Vec3 | null): void;
   setMarquee(m: { x0: number; y0: number; x1: number; y1: number } | null): void;
   openJoinMenu(menu: { nodeId: string; moverId: string; x: number; y: number }): void;
   closeJoinMenu(): void;
@@ -161,9 +189,15 @@ const INITIAL = {
   bendLengthLock: false,
   drawLength: '',
   drawDirection: null as Vec3 | null,
+  drawAxisLock: null as Vec3 | null,
   simulating: false,
   physicsDebug: false,
+  wireframe: false,
   enteredGroupId: null as string | null,
+  guides: [] as Guide[],
+  guideDraft: null as { refOrigin: Vec3; dir: Vec3 } | null,
+  guideLength: '',
+  guideCursor: null as Vec3 | null,
   marquee: null as { x0: number; y0: number; x1: number; y1: number } | null,
   joinMenu: null as { nodeId: string; moverId: string; x: number; y: number } | null,
   sizeMenu: null as { memberIds: string[]; x: number; y: number } | null,
@@ -184,6 +218,11 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
       elasticFrom: tool === 'elastic' ? get().elasticFrom : null,
       drawLength: '',
       drawDirection: null,
+      drawAxisLock: null,
+      // leaving the guide tool ends an in-progress guide (placed guides persist)
+      guideDraft: tool === 'guide' ? get().guideDraft : null,
+      guideLength: tool === 'guide' ? get().guideLength : '',
+      guideCursor: tool === 'guide' ? get().guideCursor : null,
     });
   },
   setProjection(projection) {
@@ -260,6 +299,9 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   setDrawDirection(v) {
     set({ drawDirection: v });
   },
+  setDrawAxisLock(v) {
+    set({ drawAxisLock: v });
+  },
   setSimulating(on) {
     // leaving a drawing tool / selection isn't needed; just toggle the sim
     set({ simulating: on });
@@ -267,8 +309,29 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   setPhysicsDebug(on) {
     set({ physicsDebug: on });
   },
+  setWireframe(on) {
+    set({ wireframe: on });
+  },
+  toggleWireframe() {
+    set({ wireframe: !get().wireframe });
+  },
   setEnteredGroup(groupId) {
     set({ enteredGroupId: groupId });
+  },
+  addGuide(guide) {
+    set({ guides: [...get().guides, guide] });
+  },
+  clearGuides() {
+    set({ guides: [], guideDraft: null, guideLength: '', guideCursor: null });
+  },
+  setGuideDraft(draft) {
+    set({ guideDraft: draft });
+  },
+  setGuideLength(s) {
+    set({ guideLength: s });
+  },
+  setGuideCursor(p) {
+    set({ guideCursor: p });
   },
   setMarquee(m) {
     set({ marquee: m });

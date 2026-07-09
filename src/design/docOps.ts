@@ -473,6 +473,61 @@ export function rotateMember(
   return { ...design, nodes, members };
 }
 
+/** Translate SEVERAL members together as ONE rigid body: the UNION of their
+ * endpoint nodes (and any formed control points) shifts by `delta` exactly
+ * ONCE. This is NOT the same as folding `translateMember` over each id — a node
+ * shared by two selected members would then move twice (2·delta), skewing the
+ * group. Ungrouped nodes incident to the moved members are left untouched. */
+export function translateMembers(design: Design, memberIds: string[], delta: Vec3): Design {
+  if (!memberIds.length) return design;
+  const ids = new Set(memberIds);
+  const move = (p: Vec3): Vec3 => add(p, delta);
+  const nodeIds = new Set<string>();
+  for (const m of design.members) {
+    if (!ids.has(m.id)) continue;
+    nodeIds.add(m.nodeA);
+    nodeIds.add(m.nodeB);
+  }
+  const nodes = design.nodes.map((n) =>
+    nodeIds.has(n.id) ? { ...n, position: move(n.position) } : n,
+  );
+  const members = design.members.map((m) =>
+    ids.has(m.id) && m.kind === 'formed' ? { ...m, controlPoints: m.controlPoints.map(move) } : m,
+  );
+  return { ...design, nodes, members };
+}
+
+/** Rotate SEVERAL members together as ONE rigid body: the UNION of their
+ * endpoint nodes (and any formed control points) turns about `pivot` around
+ * world `axis` exactly ONCE, so a node shared by two selected members isn't
+ * turned twice (which skews the group). See `translateMembers` for the same
+ * shared-node rationale. */
+export function rotateMembers(
+  design: Design,
+  memberIds: string[],
+  axis: Vec3,
+  angleRad: number,
+  pivot: Vec3,
+): Design {
+  if (!memberIds.length || length(axis) < 1e-9) return design;
+  const ids = new Set(memberIds);
+  const k = normalize(axis);
+  const rot = (p: Vec3): Vec3 => rotateAroundAxis(p, pivot, k, angleRad);
+  const nodeIds = new Set<string>();
+  for (const m of design.members) {
+    if (!ids.has(m.id)) continue;
+    nodeIds.add(m.nodeA);
+    nodeIds.add(m.nodeB);
+  }
+  const nodes = design.nodes.map((n) =>
+    nodeIds.has(n.id) ? { ...n, position: rot(n.position) } : n,
+  );
+  const members = design.members.map((m) =>
+    ids.has(m.id) && m.kind === 'formed' ? { ...m, controlPoints: m.controlPoints.map(rot) } : m,
+  );
+  return { ...design, nodes, members };
+}
+
 /** Set a straight member's exact length by moving nodeB along the current
  * A→B axis (nodeA stays put). A degenerate (zero-length) member extends along
  * +X so the edit is still well-defined. */
@@ -1183,6 +1238,40 @@ export function nodeGroupKey(design: Design, nodeId: string): string | null {
 /** Every member id in a group (empty if the group is gone). */
 export function groupMemberIds(design: Design, groupId: string): string[] {
   return design.groups.find((g) => g.id === groupId)?.memberIds ?? [];
+}
+
+/** A palette of distinct, muted hues auto-assigned to groups that carry no
+ * explicit colour (schema v10). Ten well-separated casts. */
+export const GROUP_PALETTE = [
+  '#e0794d',
+  '#4d9de0',
+  '#7bc86c',
+  '#c86cbe',
+  '#d9b64d',
+  '#4dd0c8',
+  '#e05d6f',
+  '#8c6ce0',
+  '#5fb37e',
+  '#d98cae',
+] as const;
+
+/** The effective colour cast of a group: its stored `color`, or a deterministic
+ * palette pick hashed from the group id (stable across reorders/reopens). */
+export function groupColorOf(design: Design, groupId: string): string {
+  const g = design.groups.find((x) => x.id === groupId);
+  if (g?.color) return g.color;
+  let h = 0;
+  for (let i = 0; i < groupId.length; i++) h = (h * 31 + groupId.charCodeAt(i)) >>> 0;
+  return GROUP_PALETTE[h % GROUP_PALETTE.length]!;
+}
+
+/** Set (or clear, with undefined) a group's explicit colour cast. */
+export function setGroupColor(design: Design, groupId: string, color: string | undefined): Design {
+  const idx = design.groups.findIndex((g) => g.id === groupId);
+  if (idx < 0) return design;
+  const groups = [...design.groups];
+  groups[idx] = { ...groups[idx]!, color };
+  return { ...design, groups };
 }
 
 /** Group the given members into ONE new group. Members are first removed from

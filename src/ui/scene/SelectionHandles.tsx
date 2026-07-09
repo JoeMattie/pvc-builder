@@ -606,6 +606,11 @@ export function SelectionHandles() {
   // track eased positions so handles glide with the pipe, not the stepped doc
   useAnim((s) => s.v);
   if (!design) return null;
+  // endpoint / length editing is single-member only: a MULTI-select or a whole
+  // group selection exposes no per-end handles (you'd be editing a group's guts
+  // without entering it). Move/Rotate the group as a unit, or double-click to
+  // enter the group and edit its members individually.
+  if (selectedIds.length !== 1) return null;
   const member = selectedIds[0] ? memberById(design, selectedIds[0]) : undefined;
   // endpoint move + length editing for BOTH straight and formed pipes (a bent
   // pipe extends by dragging its ends, just like a straight one; its bend shape

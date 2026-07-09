@@ -76,9 +76,71 @@ export const migrations: Record<number, Migration> = {
   // v8 → v9: added optional `mannequin` + `jointDamping`. Both optional → an old
   // doc is already a valid v9 doc; stamp only.
   8: (doc) => doc,
+  // v9 → v10: added optional `group.color`. Optional → an old doc is already a
+  // valid v10 doc; stamp only.
+  9: (doc) => doc,
 };
 
 export class MigrationError extends Error {}
+
+/** Heal referential-integrity corruption that Zod can't catch (ids are just
+ * strings, so a member pointing at a deleted node still validates). Runs on
+ * EVERY load — DB and import — after the version migrations. Pure JSON, no app
+ * imports (same rule as the migrations), so it stays version-agnostic forever.
+ *
+ * Drops any member whose endpoint node no longer exists, then cascades: joints,
+ * elastics, groups, and measurements that reference a removed member/node are
+ * pruned too (mirroring `deleteMember`'s own cascade). Idempotent on clean
+ * documents. */
+export function healIntegrity(doc: Record<string, unknown>): Record<string, unknown> {
+  const nodes = Array.isArray(doc.nodes) ? (doc.nodes as Record<string, unknown>[]) : null;
+  const members = Array.isArray(doc.members) ? (doc.members as Record<string, unknown>[]) : null;
+  if (!nodes || !members) return doc;
+
+  const nodeIds = new Set(nodes.map((n) => n.id));
+  const keptMembers = members.filter((m) => nodeIds.has(m.nodeA) && nodeIds.has(m.nodeB));
+  if (keptMembers.length === members.length) return doc; // nothing dangling → no-op
+
+  const memberIds = new Set(keptMembers.map((m) => m.id));
+  const out: Record<string, unknown> = { ...doc, members: keptMembers };
+
+  if (Array.isArray(doc.joints)) {
+    out.joints = (doc.joints as Record<string, unknown>[]).filter(
+      (j) => memberIds.has(j.receiver) && memberIds.has(j.mover) && nodeIds.has(j.nodeId),
+    );
+  }
+  const attachAlive = (att: unknown): boolean => {
+    if (!att || typeof att !== 'object') return false;
+    const a = att as Record<string, unknown>;
+    return 'nodeId' in a ? nodeIds.has(a.nodeId) : memberIds.has(a.memberId);
+  };
+  if (Array.isArray(doc.elastics)) {
+    out.elastics = (doc.elastics as Record<string, unknown>[]).filter(
+      (e) => attachAlive(e.a) && attachAlive(e.b),
+    );
+  }
+  if (Array.isArray(doc.groups)) {
+    out.groups = (doc.groups as Record<string, unknown>[])
+      .map((g) => ({
+        ...g,
+        memberIds: (Array.isArray(g.memberIds) ? g.memberIds : []).filter((id) =>
+          memberIds.has(id),
+        ),
+      }))
+      .filter((g) => (g.memberIds as unknown[]).length > 0);
+  }
+  const endAlive = (end: unknown): boolean => {
+    if (!end || typeof end !== 'object') return false;
+    const e = end as Record<string, unknown>;
+    return 'nodeId' in e ? nodeIds.has(e.nodeId) : true; // a free {position} end is fine
+  };
+  if (Array.isArray(doc.measurements)) {
+    out.measurements = (doc.measurements as Record<string, unknown>[]).filter(
+      (m) => endAlive(m.a) && endAlive(m.b),
+    );
+  }
+  return out;
+}
 
 /** Run the migration chain from `from` (exclusive of `to`), stamping the new
  * schemaVersion after each step. Exported so chaining/stamping/missing-step
@@ -118,6 +180,7 @@ export function migrateToLatest(
     );
   }
   doc = applyMigrations(doc, version, SCHEMA_VERSION, registry);
+  doc = healIntegrity(doc);
   const parsed = designSchema.safeParse(doc);
   if (!parsed.success) {
     throw new MigrationError(`design failed validation: ${parsed.error.message}`);

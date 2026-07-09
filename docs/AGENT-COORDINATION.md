@@ -49,4 +49,4 @@ _Add a row when you start; delete it when merged. Keep it current — a stale cl
 
 | Branch | What landed | Merged |
 |---|---|---|
-| _(none yet)_ | — | — |
+| main (direct) | Dev-only live bridge: `vite/pvcBridgePlugin.ts` + `src/dev/bridgeClient.ts` + `tools/pvc-mcp/` + `.mcp.json` (query/drive a running session from Claude Code) | 2026-07-09 (uncommitted) |

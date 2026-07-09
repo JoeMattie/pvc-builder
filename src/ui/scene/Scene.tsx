@@ -44,8 +44,10 @@ import { useThemeStore } from '../../state/themeStore';
 import { GROUND_SIZE_M, scenePalette } from '../theme';
 import { DrawController } from './DrawController';
 import { ElasticLayer } from './ElasticLayer';
+import { ExtendLayer } from './ExtendLayer';
 import { FittingLayer } from './FittingLayer';
 import { FormedLayer } from './FormedLayer';
+import { GuideLayer } from './GuideLayer';
 import { InstancedFreeHubs } from './InstancedFreeHubs';
 import { InstancedWrapJoints } from './InstancedWrapJoints';
 import { IntersectionLayer } from './IntersectionLayer';
@@ -55,6 +57,7 @@ import { MeasureLayer } from './MeasureLayer';
 import { PhysicsDebug } from './PhysicsDebug';
 import { PipeLayer } from './PipeLayer';
 import { MoveGizmo, RotateGizmo, SelectionHandles } from './SelectionHandles';
+import { WireframeLayer } from './WireframeLayer';
 
 /** The infinite reference grid. Sits at the design ground (y=0) normally; during
  * a physics run it drops to the sim floor (just below the model) so pipes rest on
@@ -93,6 +96,7 @@ export function Scene() {
   // every frame) from re-rendering the grid, gizmo, cameras, and lights.
   const projection = useEditorStore((s) => s.projection);
   const tool = useEditorStore((s) => s.tool);
+  const wireframe = useEditorStore((s) => s.wireframe);
   const night = useThemeStore((s) => s.night);
   const pal = scenePalette(night);
   // Viewport pixel height, to match ortho zoom ⇄ perspective distance on toggle.
@@ -138,16 +142,25 @@ export function Scene() {
 
       <GroundGrid pal={pal} />
 
-      <PipeLayer />
-      <FormedLayer />
-      <FittingLayer />
-      <JointLayer />
-      <InstancedFreeHubs />
-      <InstancedWrapJoints />
+      {/* wireframe view replaces the solid pipe/fitting/joint layers with a
+          fat-line + junction-dot skeleton */}
+      {wireframe ? (
+        <WireframeLayer />
+      ) : (
+        <>
+          <PipeLayer />
+          <FormedLayer />
+          <FittingLayer />
+          <JointLayer />
+          <InstancedFreeHubs />
+          <InstancedWrapJoints />
+        </>
+      )}
       <IntersectionLayer />
       <MeasureLayer />
       <ElasticLayer />
       <MannequinLayer />
+      <GuideLayer />
 
       {/* ground-plane pointer target + shadow catcher + draw preview */}
       <DrawController />
@@ -157,6 +170,8 @@ export function Scene() {
       {/* move-tool translate gizmo / rotate-tool ring gizmo on the selection */}
       {tool === 'move' && <MoveGizmo />}
       {tool === 'rotate' && <RotateGizmo />}
+      {/* extend-tool push cylinders on pipe ends */}
+      {tool === 'extend' && <ExtendLayer />}
 
       {/* middle = pan, right = free rotate; left is reserved (drawing / select
           / future marquee), so it never orbits. `key={projection}` remounts the

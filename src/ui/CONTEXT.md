@@ -20,7 +20,8 @@ siblings.
 | `SelectionPanel.tsx` (221) | Selected-member inspector — editable length, bend warnings, joint-mode controls | controlled draft string synced from geometry |
 | `PivotPanel.tsx` (101) | Locked-mode pivot controls — mobility readout + per-wrapped-joint angle slider | free joints get no slider (posed by dragging) |
 | `ElasticPanel.tsx` (—) | Selected elastic-band controls — tension (stiffness) slider + current/rest span + delete | shown when `selectedElasticId` set; drives `setElasticTension` |
-| `Pillbox.tsx` (104) | Bottom-center tool + size pillbox | sizes hardcoded `['1/2"','3/4"']` |
+| `Pillbox.tsx` (104) | Bottom-center tool + size pillbox | sizes hardcoded `['1/2"','3/4"']`; tools incl. Extend (P), Rotate (R), Guide (Q) |
+| `ObjectTree.tsx` | Left-side tree of pipes + groups — click/Ctrl-click selects, grouped click auto-enters the group, per-group colour swatch/picker, Group/Ungroup buttons | subscribes to a STRUCTURAL doc signature (not positions) so a drag doesn't churn the list |
 | `HelpPanel.tsx` (—) | Self-contained modal help / keyboard-shortcut reference (no network) | opened by the editor `?` button (EditorShell top-right) + the ProjectList "Guide" button; keep the shortcut list in sync with EditorShell's keydown handler |
 | `JoinMenu.tsx` (120) | Right-click join menu (Anchor/Wrapped/Free) — opens only at a shared junction / joint hardware | options gated by `joinContext` geometry |
 | `SizeMenu.tsx` (—) | Right-click size switcher (1/2"↔3/4") for a pipe or the whole multi-selection | opens on a pipe body / lone end; drives `setMembersSize` |
@@ -42,8 +43,9 @@ siblings.
 - **`EditorShell` subscribes to individual scalars, not the whole doc** (comment lines ~89-90) so
   per-frame drag mutations don't re-render the chrome. Preserve when adding state.
 - **Right mouse button is globally hijacked** to end a path + suppress the context menu (right-drag
-  still orbits). Keyboard shortcuts (V/D/M/B/T/E/C/G/H/R, space, Esc/Enter, Delete, undo/redo) bound
-  here — **E** = elastic-band tool; **Delete** removes a selected band (as well as a member/measurement).
+  still orbits). Keyboard shortcuts (V/D/P/C/M/R/B/T/Q/E/W/G, space, Esc/Enter, Delete, undo/redo) bound
+  here — **R** = Rotate tool, **P** = Extend, **Q** = Guide (Shift+Q clears guides), **W** = Wireframe,
+  **E** = elastic band; **Delete** removes a selected band (as well as a member/measurement).
 - **`units.ts` is display-only** — never let a UI unit change what's stored. Factors are exact
   international definitions; don't round them.
 - **`theme.ts` holds hardcoded three.js scene color literals** per day/night — edit these (not CSS)

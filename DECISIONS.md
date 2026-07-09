@@ -4,6 +4,72 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Group tooling, object tree, Extend / Wireframe / Guide tools (2026-07-09)
+
+A batch of editor features + two group bug fixes (schema → v10).
+
+- **Group transform skew — root cause + fix.** `translateMembersBy`/`rotateMembersBy` folded a
+  PER-MEMBER `translateMember`/`rotateMember` over the selection, so a node shared by two selected
+  members was transformed TWICE (2·delta / double rotation) → the group skewed. Replaced with pure
+  rigid-body `translateMembers`/`rotateMembers` in `docOps` that move the UNION of endpoints + formed
+  control points exactly once. Covered by `docOps.test.ts`. (The reported raptor model also carried a
+  dangling member — see integrity heal below — but that was NOT the skew; the shared-node double
+  transform was.)
+- **Referential-integrity heal on load.** Zod can't catch a member pointing at a deleted node (ids are
+  plain strings), so a corrupt member survived every load. `migrations.healIntegrity` (pure JSON, no
+  app imports — same rule as the migrations) runs after the version chain on EVERY load and drops
+  members with a missing endpoint, cascading to joints/elastics/groups/measurements. Idempotent.
+- **Groups can't be edited unless entered.** `SelectionHandles` now renders endpoint/length handles
+  only for a SINGLE selected member; a whole-group (multi) selection exposes no per-end handles — you
+  Move/Rotate the group as a unit, or double-click to enter it and edit members individually. Group is
+  an ACTION (button in the object tree + G / Shift+G), not a persistent pillbox mode.
+- **`R` rebound to the Rotate tool** (was Reset-pivots; that stays a button in `PivotPanel`).
+- **Object tree (`ObjectTree.tsx`, left).** Lists pipes + groups; click selects (Ctrl-click
+  multi-select); a grouped object auto-enters its group and greys the rest. Subscribes to a STRUCTURAL
+  signature string of the doc (not positions) so a per-frame drag never re-renders the list. Per-group
+  colour cast (schema **v10** optional `group.color`, else a deterministic palette pick hashed from the
+  group id — `groupColorOf`) with an inline colour picker; shown as a subtle viewport tint in
+  `PipeLayer`.
+- **Extend (push) tool — `P`.** Pure `design/extend.ts` computes the push directions from an end: the
+  6 world axes + a continuation opposite each incident pipe, MINUS any direction that points along an
+  existing pipe (would protrude into it). `ExtendLayer` shows them as translucent stub cylinders (60%
+  of the pipe diameter, ~1"); clicking one calls `startExtend`, which enters the Draw tool anchored at
+  the end with the FIRST segment axis-locked (`editorStore.drawAxisLock`, honoured in `snapDrawPoint`).
+- **Wireframe view — `W`.** `editorStore.wireframe` swaps the solid pipe/fitting/joint layers for
+  `WireframeLayer`: 10px fat lines (drei `<Segments>` = Line2, one draw call) + 14px round junction
+  dots (a `Points` with a canvas alpha texture). Viewport selection there uses the object tree.
+- **Guide lines — `Q`, Shift+`Q` clears.** Transient (session, never in the doc) construction lines in
+  `editorStore.guides`. Pure `design/guides.ts`: `snapDirToAxis`, `guideIntersections` (line∩segment
+  closest-point), `perpOffsetM`/`perpUnit`. Pick a pipe → drop an infinite line parallel to it,
+  axis-snapped, at a typed/dragged perpendicular offset. Drawing tools snap to guide∩pipe intersections
+  as an END-priority `kind:'guide'` (new `SnapContext.guidePoints`), labelled "Guide intersection".
+
+## Live dev bridge to a running session (2026-07-09)
+
+- **A dev-only client↔server bridge exposes the running app to an external process** (Claude Code /
+  curl / any MCP client), so the live model, selection, and every `window.__pvc` seam can be queried
+  and driven from outside the browser during local debugging. Three pieces, all dev-only:
+  - `vite/pvcBridgePlugin.ts` — the relay hub, an `apply:'serve'` Vite plugin (`configureServer`).
+    Native SSE + `fetch`, **no new browser/runtime dep**. Routes under `/__pvc/*`: `commands` (SSE to
+    browser), `result`/`event` (POST from browser), `call` (external → seam RPC, correlated + 15s
+    timeout), `stream` (SSE fan-out), `events?since=` (pull buffer), `health`. The `PendingRegistry`
+    + `EventRing` cores are pure and unit-tested (`vite/pvcBridgePlugin.test.ts`).
+  - `src/dev/bridgeClient.ts` — the browser half, loaded only via `import.meta.env.DEV` dynamic import
+    in `main.tsx` (tree-shaken from prod). Executes commands against `window.__pvc` (pointer/script
+    parity preserved — **actions still route through the hook**), answers a synthetic `__state` with
+    the FULL dump assembled from the stores (fixes `getEditor` exposing only 8 of ~24 fields), and
+    streams throttled `doc`/`editor` change events.
+  - `tools/pvc-mcp/server.mjs` + `.mcp.json` — an MCP stdio front-end proxying the HTTP hub; 18 tools
+    (`pvc_get_state`, `pvc_call` escape hatch, typed convenience wrappers, `pvc_recent_events`).
+- **Why dev-only, not a shipped feature**: production stays static/no-network (a standing invariant).
+  The plugin never runs during `vite build`; the client is dropped by the DEV guard — verified: no
+  bridge strings in `dist/`.
+- **Transport choice — SSE + `fetch` over WebSocket**: zero new browser dep, native `EventSource`,
+  fits the minimal-deps ethos. Only new dep is `@modelcontextprotocol/sdk@1.29.0` (exact-pinned,
+  **devDependencies**), used solely by the node MCP server.
+- **Most-recent browser connection wins** on the command channel (two tabs would fight — documented;
+  single-tab dev use). No auth (localhost-only, solo dev) — noted as a future option.
+
 ## Post-batch fixes (2026-07-08)
 
 - **Project Raptor templates, phases 3–5 — the full balance-tuned costume** (v0.1.19). Added

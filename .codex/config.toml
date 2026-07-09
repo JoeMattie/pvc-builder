@@ -1,0 +1,6 @@
+[mcp_servers.pvc]
+command = "bash"
+args = [
+    "-c",
+    'export NVM_DIR="$HOME/.config/nvm"; . "$NVM_DIR/nvm.sh"; exec node tools/pvc-mcp/server.mjs',
+]

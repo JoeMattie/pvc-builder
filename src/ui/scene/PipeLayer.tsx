@@ -10,7 +10,13 @@ import { type ThreeEvent, useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import { Color, type InstancedMesh, Matrix4, Raycaster, Vector2, Vector3 } from 'three';
 import { endCapAllowanceM } from '../../design/bom';
-import { groupOfMember, incidentMembers, memberById, nodeById } from '../../design/docOps';
+import {
+  groupColorOf,
+  groupOfMember,
+  incidentMembers,
+  memberById,
+  nodeById,
+} from '../../design/docOps';
 import { add, dot, length, normalize, scale, sub } from '../../geometry/math3';
 import { pipeSpec, type Vec3 } from '../../schema';
 import { easedPos } from '../../state/animStore';
@@ -74,26 +80,34 @@ function InstancedPipes() {
     mesh.instanceMatrix.needsUpdate = true;
   });
 
-  // per-instance colour: white PVC (theme) or select-blue; set on change only
+  // per-instance colour: white PVC (theme), a subtle per-group cast, or select-
+  // blue; faded when a different group is entered. Set on change only.
   useEffect(() => {
     const mesh = meshRef.current;
-    if (!mesh || !structural) return;
+    if (!mesh || !structural || !design) return;
     const selected = new Set(selectedIds);
     const base = new Color(color);
     const sel = new Color(SELECT_BLUE);
     const faded = new Color(color).lerp(new Color(scenePalette(night).viewport), 0.82);
+    // memberId → subtle tint of its group's colour (base lerped 32% toward it)
+    const tint = new Map<string, Color>();
+    for (const g of design.groups) {
+      const gc = new Color(color).lerp(new Color(groupColorOf(design, g.id)), 0.32);
+      for (const id of g.memberIds) tint.set(id, gc);
+    }
     for (let i = 0; i < structural.cylinders.length; i++) {
       const cyl = structural.cylinders[i];
       if (!cyl) continue;
       const dim = activeSet && !activeSet.has(cyl.memberId);
-      mesh.setColorAt(i, dim ? faded : selected.has(cyl.memberId) ? sel : base);
+      const c = dim ? faded : selected.has(cyl.memberId) ? sel : (tint.get(cyl.memberId) ?? base);
+      mesh.setColorAt(i, c);
     }
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  }, [structural, selectedIds, color, activeSet, night]);
+  }, [structural, selectedIds, color, activeSet, night, design]);
 
   if (!design || !structural || count === 0) return null;
 
-  const editing = tool === 'select' || tool === 'move' || tool === 'rotate';
+  const editing = tool === 'select' || tool === 'move' || tool === 'rotate' || tool === 'extend';
   const memberOf = (ev: ThreeEvent<MouseEvent>): string | undefined =>
     ev.instanceId == null ? undefined : structural.cylinders[ev.instanceId]?.memberId;
 

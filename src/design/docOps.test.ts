@@ -35,6 +35,7 @@ import {
   removeMeasurement,
   resetJoints,
   rotateMember,
+  rotateMembers,
   setElasticStiffness,
   setJoinMode,
   setJointAngle,
@@ -47,6 +48,7 @@ import {
   subgraphExtent,
   swapReceiver,
   translateMember,
+  translateMembers,
   ungroupMembers,
   weldNodes,
 } from './docOps';
@@ -492,6 +494,55 @@ describe('translateMember', () => {
     expect(a.position).toEqual(V(0.1, 0.5, -0.2));
     expect(b.position).toEqual(V(0.4, 0.5, -0.2));
     expect(memberLengthM(out, m)).toBeCloseTo(before, 9);
+  });
+});
+
+describe('rigid-body multi-member transforms (group move/rotate)', () => {
+  // Two members sharing a middle node — the case that skewed before the fix:
+  // folding a per-member transform moved the shared node twice.
+  it('translateMembers shifts a shared node ONCE (no skew)', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0), V(1, 0, 1)]);
+    const sharedId = design.members[0]!.nodeB; // == members[1].nodeA
+    expect(sharedId).toBe(design.members[1]!.nodeA);
+    const delta = V(0.2, 0.3, -0.1);
+    const out = translateMembers(design, memberIds, delta);
+    // every original node moved by EXACTLY delta (shared node not doubled)
+    for (const n of design.nodes) {
+      const after = nodeById(out, n.id)!.position;
+      expect(after.x).toBeCloseTo(n.position.x + delta.x, 9);
+      expect(after.y).toBeCloseTo(n.position.y + delta.y, 9);
+      expect(after.z).toBeCloseTo(n.position.z + delta.z, 9);
+    }
+    // both members keep their length — the shape is rigid, not skewed
+    expect(memberLengthM(out, out.members[0]!)).toBeCloseTo(1, 9);
+    expect(memberLengthM(out, out.members[1]!)).toBeCloseTo(1, 9);
+  });
+
+  it('rotateMembers turns a shared node ONCE, preserving both lengths (no skew)', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0), V(1, 0, 1)]);
+    const before0 = memberLengthM(design, design.members[0]!);
+    const before1 = memberLengthM(design, design.members[1]!);
+    const pivot = V(0, 0, 0);
+    const out = rotateMembers(design, memberIds, V(0, 1, 0), Math.PI / 2, pivot);
+    // lengths preserved — a doubled shared-node rotation would change them
+    expect(memberLengthM(out, out.members[0]!)).toBeCloseTo(before0, 6);
+    expect(memberLengthM(out, out.members[1]!)).toBeCloseTo(before1, 6);
+    // 90° about +Y about the origin: (1,0,0) → (0,0,-1)
+    const shared = nodeById(out, design.members[0]!.nodeB)!.position;
+    expect(shared.x).toBeCloseTo(0, 6);
+    expect(shared.z).toBeCloseTo(-1, 6);
+  });
+
+  it('leaves a node incident only to an unselected member untouched', () => {
+    // two disjoint members; rotate only the first
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0)]);
+    const two = appendPipe(design, design.members[0]!.nodeB, V(1, 0, 1), '3/4"');
+    const withStray = two.design;
+    const strayFar = two.nodeId;
+    const before = nodeById(withStray, strayFar)!.position;
+    const out = rotateMembers(withStray, [memberIds[0]!], V(0, 1, 0), Math.PI / 2, V(0, 0, 0));
+    // the stray member's far node (not shared with member 0) is unchanged
+    expect(nodeById(out, strayFar)!.position).toEqual(before);
   });
 });
 

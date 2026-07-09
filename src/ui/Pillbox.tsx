@@ -1,9 +1,11 @@
 import {
+  ArrowUpFromDot,
   Cable,
   CornerUpRight,
   MousePointer2,
   Move3d,
   Pencil,
+  PenLine,
   RotateCw,
   Ruler,
   Spline,
@@ -18,11 +20,13 @@ const SIZES: NominalSize[] = ['1/2"', '3/4"'];
 const TOOLS: { id: Tool; icon: ComponentType<{ size?: number }>; label: string; key?: string }[] = [
   { id: 'select', icon: MousePointer2, label: 'Select', key: 'V' },
   { id: 'draw', icon: Pencil, label: 'Draw', key: 'D' },
+  { id: 'extend', icon: ArrowUpFromDot, label: 'Extend', key: 'P' },
   { id: 'move', icon: Move3d, label: 'Move', key: 'M' },
-  { id: 'rotate', icon: RotateCw, label: 'Rotate' },
+  { id: 'rotate', icon: RotateCw, label: 'Rotate', key: 'R' },
   { id: 'formed', icon: Spline, label: 'Curve', key: 'C' },
   { id: 'bend', icon: CornerUpRight, label: 'Bend', key: 'B' },
   { id: 'measure', icon: Ruler, label: 'Measure', key: 'T' },
+  { id: 'guide', icon: PenLine, label: 'Guide', key: 'Q' },
   { id: 'elastic', icon: Cable, label: 'Band', key: 'E' },
 ];
 

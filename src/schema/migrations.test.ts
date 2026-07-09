@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createEmptyDesign, SCHEMA_VERSION } from './design';
 import {
   applyMigrations,
+  healIntegrity,
   type Migration,
   MigrationError,
   migrateToLatest,
@@ -251,6 +252,36 @@ describe('applyMigrations', () => {
 
   it('throws when a step is missing', () => {
     expect(() => applyMigrations({}, 1, 2, {})).toThrow(MigrationError);
+  });
+});
+
+describe('healIntegrity (referential corruption Zod cannot catch)', () => {
+  it('drops a member pointing at a missing node and cascades', () => {
+    const doc = {
+      ...createEmptyDesign('d', 'Corrupt'),
+      nodes: [
+        { id: 'n0', position: { x: 0, y: 0, z: 0 } },
+        { id: 'n1', position: { x: 1, y: 0, z: 0 } },
+      ],
+      members: [
+        { id: 'good', kind: 'straight', nodeA: 'n0', nodeB: 'n1', size: '3/4"' },
+        // nodeB references a node that doesn't exist → dangling
+        { id: 'bad', kind: 'straight', nodeA: 'n0', nodeB: 'gone', size: '3/4"' },
+      ],
+      joints: [
+        { id: 'j', nodeId: 'n0', receiver: 'good', mover: 'bad', onBody: true, mode: 'anchor' },
+      ],
+      groups: [{ id: 'g', memberIds: ['good', 'bad'] }],
+    } as unknown as Record<string, unknown>;
+    const out = migrateToLatest(JSON.parse(JSON.stringify(doc)));
+    expect(out.members.map((m) => m.id)).toEqual(['good']);
+    expect(out.joints).toHaveLength(0); // joint referenced the dropped member
+    expect(out.groups[0]!.memberIds).toEqual(['good']); // pruned from group
+  });
+
+  it('is a no-op on a clean document', () => {
+    const doc = healIntegrity({ nodes: [], members: [] });
+    expect(doc).toEqual({ nodes: [], members: [] });
   });
 });
 

@@ -15,6 +15,7 @@ import {
   Square,
   Sun,
   Undo2,
+  Waypoints,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { bom } from '../design/bom';
@@ -30,6 +31,8 @@ import { useAppStore } from '../state/appStore';
 import { requestPose, resetPose, setView, type ViewName } from '../state/cameraStore';
 import {
   bendMemberAt,
+  cancelGuideDraft,
+  clearGuides,
   clearSelection,
   copySelection,
   cutSelection,
@@ -54,8 +57,9 @@ import {
   placeDrawPoint,
   placeElasticPoint,
   placeFormedPoint,
+  placeGuide,
+  placeGuideAtOffset,
   placeMeasurePoint,
-  resetPivots,
   rotateMemberBy,
   selectMember,
   setElasticTension,
@@ -82,6 +86,7 @@ import { ElasticPanel } from './ElasticPanel';
 import { HelpPanel } from './HelpPanel';
 import { JoinMenu } from './JoinMenu';
 import { downloadFile } from './lib/download';
+import { ObjectTree } from './ObjectTree';
 import { Pillbox } from './Pillbox';
 import { PivotPanel } from './PivotPanel';
 import { SelectionPanel } from './SelectionPanel';
@@ -156,6 +161,8 @@ export function EditorShell() {
   const setSimulating = useEditorStore((s) => s.setSimulating);
   const physicsDebug = useEditorStore((s) => s.physicsDebug);
   const setPhysicsDebug = useEditorStore((s) => s.setPhysicsDebug);
+  const wireframe = useEditorStore((s) => s.wireframe);
+  const toggleWireframe = useEditorStore((s) => s.toggleWireframe);
   const mannequin = useAppStore((s) => s.current?.mannequin ?? false);
   const jointDamping = useAppStore((s) => s.current?.jointDamping ?? 1);
 
@@ -172,7 +179,7 @@ export function EditorShell() {
     const vp = doc.viewport;
     if (vp?.projection === 'perspective' || vp?.projection === 'ortho')
       ed.setProjection(vp.projection);
-    const TOOLS = ['select', 'draw', 'formed', 'move', 'rotate'];
+    const TOOLS = ['select', 'draw', 'formed', 'move', 'rotate', 'extend', 'guide'];
     if (vp?.tool && TOOLS.includes(vp.tool)) ed.setTool(vp.tool as never);
     if (vp?.drawSize) ed.setDrawSize(vp.drawSize);
     const cam = vp?.camera;
@@ -291,6 +298,45 @@ export function EditorShell() {
         }
       }
 
+      // Shift+Q clears every placed guide line (works in any tool / mid-draft)
+      if (e.key === 'Q' && e.shiftKey) {
+        clearGuides();
+        e.preventDefault();
+        return;
+      }
+      // guide tool typed-offset entry: digits/units type into the guide length
+      // pill; Enter commits the guide at that perpendicular offset (must run
+      // BEFORE the tool hotkeys so 'q'/units don't switch tools mid-entry)
+      if (editor.tool === 'guide' && editor.guideDraft) {
+        const cursor = editor.guideCursor;
+        if (e.key === 'Enter' && cursor) {
+          if (editor.guideLength) {
+            const doc = useAppStore.getState().current;
+            const m = doc ? parseLength(editor.guideLength, doc.lengthDisplay) : null;
+            if (m && m > 0 && placeGuideAtOffset(cursor, m)) {
+              e.preventDefault();
+              return;
+            }
+          } else {
+            placeGuide(cursor);
+            e.preventDefault();
+            return;
+          }
+        } else if (e.key === 'Backspace' && editor.guideLength) {
+          editor.setGuideLength(editor.guideLength.slice(0, -1));
+          e.preventDefault();
+          return;
+        } else if (e.key === 'Escape') {
+          cancelGuideDraft();
+          e.preventDefault();
+          return;
+        } else if (e.key.length === 1 && /[0-9./'" a-z]/i.test(e.key)) {
+          editor.setGuideLength(editor.guideLength + e.key);
+          e.preventDefault();
+          return;
+        }
+      }
+
       if (e.key === 'Escape' || e.key === 'Enter') {
         if (editor.drawingFromNodeId) finishPath();
         else if (editor.formedPoints.length) finishFormed();
@@ -324,7 +370,13 @@ export function EditorShell() {
       } else if (e.key === 'e' || e.key === 'E') {
         editor.setTool('elastic');
       } else if (e.key === 'r' || e.key === 'R') {
-        resetPivots();
+        editor.setTool('rotate');
+      } else if (e.key === 'p' || e.key === 'P') {
+        editor.setTool('extend');
+      } else if (e.key === 'q' || e.key === 'Q') {
+        editor.setTool('guide');
+      } else if (e.key === 'w' || e.key === 'W') {
+        editor.toggleWireframe();
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         if (editor.selectedMeasurementId) deleteMeasurement(editor.selectedMeasurementId);
         else if (editor.selectedElasticId) deleteElastic(editor.selectedElasticId);
@@ -392,7 +444,17 @@ export function EditorShell() {
       }));
     };
     hook.setTool = (
-      tool: 'select' | 'draw' | 'formed' | 'move' | 'rotate' | 'measure' | 'bend' | 'elastic',
+      tool:
+        | 'select'
+        | 'draw'
+        | 'formed'
+        | 'move'
+        | 'rotate'
+        | 'measure'
+        | 'bend'
+        | 'elastic'
+        | 'extend'
+        | 'guide',
     ) => useEditorStore.getState().setTool(tool);
     hook.setProjection = (p: 'ortho' | 'perspective') => useEditorStore.getState().setProjection(p);
     hook.setView = (name: ViewName) => setView(name);
@@ -504,6 +566,7 @@ export function EditorShell() {
     // physics seams
     hook.setSimulating = (on: boolean) => useEditorStore.getState().setSimulating(on);
     hook.setPhysicsDebug = (on: boolean) => useEditorStore.getState().setPhysicsDebug(on);
+    hook.setWireframe = (on: boolean) => useEditorStore.getState().setWireframe(on);
     hook.getPhysics = () => physicsNodePositions();
     // mannequin (static human collision body) + global damping (friction/drag)
     hook.setMannequin = (on: boolean) => setMannequin(on);
@@ -578,6 +641,11 @@ export function EditorShell() {
       </div>
 
       {bomOpen && <BomPanel onClose={() => setBomOpen(false)} />}
+
+      {/* object / group tree (left, below the title bar) */}
+      <div className="pointer-events-none absolute top-16 left-4">
+        <ObjectTree />
+      </div>
 
       {/* selected-member inspector (top-center) */}
       <SelectionPanel />
@@ -705,6 +773,19 @@ export function EditorShell() {
           className="rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
         >
           {projection === 'ortho' ? 'Isometric' : 'Perspective'}
+        </button>
+        <button
+          type="button"
+          onClick={toggleWireframe}
+          aria-pressed={wireframe}
+          title="Wireframe view (W)"
+          className={`flex items-center rounded-md px-2 py-1.5 ${
+            wireframe
+              ? 'bg-accent text-accent-foreground'
+              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+          }`}
+        >
+          <Waypoints size={15} />
         </button>
         <div className="mx-0.5 h-5 w-px bg-border" />
         <button
