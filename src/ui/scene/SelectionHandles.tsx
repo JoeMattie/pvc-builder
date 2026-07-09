@@ -304,6 +304,10 @@ function LengthArrow({
           { x: ray.origin.x, y: ray.origin.y, z: ray.origin.z },
           { x: ray.direction.x, y: ray.direction.y, z: ray.direction.z },
         ),
+      // same auto-union as a free endpoint drag: reconcile forms an on-body tee
+      // when the resized end lands on a run's span (via updateReconciled in
+      // dragMemberEndLength), and this welds it onto a coincident node on drop
+      onEnd: () => weldDroppedNode(movingNodeId),
     },
   );
 

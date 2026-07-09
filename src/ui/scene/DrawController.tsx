@@ -4,9 +4,10 @@ import { useThree } from '@react-three/fiber';
 import { useMemo, useState } from 'react';
 import { CatmullRomCurve3, type Ray, Raycaster, Vector2, Vector3 } from 'three';
 import { memberById, nodeById } from '../../design/docOps';
+import { closestAxisPointToRay } from '../../design/dragMath';
 import { marqueeFromDrag, memberSelectedBy, type Pt } from '../../design/marquee';
 import type { SnapResult } from '../../design/snapping';
-import { length, sub } from '../../geometry/math3';
+import { add, dot, length, scale, sub } from '../../geometry/math3';
 import { type Member, pipeSpec, type Vec3 } from '../../schema';
 import { easedPos } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
@@ -166,10 +167,35 @@ export function DrawController() {
     });
   };
 
-  const targetOf = (ray: Ray, cx: number, cy: number): Vec3 | null => {
+  // Shift-lock: the point on whichever WORLD axis line (X/Y/Z through `from`) the
+  // picking ray passes closest to — so Shift constrains to Y as well as X/Z. A
+  // ground/plane projection can't reach Y; projecting the ray onto each axis line
+  // can (same closest-point-on-axis trick the move gizmo + length arrow use).
+  const axisLockPoint = (from: Vec3, ray: Ray): Vec3 => {
+    const o = { x: ray.origin.x, y: ray.origin.y, z: ray.origin.z };
+    const d = { x: ray.direction.x, y: ray.direction.y, z: ray.direction.z };
+    const AXES: Vec3[] = [
+      { x: 1, y: 0, z: 0 },
+      { x: 0, y: 1, z: 0 },
+      { x: 0, y: 0, z: 1 },
+    ];
+    let best: { p: Vec3; dist: number } | null = null;
+    for (const ax of AXES) {
+      const p = closestAxisPointToRay(from, ax, o, d);
+      const t = dot(sub(p, o), d) / (dot(d, d) || 1);
+      const dist = length(sub(p, add(o, scale(d, t)))); // ray-line ↔ axis-line gap
+      if (!best || dist < best.dist) best = { p, dist };
+    }
+    return best?.p ?? from;
+  };
+
+  const targetOf = (ray: Ray, cx: number, cy: number, lockAxis = false): Vec3 | null => {
     // when a draw plane is active, every point lands ON that plane (draw on a wall)
     const dp = useEditorStore.getState().drawPlane;
     if (dp) return rayToPlane(ray, dp.origin, dp.normal) ?? rayToGround(ray);
+    // Shift held mid-path → lock to a world axis line (incl. Y); overrides snapping
+    const from0 = fromPoint();
+    if (lockAxis && from0) return axisLockPoint(from0, ray);
     // hovering an existing node/pipe (any height) → the 3D point on it, so
     // snapPoint resolves a node/on-pipe/tee snap instead of a ground point below
     const hit = snapUnderCursor(cx, cy);
@@ -183,11 +209,10 @@ export function DrawController() {
       );
     }
     if (hit) return hit.point;
-    const from = fromPoint();
-    if (!from) return rayToGround(ray);
+    if (!from0) return rayToGround(ray);
     camera.getWorldDirection(fwd);
     return (
-      rayToPlane(ray, from, dominantAxisNormal({ x: fwd.x, y: fwd.y, z: fwd.z })) ??
+      rayToPlane(ray, from0, dominantAxisNormal({ x: fwd.x, y: fwd.y, z: fwd.z })) ??
       rayToGround(ray)
     );
   };
@@ -214,20 +239,20 @@ export function DrawController() {
   };
 
   // A world point from raw client coords (window events carry no r3f ray).
-  const targetFromClient = (clientX: number, clientY: number): Vec3 | null => {
+  const targetFromClient = (clientX: number, clientY: number, lockAxis = false): Vec3 | null => {
     const rect = gl.domElement.getBoundingClientRect();
     ndc.set(
       ((clientX - rect.left) / rect.width) * 2 - 1,
       -((clientY - rect.top) / rect.height) * 2 + 1,
     );
     rc.setFromCamera(ndc, camera);
-    return targetOf(rc.ray, clientX, clientY);
+    return targetOf(rc.ray, clientX, clientY, lockAxis);
   };
 
   // hover preview between clicks (mesh event is fine when no button is down)
   const onMove = (e: ThreeEvent<PointerEvent>) => {
     if (e.nativeEvent.buttons !== 0) return; // a press drives its own window move
-    const g = targetOf(e.ray, e.nativeEvent.clientX, e.nativeEvent.clientY);
+    const g = targetOf(e.ray, e.nativeEvent.clientX, e.nativeEvent.clientY, e.nativeEvent.shiftKey);
     if (!g) return;
     if (tool === 'draw') {
       const snap = snapDrawPoint(g, e.nativeEvent.shiftKey);
@@ -255,7 +280,12 @@ export function DrawController() {
     // click+drag: press places the first point; a path already open just waits
     let startedPath = false;
     if (liveTool === 'draw' && !useEditorStore.getState().drawingFromNodeId) {
-      const g = targetOf(e.ray, e.nativeEvent.clientX, e.nativeEvent.clientY);
+      const g = targetOf(
+        e.ray,
+        e.nativeEvent.clientX,
+        e.nativeEvent.clientY,
+        e.nativeEvent.shiftKey,
+      );
       if (g) {
         setPreview(placeDrawPoint(g, e.nativeEvent.shiftKey));
         startedPath = true;
@@ -266,7 +296,12 @@ export function DrawController() {
     if (liveTool === 'measure') {
       const ms = useEditorStore.getState();
       if (!ms.measureFrom && !ms.measureAdjustId) {
-        const g = targetOf(e.ray, e.nativeEvent.clientX, e.nativeEvent.clientY);
+        const g = targetOf(
+          e.ray,
+          e.nativeEvent.clientX,
+          e.nativeEvent.clientY,
+          e.nativeEvent.shiftKey,
+        );
         if (g) {
           placeMeasurePoint(g);
           startedMeasure = true;
@@ -291,7 +326,7 @@ export function DrawController() {
         }
         return;
       }
-      const g = targetFromClient(ev.clientX, ev.clientY);
+      const g = targetFromClient(ev.clientX, ev.clientY, ev.shiftKey);
       if (!g) return;
       if (liveTool === 'draw') setPreview(snapDrawPoint(g, ev.shiftKey));
       else if (liveTool === 'formed') setPreview(snapFormedPoint(g));
@@ -325,7 +360,7 @@ export function DrawController() {
         useEditorStore.getState().setMarquee(null);
         return;
       }
-      const g = targetFromClient(ev.clientX, ev.clientY);
+      const g = targetFromClient(ev.clientX, ev.clientY, ev.shiftKey);
       if (!g) return;
       if (liveTool === 'draw') {
         // a drag ends the segment; a click that didn't start the path extends it
