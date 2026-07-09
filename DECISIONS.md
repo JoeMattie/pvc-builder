@@ -370,7 +370,7 @@ waves over schema v6. Decisions of lasting consequence:
   shown as "base + allowance = cut". Constants are documented ESTIMATES.
 - **T-rex** decimated from an STL (vertex-cluster weld → 57 nodes / 145 pipes, <200 cap) into
   two examples: all-rigid (v1, exercises the migration chain) and all-universal-pivot (v6, a
-  `free` joint per connection). Follow-ups (noted in `docs/HANDOFF.md`): Bend length-lock,
+  `free` joint per connection). Follow-ups (noted in `docs/archive/HANDOFF.md`): Bend length-lock,
   plane pipe-relative angle snap, manufactured-union cut-list splitting.
 
 ## Schema v6 — doc-stored UI state, persistent measurements, manufactured joints (2026-07-08)
