@@ -11,6 +11,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.1.2',
+    date: '2026-07-08',
+    changes: [
+      'Bent pipes are simulated as dynamic rigid bodies — they fall & collide like straight pipes, keeping their shape (no longer fixed in place)',
+    ],
+  },
+  {
     version: '0.1.1',
     date: '2026-07-08',
     changes: [

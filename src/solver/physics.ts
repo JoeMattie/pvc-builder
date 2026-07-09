@@ -2,8 +2,8 @@
 // same union-find rigid body the kinematics uses) is ONE dynamic compound body
 // of capsules — so overlapping capsules at a union can't fight a constraint —
 // pivots are cylindrical 6DOF (wrapped: spin + slide along the receiver, with
-// friction) / point (free) constraints, an assembly holding a bent pipe is
-// STATIC, pipes never collide with each other (only the ground), the ground a static
+// friction) / point (free) constraints, bent pipes are dynamic rigid bodies (one
+// compound each), pipes never collide with each other (only the ground), the ground a static
 // box temporarily lowered just below the model so nothing starts penetrating.
 // EXPERIMENT (branch sim-precision-rollback): the fixed-substep + CCD + velocity
 // cap precision (added to stop thin pipes tunnelling the floor) is rolled back to
@@ -251,22 +251,19 @@ function build(design: Design): Sim {
       1 / segs.length,
     );
 
-    // a bent (formed) pipe is a fixed structural element: an assembly that holds
-    // one becomes a STATIC rigid body (a collidable anchor, like the floor) so it
-    // stays put while simulating — you still edit it freely when drawing.
-    const hasFormed = memberIds.some((id) => memberById.get(id)!.kind === 'formed');
-    const common = hasFormed
-      ? ({ motionType: MotionType.STATIC, objectLayer: olStatic, friction: 0.8 } as const)
-      : ({
-          motionType: MotionType.DYNAMIC,
-          // EXPERIMENT: CCD + velocity cap are toggleable (see setPhysicsPrecision)
-          motionQuality: useCcd ? MotionQuality.LINEAR_CAST : MotionQuality.DISCRETE,
-          ...(useVcap ? { maxLinearVelocity: MAX_LINEAR_VELOCITY } : {}),
-          objectLayer: olMoving,
-          friction: 0.8,
-          linearDamping: 0.05,
-          angularDamping: 0.15,
-        } as const);
+    // a bent (formed) pipe is a rigid body just like a straight one: it keeps its
+    // shape (one compound body) but is DYNAMIC, so gravity / collisions apply and
+    // it falls & moves with the rest of its assembly.
+    const common = {
+      motionType: MotionType.DYNAMIC,
+      // EXPERIMENT: CCD + velocity cap are toggleable (see setPhysicsPrecision)
+      motionQuality: useCcd ? MotionQuality.LINEAR_CAST : MotionQuality.DISCRETE,
+      ...(useVcap ? { maxLinearVelocity: MAX_LINEAR_VELOCITY } : {}),
+      objectLayer: olMoving,
+      friction: 0.8,
+      linearDamping: 0.05,
+      angularDamping: 0.15,
+    } as const;
 
     let bodyPos: [number, number, number];
     let bodyQuat: [number, number, number, number];

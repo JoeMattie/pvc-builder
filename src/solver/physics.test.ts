@@ -127,12 +127,19 @@ function wrappedRig(): Design {
 }
 
 describe('formed pipes + wrapped sliding', () => {
-  it('a bent pipe is STATIC in sim — stays put under gravity', () => {
+  it('a bent pipe is a DYNAMIC rigid body — falls under gravity, keeps its shape', () => {
     startPhysics(formedAt(1));
     const y0 = physicsNodePositions().a!.y;
-    for (let i = 0; i < 120; i++) stepPhysics(1 / 60);
-    const y1 = physicsNodePositions().a!.y;
-    expect(y1).toBeCloseTo(y0, 3); // did not fall — a static rigid body
+    const spread0 = Math.hypot(
+      physicsNodePositions().a!.x - physicsNodePositions().b!.x,
+      physicsNodePositions().a!.z - physicsNodePositions().b!.z,
+    );
+    for (let i = 0; i < 60; i++) stepPhysics(1 / 60);
+    const p = physicsNodePositions();
+    expect(p.a!.y).toBeLessThan(y0 - 0.05); // fell under gravity (physics applied)
+    // the chord span is preserved (rigid — the bend didn't deform)
+    const spread1 = Math.hypot(p.a!.x - p.b!.x, p.a!.z - p.b!.z);
+    expect(spread1).toBeCloseTo(spread0, 1);
   });
 
   it('a wrapped pivot stays on the receiver line while simulating (cylindrical joint)', () => {
