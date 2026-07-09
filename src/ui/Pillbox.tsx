@@ -39,7 +39,7 @@ export function Pillbox() {
   const setDrawSize = useEditorStore((s) => s.setDrawSize);
 
   return (
-    <div className="scrollbar-minimal flex max-w-[18rem] flex-wrap items-center justify-center gap-1 overflow-x-auto rounded-xl border border-border bg-card px-1.5 py-1.5 shadow-md sm:max-w-[min(calc(100vw-2rem),56rem)]">
+    <div className="scrollbar-minimal flex h-full min-h-full min-w-full max-w-[18rem] flex-wrap items-center justify-center gap-1 overflow-auto rounded-lg bg-card/70 px-1.5 py-1.5 sm:max-w-[min(calc(100vw-2rem),56rem)]">
       {TOOLS.map(({ id, icon: Icon, label, key }) => {
         const active = tool === id;
         return (

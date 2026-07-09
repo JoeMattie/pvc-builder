@@ -7,6 +7,7 @@ import {
   HelpCircle,
   Moon,
   Redo2,
+  RefreshCcw,
   Sun,
   Undo2,
   Waypoints,
@@ -19,7 +20,7 @@ import { useEditorStore } from '../state/editorStore';
 import { useThemeStore } from '../state/themeStore';
 import { BendPill } from './BendPill';
 import { BomPanel } from './BomPanel';
-import { FloatingIsland } from './chrome/FloatingIsland';
+import { FloatingIsland, resetFloatingLayout } from './chrome/FloatingIsland';
 import { ElasticPanel } from './ElasticPanel';
 import { EditorWorkflowStatus } from './editor/EditorWorkflowStatus';
 import { PvcAutomationBridge } from './editor/PvcAutomationBridge';
@@ -37,6 +38,38 @@ import { SnapPill } from './SnapPill';
 import { Viewport } from './scene/Viewport';
 import { UnitsPill } from './UnitsPill';
 import { ViewMenu } from './ViewMenu';
+
+const OBJECT_TREE_SIZE = { width: 304, height: 220 };
+const OBJECT_TREE_COMPACT_SIZE = { width: 304, height: 150 };
+const OBJECT_TREE_MIN_SIZE = { width: 224, height: 150 };
+const OBJECT_TREE_MAX_SIZE = { width: 520, height: 620 };
+const OBJECT_TREE_DOCKED_MAX_SIZE = { width: 350, height: 620 };
+const OBJECT_TREE_COMPACT_MAX_SIZE = { width: 330, height: 220 };
+const BOM_SIZE = { width: 384, height: 420 };
+const BOM_COMPACT_SIZE = { width: 300, height: 220 };
+const BOM_MIN_SIZE = { width: 280, height: 220 };
+const BOM_MAX_SIZE = { width: 560, height: 620 };
+const BOM_DOCKED_MAX_SIZE = { width: 384, height: 620 };
+const BOM_COMPACT_MAX_SIZE = { width: 320, height: 240 };
+const TOOLBAR_MIN_SIZE = { width: 240, height: 64 };
+const TOOLBAR_MAX_SIZE = { width: 960, height: 180 };
+const TOOLBAR_COMPACT_MAX_SIZE = { width: 330, height: 110 };
+const WORKFLOW_COMPACT_OFFSET = { y: 48 };
+
+function useCompactChrome() {
+  const [compact, setCompact] = useState(() =>
+    typeof window === 'undefined' ? false : window.innerWidth < 640,
+  );
+
+  useEffect(() => {
+    const sync = () => setCompact(window.innerWidth < 640);
+    sync();
+    window.addEventListener('resize', sync);
+    return () => window.removeEventListener('resize', sync);
+  }, []);
+
+  return compact;
+}
 
 /** The rubber-band selection rectangle (screen overlay). Blue solid when
  * dragging left→right (window / contained), green dashed right→left (crossing /
@@ -145,6 +178,7 @@ export function EditorShell() {
 
   const night = useThemeStore((s) => s.night);
   const toggleNight = useThemeStore((s) => s.toggleNight);
+  const compactChrome = useCompactChrome();
 
   useEditorHotkeys({ undo, redo });
 
@@ -152,11 +186,33 @@ export function EditorShell() {
     if (simulating) setWorkflow('simulate');
   }, [simulating, setWorkflow]);
 
+  const chromeLayoutSignature = `${bomOpen}:${compactChrome}:${hasPivotPanel}:${workflow}`;
+  useEffect(() => {
+    if (!hasDesign) return;
+    void chromeLayoutSignature;
+    const frame = requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+    return () => cancelAnimationFrame(frame);
+  }, [chromeLayoutSignature, hasDesign]);
+
   if (!hasDesign) return null;
 
   const showInspector =
     selectedCount > 0 || !!selectedJointId || !!selectedElasticId || tool === 'bend';
-  const showRightDock = bomOpen || workflow === 'simulate' || hasPivotPanel;
+  const rightDockOpen = workflow === 'simulate' || hasPivotPanel;
+  const objectTreeMaxSize = rightDockOpen
+    ? compactChrome
+      ? OBJECT_TREE_COMPACT_MAX_SIZE
+      : OBJECT_TREE_DOCKED_MAX_SIZE
+    : compactChrome
+      ? OBJECT_TREE_COMPACT_MAX_SIZE
+      : OBJECT_TREE_MAX_SIZE;
+  const bomMaxSize = compactChrome
+    ? BOM_COMPACT_MAX_SIZE
+    : rightDockOpen
+      ? BOM_DOCKED_MAX_SIZE
+      : BOM_MAX_SIZE;
+  const objectTreeOffsetY = compactChrome ? 190 : 148;
+  const bomOffsetY = rightDockOpen ? (compactChrome ? 352 : 318) : compactChrome ? 352 : 0;
 
   return (
     <div className="relative h-full w-full overflow-hidden">
@@ -164,10 +220,21 @@ export function EditorShell() {
       <Viewport />
       <MarqueeOverlay />
 
+      <button
+        type="button"
+        onClick={resetFloatingLayout}
+        aria-label="Reset workspace layout"
+        title="Reset workspace layout"
+        className="absolute top-2 left-2 z-[80] flex h-7 w-7 items-center justify-center rounded-md border border-border/80 bg-card/85 text-muted-foreground shadow-md backdrop-blur-md hover:text-foreground"
+      >
+        <RefreshCcw size={14} />
+      </button>
+
       {/* top-left: back + design name */}
       <FloatingIsland
         id="document-controls"
         placement="top-left"
+        offset={{ x: 32 }}
         handleLabel="Move document controls"
       >
         <div className="flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-2">
@@ -186,13 +253,10 @@ export function EditorShell() {
           <div className="flex items-center gap-0.5 rounded-lg border border-border bg-card px-1.5 py-1.5 shadow-sm">
             <button
               type="button"
-              onClick={() =>
-                setBomOpen((open) => {
-                  const next = !open;
-                  if (next) setWorkflow('fabricate');
-                  return next;
-                })
-              }
+              onClick={() => {
+                if (!bomOpen) setWorkflow('fabricate');
+                setBomOpen((open) => !open);
+              }}
               aria-pressed={bomOpen}
               title="Cut list / BOM"
               className={`rounded-md p-1.5 ${bomOpen ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}`}
@@ -228,7 +292,12 @@ export function EditorShell() {
         </div>
       </FloatingIsland>
 
-      <FloatingIsland id="workflow-stack" placement="left-stack" handleLabel="Move workflow panels">
+      <FloatingIsland
+        id="workflow-stack"
+        placement="left-stack"
+        offset={compactChrome ? WORKFLOW_COMPACT_OFFSET : undefined}
+        handleLabel="Move workflow panel"
+      >
         <div className="flex w-[min(92vw,19rem)] flex-col gap-2">
           <EditorWorkflowStatus
             activeWorkflow={workflow}
@@ -238,6 +307,21 @@ export function EditorShell() {
               setBomOpen(true);
             }}
           />
+        </div>
+      </FloatingIsland>
+
+      <FloatingIsland
+        id="object-tree"
+        placement="left-stack"
+        offset={{ y: objectTreeOffsetY }}
+        defaultSize={compactChrome ? OBJECT_TREE_COMPACT_SIZE : OBJECT_TREE_SIZE}
+        maxSize={objectTreeMaxSize}
+        minSize={OBJECT_TREE_MIN_SIZE}
+        resizable
+        handleLabel="Move objects panel"
+        resizeLabel="Resize objects panel"
+      >
+        <div className="h-full w-full">
           <ObjectTree />
         </div>
       </FloatingIsland>
@@ -257,7 +341,15 @@ export function EditorShell() {
       )}
 
       {/* tool pillbox (bottom-center) */}
-      <FloatingIsland id="tool-pillbox" placement="bottom-center" handleLabel="Move tool palette">
+      <FloatingIsland
+        id="tool-pillbox"
+        placement="bottom-center"
+        maxSize={compactChrome ? TOOLBAR_COMPACT_MAX_SIZE : TOOLBAR_MAX_SIZE}
+        minSize={TOOLBAR_MIN_SIZE}
+        resizable
+        handleLabel="Move tool palette"
+        resizeLabel="Resize tool palette"
+      >
         <Pillbox />
       </FloatingIsland>
 
@@ -274,7 +366,7 @@ export function EditorShell() {
         </div>
       </FloatingIsland>
 
-      {showRightDock && (
+      {rightDockOpen ? (
         <FloatingIsland
           id="right-stack"
           placement="right-stack"
@@ -282,9 +374,24 @@ export function EditorShell() {
         >
           <div className="scrollbar-minimal flex max-h-[calc(100vh-7rem)] flex-col items-end gap-2 overflow-y-auto pr-1">
             {workflow === 'simulate' && <SimulationPanel />}
-            {bomOpen && <BomPanel onClose={() => setBomOpen(false)} />}
             <PivotPanel />
           </div>
+        </FloatingIsland>
+      ) : null}
+
+      {bomOpen && (
+        <FloatingIsland
+          id="bom-panel"
+          placement="right-stack"
+          offset={{ y: bomOffsetY }}
+          defaultSize={compactChrome ? BOM_COMPACT_SIZE : BOM_SIZE}
+          maxSize={bomMaxSize}
+          minSize={BOM_MIN_SIZE}
+          resizable
+          handleLabel="Move BOM panel"
+          resizeLabel="Resize BOM panel"
+        >
+          <BomPanel onClose={() => setBomOpen(false)} />
         </FloatingIsland>
       )}
 

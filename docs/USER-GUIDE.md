@@ -76,6 +76,9 @@ The 3D viewport fills the screen; controls sit over it as compact CAD chrome.
   Left).
 - **Axis gizmo** — the little X/Y/Z triad in the bottom-right corner shows the current
   orientation (X red, Y green, Z blue).
+- **Workspace layout** — floating panels can be moved by their left rail. Resizable
+  panels show a small lower-right resize grip. The small reset icon in the top-left
+  corner restores the default panel positions and sizes.
 
 Each design **remembers its own camera pose, tool, projection, and draw size**, so it
 opens exactly as you left it — it does not inherit the previous design's view.

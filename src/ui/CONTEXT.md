@@ -16,7 +16,7 @@ chrome in draggable `chrome/FloatingIsland` wrappers.
 |---|---|---|
 | `App.tsx` (15) | Top-level router (projects vs editor) | runs `refreshProjects()` on mount |
 | `EditorShell.tsx` | Editor screen — hosts viewport + all draggable chrome, restores/persists doc viewport state | **narrow field subscriptions on purpose**; Simulate-specific controls live in `editor/SimulationPanel.tsx` |
-| `chrome/` | Shared editor chrome wrappers | `FloatingIsland` provides drag handles, viewport clamping, saved positions, and lightweight overlap avoidance |
+| `chrome/` | Shared editor chrome wrappers | `FloatingIsland` provides left-side drag handles, optional resize handles, saved positions/sizes, workspace reset, viewport clamping, and lightweight overlap avoidance |
 | `editor/` | Extracted editor-shell helpers | workflow/status chrome, simulation panel, global hotkeys, and `PvcAutomationBridge` for `window.__pvc`; read `editor/CONTEXT.md` before editing |
 | `BomPanel.tsx` (129) | Cut-list / BOM panel + CSV download | lengths via `formatLength(m, units)` |
 | `SelectionPanel.tsx` (221) | Selected-member inspector — editable length, bend warnings, joint-mode controls | controlled draft string synced from geometry |
@@ -44,6 +44,9 @@ chrome in draggable `chrome/FloatingIsland` wrappers.
   depend on the exact method names/signatures. Treat as API. See `../state/CONTEXT.md` for the list.
 - **`EditorShell` subscribes to individual scalars, not the whole doc** (comment lines ~89-90) so
   per-frame drag mutations don't re-render the chrome. Preserve when adding state.
+- **Floating workspace chrome is user-positioned** via `chrome/FloatingIsland.tsx`. New editor
+  islands need stable `id` values because drag positions and optional sizes persist in
+  `localStorage`; the reset button clears those keys and reflows mounted islands.
 - **Right mouse button is globally hijacked** by `editor/useEditorHotkeys.ts` to end a path + suppress
   the context menu (right-drag still orbits). Keyboard shortcuts (V/D/P/C/M/R/B/T/Q/E/W/G, space,
   Esc/Enter, Delete, undo/redo) are bound there — **R** = Rotate tool, **P** = Extend, **Q** = Guide

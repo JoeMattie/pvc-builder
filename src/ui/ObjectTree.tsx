@@ -148,7 +148,7 @@ export function ObjectTree() {
   };
 
   return (
-    <div className="pointer-events-auto w-full rounded-xl border border-border bg-card shadow-md">
+    <div className="pointer-events-auto flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg bg-card/70">
       {/* header */}
       <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
         <button
@@ -185,7 +185,7 @@ export function ObjectTree() {
       </div>
 
       {open && (
-        <div className="scrollbar-minimal max-h-[52vh] overflow-y-auto p-1">
+        <div className="scrollbar-minimal min-h-0 flex-1 overflow-y-auto p-1">
           {!hasObjects && (
             <p className="px-2 py-3 text-center text-xs text-muted-foreground">No objects yet.</p>
           )}
