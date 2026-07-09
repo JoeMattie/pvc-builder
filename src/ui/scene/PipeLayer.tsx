@@ -125,6 +125,7 @@ function InstancedPipes() {
   const clearHoverLater = () => {
     if (hoverClear.current) clearTimeout(hoverClear.current);
     hoverClear.current = setTimeout(() => {
+      hoverClear.current = null; // fired — don't hold a stale handle
       const store = useEditorStore.getState();
       if (store.hoveredSceneItem?.kind === 'member') {
         recordPointerDebug('hover-clear', { target: 'pipe', id: store.hoveredSceneItem.id });

@@ -11,6 +11,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.2',
+    date: '2026-07-09',
+    changes: [
+      'Fixed the hover popup flickering like crazy over pipes: the popup itself was intercepting the pointer (it anchors at the pipe midpoint, right under your cursor), which knocked the hover off the pipe and unmounted the popup in a ~110 ms loop. Labels are now fully click-through.',
+      'Landing page: example cards are compact single rows (icon, name, description, stats), and on phones the tagline wraps to its own line under the title.',
+    ],
+  },
+  {
     version: '0.3.1',
     date: '2026-07-09',
     changes: [

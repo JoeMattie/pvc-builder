@@ -312,7 +312,10 @@ function LabelPill({ label, night }: { label: LabelSpec; night: boolean }) {
     ? "700 11px 'IBM Plex Mono', monospace"
     : "600 11px 'IBM Plex Sans', sans-serif";
   return (
-    <Html center zIndexRange={[18, 0]}>
+    // pointerEvents on the WRAPPER, not just the pill: drei's Html container div
+    // otherwise blocks the canvas when the cursor reaches mid-pipe (where the
+    // hover label anchors), causing pointerout → popup unmount → remount flicker
+    <Html center zIndexRange={[18, 0]} style={{ pointerEvents: 'none' }}>
       <div
         style={{
           minWidth: label.compact ? 24 : 64,

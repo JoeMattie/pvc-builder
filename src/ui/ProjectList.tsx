@@ -355,15 +355,18 @@ export function ProjectList() {
   return (
     <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col gap-8 px-6 py-12 lg:flex-row lg:items-start">
       <div className="flex flex-1 flex-col gap-6">
-        <header className="flex items-baseline gap-2">
+        <header className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <h1 className="font-sans text-2xl font-semibold">PVC Builder</h1>
           <span className="text-muted-foreground text-xs font-medium">v{APP_VERSION}</span>
-          <p className="text-muted-foreground ml-auto text-sm">A 3D-first PVC design studio.</p>
+          {/* on mobile the tagline drops to its own line under the title/version */}
+          <p className="text-muted-foreground order-last basis-full text-sm sm:order-none sm:ml-auto sm:basis-auto">
+            A 3D-first PVC design studio.
+          </p>
           <button
             type="button"
             onClick={() => setHelpOpen(true)}
             title="Guide & keyboard shortcuts"
-            className="text-muted-foreground hover:text-foreground self-center flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium"
+            className="text-muted-foreground hover:text-foreground ml-auto self-center flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium sm:ml-0"
           >
             <HelpCircle size={15} /> Guide
           </button>
@@ -416,12 +419,15 @@ export function ProjectList() {
           </h2>
           <div className="flex flex-col gap-3">
             {EXAMPLE_MENU.map((section) => (
-              <div key={section.title} className="rounded-lg border border-border bg-card p-3">
-                <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <div
+                key={section.title}
+                className="rounded-lg border border-border bg-card px-2.5 py-2"
+              >
+                <div className="mb-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-0.5">
                   <h3 className="text-sm font-semibold">{section.title}</h3>
                   <p className="text-xs text-muted-foreground">{section.description}</p>
                 </div>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-[repeat(auto-fill,minmax(10.5rem,1fr))]">
+                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[repeat(auto-fill,minmax(15rem,1fr))]">
                   {section.ids.map((id) => {
                     const ex = exampleById(id);
                     const item = section.items[id];
@@ -431,14 +437,16 @@ export function ProjectList() {
                         key={id}
                         type="button"
                         onClick={() => void createFromExample(id)}
-                        className="flex min-h-24 flex-col gap-1 rounded-md border border-border bg-background/55 px-3 py-2 text-left hover:bg-accent"
+                        className="flex items-center gap-2 rounded-md border border-border bg-background/55 px-2.5 py-1.5 text-left hover:bg-accent"
                       >
-                        <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
-                          <Sparkles size={13} className="shrink-0 text-muted-foreground" />
-                          <span className="truncate">{item.name}</span>
+                        <Sparkles size={13} className="shrink-0 text-muted-foreground" />
+                        <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+                          <span className="shrink-0 text-sm font-medium">{item.name}</span>
+                          <span className="truncate text-[11px] text-muted-foreground">
+                            {item.description}
+                          </span>
                         </span>
-                        <span className="text-xs text-muted-foreground">{item.description}</span>
-                        <span className="mt-auto self-start rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground tabular-nums">
+                        <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground tabular-nums">
                           {item.stats}
                         </span>
                       </button>
