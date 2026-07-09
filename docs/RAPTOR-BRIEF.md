@@ -12,14 +12,16 @@ series of loadable PVC Builder templates the user can pose and simulate.
 - **Mechanism sketches** — `…Portfolio_files/2020-Raptor-Final-Sketches-{1..8}-*.jpg`, plus
   `2019-Raptor-15-Neck-*.jpg` (build photo of the neck joint) and `2019-Raptor-24-Sketch-*.jpg`
   (full‑body concept). Cited below as **[S1]…[S8]**, **[Neck photo]**, **[Concept]**.
-- **riglab rigs** — `~/Downloads/raptor-test.riglab.json` and `raptor-test-repaired.riglab.json`
-  (a small sandbox test rig; see "riglab rig" note below — it does **not** encode a scale skeleton).
+
+This is a **fresh start in PVC Builder** — the model is designed from the costume description +
+sketches + standard human proportions, authored natively as PVC Builder nodes/members/joints. (No
+external rig is used or adapted.)
 
 > **Note on precision.** Kramer publishes almost no numeric dimensions. All metre values below are
-> **derived estimates** from (a) the stated wearer‑as‑fulcrum geometry, (b) the wearer size baked
-> into the riglab rig (`heightM 1.75`, `shoulderWidthM 0.46`, `hipWidthM 0.36`), and (c) proportions
-> read off the sketches. Every number is flagged as an assumption; treat them as starting values for
-> the build, tunable in‑tool.
+> **derived estimates** from (a) the stated wearer‑as‑fulcrum geometry, (b) a standard adult wearer
+> (~1.75 m tall, shoulder width ~0.46 m, hip width ~0.36 m), and (c) proportions read off the
+> sketches. Every number is flagged as an assumption; treat them as starting values for the build,
+> tunable in‑tool.
 
 ---
 
@@ -51,7 +53,7 @@ hips; foam pads the contact and a **belt** + back‑brace keep it located. **[Bo
 
 | Quantity | Estimate | Basis |
 |---|---|---|
-| Wearer height | 1.75 m | riglab `wearer.heightM` |
+| Wearer height | 1.75 m | standard adult wearer (assumption) |
 | Hip‑pivot height (frame height off ground) | ~1.0 m | waist height of a 1.75 m wearer |
 | Body rectangle (fore‑aft × width) | ~0.9 m × ~0.5 m | **[S1]** top view, ~hip width 0.36 m + clearance |
 | Harness bow rise (rectangle → shoulder) | ~0.45 m | shoulder‑to‑waist drop **[S2][S3]** |
@@ -95,25 +97,10 @@ body frame; **[S4]** for the master assembly):
 5. **Two mini‑arms.** One pipe each, hung off the **front conduit box**; uncontrolled (hands are
    full), with a **reel rope** to tuck them in when grounding the costume. **[Legs]**
 
-### riglab rig — what it actually encodes
-
-Both JSONs (`raptor-test*.riglab.json`, schemaVersion 9, identical except minor repair) hold a
-**small sandbox test rig, not a scale raptor skeleton**:
-
-- **13 nodes**, **15 `link` members**, **12 `pivot` elements**, 0 point masses, 0 controls.
-- Geometry is clustered in a **~0.3 m box** near the origin (x ∈ [−0.18, 0.10], z ∈ [0.08, 0.28],
-  y≈0), plus two outlier nodes at (−1, 0.8, 0.18) and (0, 1.43, 0.23). This is a **linkage‑mechanism
-  test**, not a posed dinosaur.
-- **All pivots are `hinge` joints** — ten about the **y‑axis** (0,1,0) and two about the **z‑axis**
-  (0,0,1). Several pivots carry `welds` grouping 2–3 members that share a node (rigid clusters joined
-  by one moving hinge) — the same idea as our "welded members meeting at one moving joint".
-- **`skeletonBindings`** tie two nodes to wearer points: `shoeL` and `shoulderL`. So the rig was being
-  bound to the **wearer's shoe and shoulder** — consistent with "leg attaches at the shoe, frame
-  loads the shoulder", but it carries no usable lengths.
-
-**Conclusion:** use the riglab rig only as a **topology idiom** (chains of rigid links joined by
-single‑axis hinges, welds to bundle co‑located members, binding to shoe/shoulder). Derive all
-**proportions from anatomy + the 1.75 m wearer**, not from these coordinates.
+**Build approach:** author the whole model natively in PVC Builder from the proportions above —
+chains of straight/heat‑bent pipes joined by our `anchor` (rigid), `wrapped` (1‑DOF swivel), and
+`free` (3‑DOF ball) joints, with `elastic` bands for the spring‑returns/counterbalance, resting on
+the static mannequin. Derive all **proportions from anatomy + the ~1.75 m wearer**.
 
 ---
 
@@ -264,11 +251,13 @@ at **y ≈ 1.0 m, z ≈ 0**. All numbers are **estimates to tune in‑tool**.
 
 ## 6. Open questions / assumptions
 
-1. **All metre dimensions are estimates.** Kramer gives no measurements; values come from the 1.75 m
-   wearer (riglab), sketch proportions, and the fulcrum geometry. Confirm against video stills if a
+1. **All metre dimensions are estimates.** Kramer gives no measurements; values come from a standard
+   ~1.75 m wearer, sketch proportions, and the fulcrum geometry. Confirm against video stills if a
    tighter build is wanted.
-2. **Pipe sizes.** Real build mixes **⅝", ¾", and ½"** (article mentions a ¾"‑over‑⅝" sleeve).
-   Our tool has only **½" and ¾"** — mapped ⅝"→¾" for the frame, ½" for tail/legs/arms.
+2. **Pipe sizes — RESOLVED.** The wearer is modifying ¾" PVC to accept ½" PVC (heat‑spread +
+   drilled), so we freely mix **½" and ¾"** and assume the connections work — no size‑mismatch
+   special‑casing. Use ¾" for the load frame/neck beam, ½" for tail/legs/arms. (Real build also had
+   ⅝"; treat that as ¾".)
 3. **Conduit‑box joint = `free`.** It is really a clamp + rope with limited roll; `free` (3‑DOF) is
    the closest primitive. If roll must be independent, add a `wrapped` roll DOF.
 4. **Tail flex.** Continuous garden‑hose compliance is discretized to **2 `free` joints + elastics**;
@@ -281,9 +270,8 @@ at **y ≈ 1.0 m, z ≈ 0**. All numbers are **estimates to tune in‑tool**.
 7. **Hip‑pivot placement.** Assumed a single shared left‑right (x) pitch axis at the waist. If the
    real red dots sit slightly forward/back of the hip, the balance target shifts — expose the pivot
    node position as the main tuning knob.
-8. **riglab rig ignored for geometry.** Its 0.3 m sandbox coordinates are not a scale skeleton; only
-   its **topology idiom** (link chains + single‑axis hinges + welds + shoe/shoulder binding) informed
-   the mapping.
+8. **Fresh start, authored in PVC Builder.** The model is built natively from the costume description,
+   sketches, and anatomy — no external rig is adapted.
 
 ---
 
