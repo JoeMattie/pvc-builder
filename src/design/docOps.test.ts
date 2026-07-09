@@ -4,12 +4,15 @@ import { createEmptyDesign, type Design, type Vec3 } from '../schema';
 import {
   addBodyJoint,
   addControlPointAt,
+  addElastic,
   addMeasurement,
   appendPipe,
+  attachmentPos,
   bendMember,
   dedupeJoints,
   deleteMember,
   detachMemberEnd,
+  elasticLengthM,
   extractSubgraph,
   groupMemberIds,
   groupMembers,
@@ -27,10 +30,12 @@ import {
   nodeDegrees,
   pasteSubgraph,
   reconcileBodyJoints,
+  removeElastic,
   removeJoint,
   removeMeasurement,
   resetJoints,
   rotateMember,
+  setElasticStiffness,
   setJoinMode,
   setJointAngle,
   setMeasurementOffset,
@@ -1031,5 +1036,65 @@ describe('addControlPointAt (add a bend handle to a formed pipe)', () => {
     if (m.kind === 'formed') expect(m.filletRadiiM).toHaveLength(2);
     const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0)]);
     expect(addControlPointAt(design, memberIds[0]!, V(0.5, 0, 0.2))).toEqual(design);
+  });
+});
+
+describe('elastics', () => {
+  it('attachmentPos returns a node position and the point along a member at t', () => {
+    const { design } = drawPath([V(0, 0, 0), V(1, 0, 0)]);
+    const nodeId = design.nodes[0]!.id;
+    const memberId = design.members[0]!.id;
+    expect(attachmentPos(design, { nodeId })).toEqual(V(0, 0, 0));
+    // midpoint of a member drawn from (0,0,0) to (1,0,0)
+    expect(attachmentPos(design, { memberId, t: 0.5 })).toEqual(V(0.5, 0, 0));
+    // clamps t to [0,1]
+    expect(attachmentPos(design, { memberId, t: 0 })).toEqual(V(0, 0, 0));
+    expect(attachmentPos(design, { memberId, t: 1 })).toEqual(V(1, 0, 0));
+    // missing references → undefined
+    expect(attachmentPos(design, { nodeId: 'nope' })).toBeUndefined();
+    expect(attachmentPos(design, { memberId: 'nope', t: 0.5 })).toBeUndefined();
+  });
+
+  it('addElastic stores a band and elasticLengthM reports its span', () => {
+    const { design } = drawPath([V(0, 0, 0), V(1, 0, 0)]);
+    const a = { nodeId: design.nodes[0]!.id };
+    const b = { nodeId: design.nodes[1]!.id };
+    const { design: d2, elasticId } = addElastic(design, a, b, 0.6, 150);
+    expect(d2.elastics).toHaveLength(1);
+    const e = d2.elastics.find((x) => x.id === elasticId)!;
+    expect(e.restLengthM).toBe(0.6);
+    expect(e.stiffnessNPerM).toBe(150);
+    expect(elasticLengthM(d2, e)).toBeCloseTo(1, 6);
+  });
+
+  it('elasticLengthM measures a node-to-along-member span', () => {
+    const { design } = drawPath([V(0, 0, 0), V(1, 0, 0)]);
+    const memberId = design.members[0]!.id;
+    // extra floating node at (0.5, 0, 1)
+    const nodeId = 'p';
+    const d = { ...design, nodes: [...design.nodes, { id: nodeId, position: V(0.5, 0, 1) }] };
+    const { design: d2 } = addElastic(d, { nodeId }, { memberId, t: 0.5 }, 0.5, 150);
+    // from (0.5,0,1) to the member midpoint (0.5,0,0) = 1 m
+    expect(elasticLengthM(d2, d2.elastics[0]!)).toBeCloseTo(1, 6);
+  });
+
+  it('setElasticStiffness updates only the targeted band; removeElastic deletes it', () => {
+    const { design } = drawPath([V(0, 0, 0), V(1, 0, 0)]);
+    const a = { nodeId: design.nodes[0]!.id };
+    const b = { nodeId: design.nodes[1]!.id };
+    const { design: d2, elasticId } = addElastic(design, a, b, 0.6, 150);
+    const d3 = setElasticStiffness(d2, elasticId, 300);
+    expect(d3.elastics[0]!.stiffnessNPerM).toBe(300);
+    const d4 = removeElastic(d3, elasticId);
+    expect(d4.elastics).toHaveLength(0);
+  });
+
+  it('deleteMember prunes bands attached to the deleted member or its orphaned nodes', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0)]);
+    const memberId = memberIds[0]!;
+    const nodeId = design.nodes[0]!.id;
+    const { design: d2 } = addElastic(design, { memberId, t: 0.5 }, { nodeId }, 0.6, 150);
+    const out = deleteMember(d2, memberId);
+    expect(out.elastics).toHaveLength(0);
   });
 });

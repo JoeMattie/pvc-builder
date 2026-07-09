@@ -1,4 +1,5 @@
 import {
+  Cable,
   CornerUpRight,
   MousePointer2,
   Move3d,
@@ -22,6 +23,7 @@ const TOOLS: { id: Tool; icon: ComponentType<{ size?: number }>; label: string; 
   { id: 'formed', icon: Spline, label: 'Curve', key: 'C' },
   { id: 'bend', icon: CornerUpRight, label: 'Bend', key: 'B' },
   { id: 'measure', icon: Ruler, label: 'Measure', key: 'T' },
+  { id: 'elastic', icon: Cable, label: 'Band', key: 'E' },
 ];
 
 /** Floating tool pillbox (planfile §1): each tool with its icon + visible

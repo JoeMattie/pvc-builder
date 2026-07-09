@@ -5,7 +5,9 @@
 import { add, cross, dot, length, normalize, scale, sub } from '../geometry/math3';
 import { developedLengthM } from '../geometry/pipe';
 import type {
+  Attachment,
   Design,
+  Elastic,
   Group,
   Joint,
   JointMode,
@@ -532,11 +534,17 @@ export function deleteMember(design: Design, memberId: string): Design {
   const joints = design.joints.filter(
     (j) => memberIds.has(j.receiver) && memberIds.has(j.mover) && referenced.has(j.nodeId),
   );
+  // prune elastic bands whose attachment references a deleted member or an
+  // orphaned node — a band can't hang on geometry that no longer exists
+  const attachAlive = (att: Attachment): boolean =>
+    'nodeId' in att ? referenced.has(att.nodeId) : memberIds.has(att.memberId);
+  const elastics = design.elastics.filter((e) => attachAlive(e.a) && attachAlive(e.b));
   return pruneGroups({
     ...design,
     members,
     nodes: design.nodes.filter((n) => referenced.has(n.id)),
     joints,
+    elastics,
   });
 }
 
@@ -686,6 +694,58 @@ export function setMeasurementOffset(design: Design, id: string, offsetM: number
 /** Remove a measurement. */
 export function removeMeasurement(design: Design, id: string): Design {
   return { ...design, measurements: design.measurements.filter((m) => m.id !== id) };
+}
+
+// ── elastics: spring bands between two attachment points (schema v8) ─────────
+
+/** World position of an elastic attachment: a pinned node's live position, or
+ * the point at fraction `t` along a straight member (lerp nodeA→nodeB).
+ * Returns undefined if the referenced node/member is missing. */
+export function attachmentPos(design: Design, att: Attachment): Vec3 | undefined {
+  if ('nodeId' in att) return nodeById(design, att.nodeId)?.position;
+  const m = memberById(design, att.memberId);
+  if (!m) return undefined;
+  const e = memberEndpoints(design, m);
+  if (!e) return undefined;
+  const t = Math.max(0, Math.min(1, att.t));
+  return add(e.a, scale(sub(e.b, e.a), t));
+}
+
+/** The current span of an elastic band (SI metres); 0 if either end is
+ * unresolved. */
+export function elasticLengthM(design: Design, e: Elastic): number {
+  const a = attachmentPos(design, e.a);
+  const b = attachmentPos(design, e.b);
+  return a && b ? length(sub(b, a)) : 0;
+}
+
+/** Add an elastic band between two attachment points. */
+export function addElastic(
+  design: Design,
+  a: Attachment,
+  b: Attachment,
+  restLengthM: number,
+  stiffnessNPerM: number,
+  id: string = makeId('el'),
+): { design: Design; elasticId: string } {
+  const elastic: Elastic = { id, a, b, restLengthM, stiffnessNPerM };
+  return {
+    design: { ...design, elastics: [...design.elastics, elastic] },
+    elasticId: id,
+  };
+}
+
+/** Remove an elastic band. */
+export function removeElastic(design: Design, id: string): Design {
+  return { ...design, elastics: design.elastics.filter((e) => e.id !== id) };
+}
+
+/** Set an elastic band's stiffness (the tension slider). */
+export function setElasticStiffness(design: Design, id: string, stiffnessNPerM: number): Design {
+  return {
+    ...design,
+    elastics: design.elastics.map((e) => (e.id === id ? { ...e, stiffnessNPerM } : e)),
+  };
 }
 
 // ── joints: unified pipe connections (planfile §4/§5) ───────────────────────

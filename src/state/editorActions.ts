@@ -5,10 +5,12 @@
 import {
   addBodyJoint,
   addControlPointAt,
+  addElastic,
   addFormedMember,
   addMeasurement,
   addMembersToGroup,
   appendPipe,
+  attachmentPos,
   bendMember,
   connectPipe,
   deleteMember,
@@ -28,10 +30,12 @@ import {
   nodeGroupKey,
   pasteSubgraph,
   reconcileBodyJoints,
+  removeElastic,
   removeMeasurement,
   resetJoints as resetJointsOp,
   rotateMember,
   type Subgraph,
+  setElasticStiffness as setElasticStiffnessOp,
   setJoinMode as setJoinModeOp,
   setJointAngle as setJointAngleOp,
   setMeasurementOffset,
@@ -61,6 +65,7 @@ import {
 } from '../design/snapping';
 import { add, dot, length, normalize, scale, sub } from '../geometry/math3';
 import type {
+  Attachment,
   Design,
   JointMode,
   LengthDisplay,
@@ -759,6 +764,91 @@ export function deleteMeasurement(id: string): void {
   useAppStore.getState().updateCurrent((d) => removeMeasurement(d, id));
   const editor = useEditorStore.getState();
   if (editor.selectedMeasurementId === id) editor.selectMeasurement(null);
+}
+
+// ── elastic bands (spring members in the physics sim) ───────────────────────
+
+/** A band's default spring stiffness (N/m, real). Scaled into the sim (see
+ * physics.ts `ELASTIC_K_SCALE`). */
+export const DEFAULT_ELASTIC_STIFFNESS = 150;
+/** Fraction of the drawn span a band's rest length is set to, so it starts
+ * PRE-TENSIONED (never slack) — planfile: bands begin pulling. */
+const ELASTIC_PRETENSION = 0.6;
+
+/** Resolve a snap to an elastic attachment — a node end, or a point ALONG a
+ * pipe (with the fraction `t`). Returns null when the snap isn't on geometry (a
+ * band must attach to a pipe at both ends). */
+function elasticAttachmentOf(design: Design, snap: SnapResult): Attachment | null {
+  if (snap.kind === 'node' && snap.nodeId) return { nodeId: snap.nodeId };
+  if (snap.kind === 'on-pipe' && snap.onPipeMemberId) {
+    const m = design.members.find((x) => x.id === snap.onPipeMemberId);
+    const e = m ? memberEndpoints(design, m) : null;
+    if (e) {
+      const ab = sub(e.b, e.a);
+      const len2 = dot(ab, ab);
+      const t =
+        len2 > 1e-12 ? Math.max(0, Math.min(1, dot(sub(snap.position, e.a), ab) / len2)) : 0;
+      return { memberId: snap.onPipeMemberId, t };
+    }
+  }
+  return null;
+}
+
+/** Are two attachments the same geometric anchor (so a second click on the first
+ * end shouldn't make a zero-length band)? */
+function sameAttachment(a: Attachment, b: Attachment): boolean {
+  if ('nodeId' in a && 'nodeId' in b) return a.nodeId === b.nodeId;
+  if ('memberId' in a && 'memberId' in b)
+    return a.memberId === b.memberId && Math.abs(a.t - b.t) < 1e-6;
+  return false;
+}
+
+/** An elastic-band click: place the first attachment, then the second, which
+ * creates a pre-tensioned band and selects it. Both ends MUST attach to geometry
+ * (a node/pipe end or a point along a pipe); a click on empty space is ignored. */
+export function placeElasticPoint(raw: Vec3): void {
+  const design = useAppStore.getState().current;
+  const editor = useEditorStore.getState();
+  if (!design) return;
+  const att = elasticAttachmentOf(design, snapMeasurePoint(raw));
+  if (!att) return; // not on geometry — ignore
+  if (!editor.elasticFrom) {
+    editor.setElasticFrom(att);
+    return;
+  }
+  const from = editor.elasticFrom;
+  if (sameAttachment(from, att)) return; // clicked the same anchor — keep waiting
+  const a = attachmentPos(design, from);
+  const b = attachmentPos(design, att);
+  if (!a || !b) {
+    editor.setElasticFrom(null);
+    return;
+  }
+  const span = length(sub(b, a));
+  if (span < 1e-4) {
+    editor.setElasticFrom(null);
+    return;
+  }
+  let id = '';
+  useAppStore.getState().updateCurrent((d) => {
+    const r = addElastic(d, from, att, span * ELASTIC_PRETENSION, DEFAULT_ELASTIC_STIFFNESS);
+    id = r.elasticId;
+    return r.design;
+  });
+  editor.setElasticFrom(null);
+  editor.selectElastic(id);
+}
+
+/** Set a band's tension (spring stiffness, N/m) — the tension slider. */
+export function setElasticTension(id: string, stiffnessNPerM: number): void {
+  useAppStore.getState().updateCurrent((d) => setElasticStiffnessOp(d, id, stiffnessNPerM));
+}
+
+/** Delete an elastic band. */
+export function deleteElastic(id: string): void {
+  useAppStore.getState().updateCurrent((d) => removeElastic(d, id));
+  const editor = useEditorStore.getState();
+  if (editor.selectedElasticId === id) editor.selectElastic(null);
 }
 
 // ── joints (right-click a pipe join → wrapped / free / anchor) ──────────────

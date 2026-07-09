@@ -31,6 +31,7 @@ import {
   clearSelection,
   copySelection,
   cutSelection,
+  deleteElastic,
   deleteMeasurement,
   deleteMembers,
   detachMemberEnd,
@@ -49,11 +50,13 @@ import {
   pivotAnglesOf,
   placeDrawAtDistance,
   placeDrawPoint,
+  placeElasticPoint,
   placeFormedPoint,
   placeMeasurePoint,
   resetPivots,
   rotateMemberBy,
   selectMember,
+  setElasticTension,
   setJoinMode,
   setLengthDisplay,
   setMemberLength,
@@ -71,6 +74,7 @@ import { useEditorStore } from '../state/editorStore';
 import { useThemeStore } from '../state/themeStore';
 import { BendPill } from './BendPill';
 import { BomPanel } from './BomPanel';
+import { ElasticPanel } from './ElasticPanel';
 import { JoinMenu } from './JoinMenu';
 import { downloadFile } from './lib/download';
 import { Pillbox } from './Pillbox';
@@ -285,7 +289,8 @@ export function EditorShell() {
         else if (editor.measureFrom || editor.measureAdjustId) {
           editor.setMeasureFrom(null);
           editor.setMeasureAdjustId(null);
-        } else if (e.key === 'Escape' && editor.enteredGroupId) exitGroup();
+        } else if (editor.elasticFrom) editor.setElasticFrom(null);
+        else if (e.key === 'Escape' && editor.enteredGroupId) exitGroup();
         else clearSelection();
       } else if (e.key === 'g' || e.key === 'G') {
         // G groups the selection; Shift+G ungroups it (auto-solves boundary unions)
@@ -308,10 +313,13 @@ export function EditorShell() {
         editor.setTool('bend');
       } else if (e.key === 't' || e.key === 'T') {
         editor.setTool('measure');
+      } else if (e.key === 'e' || e.key === 'E') {
+        editor.setTool('elastic');
       } else if (e.key === 'r' || e.key === 'R') {
         resetPivots();
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         if (editor.selectedMeasurementId) deleteMeasurement(editor.selectedMeasurementId);
+        else if (editor.selectedElasticId) deleteElastic(editor.selectedElasticId);
         else if (editor.selectedIds.length) {
           deleteMembers(editor.selectedIds);
           clearSelection();
@@ -375,8 +383,9 @@ export function EditorShell() {
         lengthM: memberLengthM(d, m),
       }));
     };
-    hook.setTool = (tool: 'select' | 'draw' | 'formed' | 'move' | 'rotate' | 'measure' | 'bend') =>
-      useEditorStore.getState().setTool(tool);
+    hook.setTool = (
+      tool: 'select' | 'draw' | 'formed' | 'move' | 'rotate' | 'measure' | 'bend' | 'elastic',
+    ) => useEditorStore.getState().setTool(tool);
     hook.setProjection = (p: 'ortho' | 'perspective') => useEditorStore.getState().setProjection(p);
     hook.setView = (name: ViewName) => setView(name);
     hook.setDrawSize = (size: '1/2"' | '3/4"') => useEditorStore.getState().setDrawSize(size);
@@ -392,6 +401,13 @@ export function EditorShell() {
     hook.measure = (raw: Vec3) => placeMeasurePoint(raw);
     hook.getMeasurements = () => useAppStore.getState().current?.measurements ?? [];
     hook.deleteMeasurement = (id: string) => deleteMeasurement(id);
+    // elastic-band seams (place two attachment points → a spring band)
+    hook.placeElastic = (raw: Vec3) => placeElasticPoint(raw);
+    hook.getElastics = () => useAppStore.getState().current?.elastics ?? [];
+    hook.setElasticTension = (id: string, stiffnessNPerM: number) =>
+      setElasticTension(id, stiffnessNPerM);
+    hook.selectElastic = (id: string | null) => useEditorStore.getState().selectElastic(id);
+    hook.deleteElastic = (id: string) => deleteElastic(id);
     hook.bendMember = (
       memberId: string,
       t: number,
@@ -554,6 +570,9 @@ export function EditorShell() {
 
       {/* Bend-tool options (top-center) */}
       <BendPill />
+
+      {/* selected elastic-band tension slider (top-center) */}
+      <ElasticPanel />
 
       {/* tool pillbox (bottom-center) */}
       <Pillbox />

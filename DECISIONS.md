@@ -6,6 +6,30 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 
 ## Post-batch fixes (2026-07-08)
 
+- **Elastic bands (schema v8)** (v0.1.15). A `band` = `{id, a, b, restLengthM, stiffnessNPerM}` where
+  each end is an `Attachment` = `{nodeId}` (a pipe END / junction) OR `{memberId, t}` (a point at
+  fraction `t` along a straight member). Additive/optional to the doc; migration `7:` seeds `elastics:
+  []`. Pure docOps: `addElastic`/`removeElastic`/`setElasticStiffness`, `attachmentPos` (node position
+  or lerp along a member), `elasticLengthM`; `deleteMember` prunes bands referencing a deleted
+  member/orphaned node. **Physics** (`physics.ts`): each band is resolved at world-build to
+  `{aBody,aLocal,bBody,bLocal,restLenScaled,kScaled}` reusing the exact `nodeSource` body+local-offset
+  mapping (a `{memberId,t}` end is lerped in world space then folded into that member's assembly body
+  local frame via a new per-body rest-transform map). `applyElasticForces()` runs at the top of
+  `stepPhysics` (before `updateWorld`): world points `body.position+quat⊗local` in scaled space, and if
+  stretched past rest a spring force `F = kScaled·stretch + ELASTIC_DAMPING·vRelAxial` is applied
+  `+F·dir`/`−F·dir` at the two ends (STATIC/missing bodies skipped; bands never push, only pull —
+  pre-tensioned). **Force scaling**: `kScaled = stiffnessNPerM · ELASTIC_K_SCALE`, `ELASTIC_K_SCALE =
+  SCALE²·3 = 1200` — physically-exact would be SCALE³ but that rings at 60 fps; the softer damped
+  constant was TUNED so a default **150 N/m** band pulls two ~0.3 m pipes together smoothly (0.60→0.06 m
+  in ~1 s, monotonic, no overshoot/explosion, positions bounded). Bands are drawn pre-tensioned
+  (`restLengthM = drawnSpan · 0.6`). `physicsTopoHash` now includes `elastics` (rebuild on
+  add/remove/retension). Tool `elastic` (hotkey **E**, Pillbox "Band"), two-click placement mirroring
+  the tape measure (`placeElasticPoint`, snaps to ends/along pipes via `snapMeasurePoint`; a click off
+  geometry is ignored — both ends must attach). Transient `elasticFrom`/`selectedElasticId` in
+  editorStore. Rendering: `ElasticLayer` draws a thin orange tube at eased positions (selectable →
+  `selectElastic`, tension slider in `ElasticPanel`). `__pvc` seams: `placeElastic`, `getElastics`,
+  `setElasticTension`, `selectElastic`, `deleteElastic`. Covered by Vitest (docOps + migration +
+  physics convergence) and the e2e smoke (band pulls two ends together in the built app).
 - **Groups (schema v7)** (v0.1.14). A `group` = `{id, memberIds[]}`; a member is in ≤1 group. Pure
   docOps: `groupMembers` (moves members out of any prior group), `ungroupMembers` (removes the record,
   then `weldCoincidentNodes` + `healBodyJoints` AUTO-SOLVE the unions the boundary deferred),

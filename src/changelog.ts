@@ -11,6 +11,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.1.15',
+    date: '2026-07-08',
+    changes: [
+      'Elastic bands (press E): click two attachment points — a pipe end or a point along a pipe — to add a pre-tensioned spring band that pulls them together in the physics simulation (Play).',
+      'Select a band to show a tension slider; Delete removes it. Bands follow the pipes as they move and tint hotter the more they stretch.',
+    ],
+  },
+  {
     version: '0.1.14',
     date: '2026-07-08',
     changes: [

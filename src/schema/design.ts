@@ -21,8 +21,11 @@ import {
  *     objects (`measurements`), and `joint.manufactured` (render as off-the-shelf
  *     fitting). All additive/optional except `measurements` (defaults to []).
  * v7: `groups` — named sets of members that move/select/copy as a unit and defer
- *     unions across their boundary. Defaults to []. */
-export const SCHEMA_VERSION = 7;
+ *     unions across their boundary. Defaults to [].
+ * v8: `elastics` — spring "bands" between two attachment points (a pipe END node
+ *     or a point ALONG a member) that pull together in the physics sim. Defaults
+ *     to []. */
+export const SCHEMA_VERSION = 8;
 
 /** A junction where pipe ends meet. Position is SI metres. */
 export const nodeSchema = z.object({
@@ -142,6 +145,27 @@ export const groupSchema = z.object({
   memberIds: z.array(idSchema),
 });
 
+/** v8: one end of an elastic band. Either pinned to a node (`{nodeId}`, a pipe
+ * END or junction) or a point ALONG a straight member (`{memberId, t}` with
+ * `t∈[0,1]` the fraction from the member's nodeA to nodeB). */
+export const attachmentSchema = z.union([
+  z.object({ nodeId: idSchema }),
+  z.object({ memberId: idSchema, t: z.number() }),
+]);
+
+/** v8: an elastic band — a spring between two attachment points. In the physics
+ * sim it applies an axial spring force pulling the two ends together once the
+ * span exceeds `restLengthM` (bands are pre-tensioned, so this is essentially
+ * always). `stiffnessNPerM` is the spring constant (real N/m; scaled into the
+ * sim). Purely additive/optional to the rest of the document. */
+export const elasticSchema = z.object({
+  id: idSchema,
+  a: attachmentSchema,
+  b: attachmentSchema,
+  restLengthM: z.number().nonnegative(),
+  stiffnessNPerM: z.number().nonnegative(),
+});
+
 /** The top-level design document — the single source of truth for the file
  * format. Resolved fittings are NOT stored (planfile §3): they are a pure
  * function of the design, recomputed continuously. */
@@ -163,6 +187,8 @@ export const designSchema = z.object({
   measurements: z.array(measurementSchema),
   /** v7: member groups (default []) */
   groups: z.array(groupSchema),
+  /** v8: elastic bands — springs between two attachment points (default []) */
+  elastics: z.array(elasticSchema),
   /** v6: display-only length format (undefined = decimal inches) */
   lengthDisplay: lengthDisplaySchema.optional(),
   /** v6: doc-stored camera + tool state, restored on open */
@@ -178,6 +204,8 @@ export type Joint = z.infer<typeof jointSchema>;
 export type MeasurementEnd = z.infer<typeof measurementEndSchema>;
 export type Measurement = z.infer<typeof measurementSchema>;
 export type Group = z.infer<typeof groupSchema>;
+export type Attachment = z.infer<typeof attachmentSchema>;
+export type Elastic = z.infer<typeof elasticSchema>;
 export type CameraPose = z.infer<typeof cameraPoseSchema>;
 export type Viewport = z.infer<typeof viewportSchema>;
 export type Design = z.infer<typeof designSchema>;
@@ -195,5 +223,6 @@ export function createEmptyDesign(id: string, name: string): Design {
     joints: [],
     measurements: [],
     groups: [],
+    elastics: [],
   };
 }

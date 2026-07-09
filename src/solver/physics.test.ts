@@ -161,6 +161,55 @@ describe('formed pipes + wrapped sliding', () => {
   });
 });
 
+/** Two separate horizontal pipes with an elastic band between their FAR ends
+ * (far apart, so the band is pre-tensioned and should pull them together). */
+function twoPipesWithBand(stiffness: number): Design {
+  const d = createEmptyDesign('d', 'band');
+  d.nodes.push(
+    { id: 'a0', position: V(-0.6, 0.5, 0) },
+    { id: 'a1', position: V(-0.3, 0.5, 0) },
+    { id: 'b1', position: V(0.3, 0.5, 0) },
+    { id: 'b0', position: V(0.6, 0.5, 0) },
+  );
+  d.members.push(
+    { id: 'ma', kind: 'straight', nodeA: 'a0', nodeB: 'a1', size: '3/4"' },
+    { id: 'mb', kind: 'straight', nodeA: 'b1', nodeB: 'b0', size: '3/4"' },
+  );
+  d.elastics.push({
+    id: 'el',
+    a: { nodeId: 'a1' },
+    b: { nodeId: 'b1' },
+    restLengthM: 0.1,
+    stiffnessNPerM: stiffness,
+  });
+  return d;
+}
+
+describe('elastic bands', () => {
+  const gap = (p: Record<string, Vec3>): number =>
+    Math.hypot(p.a1!.x - p.b1!.x, p.a1!.y - p.b1!.y, p.a1!.z - p.b1!.z);
+
+  it('a pre-tensioned band pulls two pipes together, staying finite + bounded', () => {
+    startPhysics(twoPipesWithBand(150));
+    const g0 = gap(physicsNodePositions());
+    for (let i = 0; i < 120; i++) stepPhysics(1 / 60);
+    const p = physicsNodePositions();
+    const g1 = gap(p);
+    expect(g1).toBeLessThan(g0 - 0.05); // measurably closer
+    for (const n of Object.values(p)) {
+      expect(Number.isFinite(n.x) && Number.isFinite(n.y) && Number.isFinite(n.z)).toBe(true);
+      expect(Math.hypot(n.x, n.y, n.z)).toBeLessThan(5); // no explosion
+    }
+  });
+
+  it('a limp band (0 N/m) leaves the horizontal gap unchanged', () => {
+    startPhysics(twoPipesWithBand(0));
+    const g0 = gap(physicsNodePositions());
+    for (let i = 0; i < 120; i++) stepPhysics(1 / 60);
+    expect(Math.abs(gap(physicsNodePositions()) - g0)).toBeLessThan(0.15);
+  });
+});
+
 describe('ground extent helpers', () => {
   it('lowestExtentM is the lowest point minus the pipe radius', () => {
     const odM = 0.02667; // 3/4" OD

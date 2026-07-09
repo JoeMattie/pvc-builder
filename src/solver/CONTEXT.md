@@ -40,6 +40,14 @@ There is **no `crashcat/` subdirectory** — `crashcat` is the npm package `cras
   = one `staticCompound` mirroring the kinematics union-find; pipe-vs-pipe collisions disabled
   (pipes only hit the ground); floor lowered to `simGroundY` at sim start so nothing erupts;
   fixed-substep + CCD stops thin pipes tunnelling. Mutable module-level `sim` state.
+- **Elastic bands** (schema v8): resolved at `build()` to `SimElastic{aBody,aLocal,bBody,bLocal,
+  restLenScaled,kScaled}` reusing the `nodeSource` body+local-offset mapping (a `{memberId,t}` end is
+  lerped in world space then folded into that member's assembly body local frame via `bodyRest`).
+  `applyElasticForces()` runs at the TOP of `stepPhysics` (before `updateWorld`): a stretched band
+  applies `F = kScaled·stretch + ELASTIC_DAMPING·vRelAxial` at each end (`±F·dir`; STATIC/missing
+  bodies skipped; bands only PULL). `kScaled = stiffnessNPerM · ELASTIC_K_SCALE` (`=SCALE²·3`, TUNED —
+  softer than the physically-exact SCALE³ to stay stable at 60 fps). `physicsTopoHash` includes
+  `elastics` so the sim rebuilds on add/remove/retension.
 
 ## Tests
 - `solver.test.ts` — analytic acceptance: single pivot arc, drag-on-circle, ball-joint sphere,

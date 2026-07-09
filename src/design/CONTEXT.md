@@ -12,7 +12,7 @@ applied elsewhere via `appStore.updateCurrent` for undo/autosave.
 
 | File | Responsibility | Key exports |
 |---|---|---|
-| `docOps.ts` (518) | Core editing API — nodes, members, path drawing, move/rotate/split/delete, and the whole **joints** subsystem | lookups (`nodeById`, `memberEndpoints`, `memberLengthM`, `throughMemberAt`, `nodeDegrees`); mutations (`addMember`, `startPath`, `appendPipe`, `setNodePosition`, `translateMember`, `rotateMember`, `setMemberLengthM`, `splitMemberAt`, `deleteMember`); joints (`joinContext`, `setJoinMode`, `addBodyJoint`, `healBodyJoints`, `reconcileBodyJoints`, `removeJoint`, `swapReceiver`, `setJointAngle`, `setJointOrientation`, `resetJoints`, `jointsAtNode`) |
+| `docOps.ts` (518) | Core editing API — nodes, members, path drawing, move/rotate/split/delete, the whole **joints** subsystem, plus measurements / groups / **elastics** | lookups (`nodeById`, `memberEndpoints`, `memberLengthM`, `throughMemberAt`, `nodeDegrees`); mutations (`addMember`, `startPath`, `appendPipe`, `setNodePosition`, `translateMember`, `rotateMember`, `setMemberLengthM`, `splitMemberAt`, `deleteMember`); joints (`joinContext`, `setJoinMode`, `addBodyJoint`, `healBodyJoints`, `reconcileBodyJoints`, `removeJoint`, `swapReceiver`, `setJointAngle`, `setJointOrientation`, `resetJoints`, `jointsAtNode`); elastics (`addElastic`, `removeElastic`, `setElasticStiffness`, `attachmentPos`, `elasticLengthM`) |
 | `fittings.ts` (188) | **Core feature.** Classify each node's incident pipe ends → coupling/reducer/elbow45/elbow90/elbow3way/tee/cross or conflict | `resolveFittings(design): FittingResolution`, `incidentEnds`, `FittingType`, `ANGLE_TOL_DEG=3` |
 | `bom.ts` (206) | Cut-list / BOM — per-pipe cut length, fitting + joint hardware counts, totals, CSV | `bom(design): Bom`, `bomToCsv`, `fittingTakeoffM`, `EYE_BOLT_TAKEOFF_M` |
 | `formed.ts` (74) | Heat-bent pipe analysis — developed length, bend schedule, min-bend-radius | `formedPoints`, `analyzeFormed`, `MIN_BEND_RADIUS_FACTOR=3` |
@@ -34,7 +34,9 @@ applied elsewhere via `appStore.updateCurrent` for undo/autosave.
 - **`translateMember` / `rotateMember` must also move a formed member's `controlPoints`**, or
   lengths/bends break.
 - **`setMemberLengthM` / `splitMemberAt` are straight-only** (formed length is derived).
-- **`deleteMember` prunes orphaned nodes AND joints** referencing the deleted member — no dangling joints.
+- **`deleteMember` prunes orphaned nodes AND joints AND elastics** referencing the deleted member — no
+  dangling joints/bands. An elastic's `attachmentPos({memberId,t})` lerps the member's two node
+  positions (straight only); `{nodeId}` returns the node position.
 - **`resolveFittings` skips any node carrying a joint** — the joint hardware IS its fitting.
   elbow45 is detected at 135° between outgoing dirs. 5+ ends = conflict.
 - **BOM take-off constants (`CENTRE_TO_FACE_FACTOR`, `EYE_BOLT_TAKEOFF_M`) are documented

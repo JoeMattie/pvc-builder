@@ -160,6 +160,47 @@ describe('v6 → v7 (member groups)', () => {
   });
 });
 
+describe('v7 → v8 (elastic bands)', () => {
+  const v7 = {
+    schemaVersion: 7,
+    id: 'd1',
+    name: 'Cube frame',
+    unitsPreference: 'imperial',
+    enabledSizes: ['1/2"'],
+    lengthsLocked: false,
+    nodes: [{ id: 'n1', position: { x: 0, y: 0, z: 0 } }],
+    members: [],
+    joints: [],
+    measurements: [],
+    groups: [],
+  };
+
+  it('adds an empty elastics array and validates', () => {
+    const out = migrateToLatest(JSON.parse(JSON.stringify(v7)));
+    expect(out.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(out.elastics).toEqual([]);
+  });
+
+  it('preserves existing elastics', () => {
+    const withElastics = {
+      ...v7,
+      elastics: [
+        {
+          id: 'e1',
+          a: { nodeId: 'n1' },
+          b: { memberId: 'm1', t: 0.5 },
+          restLengthM: 0.2,
+          stiffnessNPerM: 150,
+        },
+      ],
+    };
+    const out = migrateToLatest(JSON.parse(JSON.stringify(withElastics)));
+    expect(out.elastics).toHaveLength(1);
+    expect(out.elastics[0]?.id).toBe('e1');
+    expect(out.elastics[0]?.b).toEqual({ memberId: 'm1', t: 0.5 });
+  });
+});
+
 describe('applyMigrations', () => {
   it('chains steps and stamps the schemaVersion after each', () => {
     const registry: Record<number, Migration> = {

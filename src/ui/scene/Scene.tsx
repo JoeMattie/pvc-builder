@@ -43,6 +43,7 @@ import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { GROUND_SIZE_M, scenePalette } from '../theme';
 import { DrawController } from './DrawController';
+import { ElasticLayer } from './ElasticLayer';
 import { FittingLayer } from './FittingLayer';
 import { FormedLayer } from './FormedLayer';
 import { InstancedFreeHubs } from './InstancedFreeHubs';
@@ -144,6 +145,7 @@ export function Scene() {
       <InstancedWrapJoints />
       <IntersectionLayer />
       <MeasureLayer />
+      <ElasticLayer />
 
       {/* ground-plane pointer target + shadow catcher + draw preview */}
       <DrawController />

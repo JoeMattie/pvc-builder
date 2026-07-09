@@ -3,7 +3,7 @@ import type { ThreeEvent } from '@react-three/fiber';
 import { useThree } from '@react-three/fiber';
 import { useMemo, useState } from 'react';
 import { CatmullRomCurve3, type Ray, Raycaster, Vector2, Vector3 } from 'three';
-import { memberById, nodeById } from '../../design/docOps';
+import { attachmentPos, memberById, nodeById } from '../../design/docOps';
 import { closestAxisPointToRay } from '../../design/dragMath';
 import { marqueeFromDrag, memberSelectedBy, type Pt } from '../../design/marquee';
 import type { SnapResult } from '../../design/snapping';
@@ -14,6 +14,7 @@ import { useAppStore } from '../../state/appStore';
 import {
   clearSelection,
   placeDrawPoint,
+  placeElasticPoint,
   placeFormedPoint,
   placeMeasurePoint,
   setSelectionGroupAware,
@@ -117,6 +118,7 @@ export function DrawController() {
   const formedPoints = useEditorStore((s) => s.formedPoints);
   const drawLength = useEditorStore((s) => s.drawLength);
   const measureFrom = useEditorStore((s) => s.measureFrom);
+  const elasticFrom = useEditorStore((s) => s.elasticFrom);
   const [preview, setPreview] = useState<SnapResult | null>(null);
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
@@ -245,7 +247,7 @@ export function DrawController() {
     else if (tool === 'measure') {
       if (useEditorStore.getState().measureAdjustId) updateMeasureOffset(g);
       else setPreview(snapMeasurePoint(g));
-    }
+    } else if (tool === 'elastic') setPreview(snapMeasurePoint(g));
   };
 
   // The press+release is driven by WINDOW listeners, not the mesh's own
@@ -287,9 +289,28 @@ export function DrawController() {
         }
       }
     }
+    // elastic band: press places the first attachment (click-drag), unless
+    // mid-sequence (waiting for the 2nd click)
+    let startedElastic = false;
+    if (liveTool === 'elastic' && !useEditorStore.getState().elasticFrom) {
+      const g = targetOf(
+        e.ray,
+        e.nativeEvent.clientX,
+        e.nativeEvent.clientY,
+        e.nativeEvent.shiftKey,
+      );
+      if (g) {
+        placeElasticPoint(g);
+        startedElastic = true;
+      }
+    }
     // any non-drawing tool marquee-selects on an empty-canvas drag; move/rotate
     // additionally switch to the select tool so the drag reads as a selection
-    const nonDrawing = liveTool !== 'draw' && liveTool !== 'formed' && liveTool !== 'measure';
+    const nonDrawing =
+      liveTool !== 'draw' &&
+      liveTool !== 'formed' &&
+      liveTool !== 'measure' &&
+      liveTool !== 'elastic';
     const move = (ev: PointerEvent) => {
       if (nonDrawing) {
         if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > CLICK_SLOP_PX) {
@@ -308,7 +329,7 @@ export function DrawController() {
       else if (liveTool === 'measure') {
         if (useEditorStore.getState().measureAdjustId) updateMeasureOffset(g);
         else setPreview(snapMeasurePoint(g));
-      }
+      } else if (liveTool === 'elastic') setPreview(snapMeasurePoint(g));
     };
     const up = (ev: PointerEvent) => {
       window.removeEventListener('pointermove', move);
@@ -348,6 +369,9 @@ export function DrawController() {
         // click; a click during offset-adjust confirms it (placeMeasurePoint reads
         // the phase from state)
         if (moved > CLICK_SLOP_PX || !startedMeasure) placeMeasurePoint(g);
+      } else if (liveTool === 'elastic') {
+        // a drag places the 2nd end; a two-click sequence places it on click 2
+        if (moved > CLICK_SLOP_PX || !startedElastic) placeElasticPoint(g);
       }
     };
     window.addEventListener('pointermove', move);
@@ -387,10 +411,39 @@ export function DrawController() {
         <shadowMaterial transparent opacity={night ? 0.35 : 0.2} />
       </mesh>
 
-      {/* snap indicator (dot + End/On Pipe pill + outline) for draw + formed + measure */}
-      {(tool === 'draw' || tool === 'formed' || tool === 'measure') && preview && (
-        <SnapHint preview={preview} night={night} />
-      )}
+      {/* snap indicator (dot + End/On Pipe pill + outline) for draw + formed + measure + elastic */}
+      {(tool === 'draw' || tool === 'formed' || tool === 'measure' || tool === 'elastic') &&
+        preview && <SnapHint preview={preview} night={night} />}
+
+      {/* elastic-band rubber band: first attachment → cursor (orange, like a band) */}
+      {tool === 'elastic' &&
+        elasticFrom &&
+        preview &&
+        (() => {
+          const design = useAppStore.getState().current;
+          const a = design ? attachmentPos(design, elasticFrom) : undefined;
+          if (!a) return null;
+          const b = preview.position;
+          return (
+            <>
+              <Line
+                points={[
+                  [a.x, a.y, a.z],
+                  [b.x, b.y, b.z],
+                ]}
+                color="#f76707"
+                lineWidth={2}
+                dashed
+                dashSize={0.03}
+                gapSize={0.02}
+              />
+              <mesh position={[a.x, a.y, a.z]}>
+                <sphereGeometry args={[0.012, 12, 10]} />
+                <meshBasicMaterial color="#f76707" />
+              </mesh>
+            </>
+          );
+        })()}
 
       {/* tape-measure rubber band: first end → cursor */}
       {tool === 'measure' &&

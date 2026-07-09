@@ -77,5 +77,45 @@ test('draw → fittings → BOM → JSON round-trip → joints, on the built app
   expect(free.mode).toBe('free');
   expect(free.dof).toBe(3);
 
+  // elastic band: place a pre-tensioned band between the L's two far ends via the
+  // two-click seams, retune its tension, then simulate and confirm it pulls them
+  // together (positions stay finite)
+  const band = await page.evaluate(async () => {
+    const p = (window as any).__pvc;
+    const doc = p.getDoc();
+    const nA = doc.nodes.find((n: any) => n.id === doc.members[0].nodeA);
+    const nB = doc.nodes.find((n: any) => n.id === doc.members[1].nodeB);
+    p.setLengthsLocked(false);
+    p.setTool('elastic');
+    p.placeElastic({ x: nA.position.x, y: nA.position.y, z: nA.position.z });
+    p.placeElastic({ x: nB.position.x, y: nB.position.y, z: nB.position.z });
+    const els = p.getElastics();
+    const id = els[0]?.id;
+    p.setElasticTension(id, 300);
+    const dist = (r: any) =>
+      Math.hypot(
+        r[nA.id].x - r[nB.id].x,
+        r[nA.id].y - r[nB.id].y,
+        r[nA.id].z - r[nB.id].z,
+      );
+    p.setSimulating(true);
+    await new Promise((res) => setTimeout(res, 200));
+    const g0 = dist(p.getPhysics());
+    await new Promise((res) => setTimeout(res, 900));
+    const g1 = dist(p.getPhysics());
+    p.setSimulating(false);
+    return {
+      count: els.length,
+      tension: p.getElastics()[0]?.stiffnessNPerM,
+      g0,
+      g1,
+      finite: Number.isFinite(g1),
+    };
+  });
+  expect(band.count).toBe(1);
+  expect(band.tension).toBe(300);
+  expect(band.finite).toBe(true);
+  expect(band.g1).toBeLessThan(band.g0); // the band pulled the ends together
+
   expect(errors).toEqual([]);
 });

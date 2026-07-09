@@ -29,6 +29,7 @@ glide on snaps — never raw doc positions.
 | `FittingLayer.tsx` (mod) | Auto-resolved fittings + conflicts, now INSTANCED (cyls + spheres + conflict markers pooled) | types resolved once (`useMemo`), geometry rebuilt from eased positions in a **v-gated** useFrame (idle = no cost) |
 | `FormedLayer.tsx` (mod) | Heat-bent pipe tubes + Bend-tool control-point handles | dragging orange handles tweaks the bend |
 | `MeasureLayer.tsx` | Persistent tape measures (dimension line + label) | selectable; offset perpendicular |
+| `ElasticLayer.tsx` | Elastic bands (schema v8) — a thin orange tube between the two attachment points at eased positions | selectable (click → `selectElastic`); tints hotter with stretch; a `{memberId,t}` end lerps the member's eased endpoints |
 | `FormedLayer.tsx` | Heat-bent pipe as Catmull-Rom swept tubes | exports `formedCurve` (also used by IntersectionLayer) |
 | `FittingLayer.tsx` | Auto-resolved socket fittings + conflict markers | `resolveFittings` + `buildFittingMesh`; cap 200 members |
 | `JointLayer.tsx` (mod) | The FEW remaining declarative joints — rigid off-90° wraps (`WrapJoint` pin), anchor tees (`AnchorTee`), on-body free (`FreeJoint`) — + the swap gizmo | end-to-end free → `InstancedFreeHubs`, swivel wrapped → `InstancedWrapJoints` (both skipped here) |

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { DEFAULT_GRID_M } from '../design/snapping';
 import { getSnapPref, setSnapPref } from '../persistence/prefs';
-import type { MeasurementEnd, NominalSize, Vec3 } from '../schema';
+import type { Attachment, MeasurementEnd, NominalSize, Vec3 } from '../schema';
 
 /** Snapping configuration (the snap pill). A workspace preference, persisted
  * to localStorage, never in the document. */
@@ -43,7 +43,15 @@ function initialSnap(): SnapSettings {
 /** Active editing tool. `formed` draws a heat-bent spline; `move` translates the
  * selected member along a world axis via arrow handles; `rotate` swings it about
  * a ring gizmo. Pivots are created by right-clicking a pipe join (no tool). */
-export type Tool = 'select' | 'draw' | 'formed' | 'move' | 'rotate' | 'measure' | 'bend';
+export type Tool =
+  | 'select'
+  | 'draw'
+  | 'formed'
+  | 'move'
+  | 'rotate'
+  | 'measure'
+  | 'bend'
+  | 'elastic';
 
 /** Camera projection: orthographic isometric by default, one-toggle
  * perspective (planfile §1). */
@@ -73,6 +81,11 @@ export interface EditorState {
   measureAdjustId: string | null;
   /** the currently selected measurement (highlighted; Delete removes it) */
   selectedMeasurementId: string | null;
+  /** elastic band tool: the first placed attachment (waiting for the second), or
+   * null. A band requires BOTH ends to attach to geometry (node or along a pipe). */
+  elasticFrom: Attachment | null;
+  /** the currently selected elastic band (its tension slider shows; Delete removes it) */
+  selectedElasticId: string | null;
   /** Bend tool: keep the pipe's end tangents axial (smooth bend away from ends) */
   bendLockEndAngles: boolean;
   /** Bend tool: hold the material (developed) length — the far end draws in as
@@ -111,6 +124,8 @@ export interface EditorState {
   setMeasureFrom(end: MeasurementEnd | null): void;
   setMeasureAdjustId(id: string | null): void;
   selectMeasurement(id: string | null): void;
+  setElasticFrom(att: Attachment | null): void;
+  selectElastic(id: string | null): void;
   setBendLockEndAngles(on: boolean): void;
   setBendLengthLock(on: boolean): void;
   setDrawLength(s: string): void;
@@ -140,6 +155,8 @@ const INITIAL = {
   measureFrom: null as MeasurementEnd | null,
   measureAdjustId: null as string | null,
   selectedMeasurementId: null as string | null,
+  elasticFrom: null as Attachment | null,
+  selectedElasticId: null as string | null,
   bendLockEndAngles: true,
   bendLengthLock: false,
   drawLength: '',
@@ -164,6 +181,7 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
       formedPoints: tool === 'formed' ? get().formedPoints : [],
       measureFrom: tool === 'measure' ? get().measureFrom : null,
       measureAdjustId: tool === 'measure' ? get().measureAdjustId : null,
+      elasticFrom: tool === 'elastic' ? get().elasticFrom : null,
       drawLength: '',
       drawDirection: null,
     });
@@ -175,10 +193,20 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     set({ projection: get().projection === 'ortho' ? 'perspective' : 'ortho' });
   },
   setSelection(ids) {
-    set({ selectedIds: ids, selectedJointId: null, selectedMeasurementId: null });
+    set({
+      selectedIds: ids,
+      selectedJointId: null,
+      selectedMeasurementId: null,
+      selectedElasticId: null,
+    });
   },
   selectJoint(jointId) {
-    set({ selectedJointId: jointId, selectedIds: [], selectedMeasurementId: null });
+    set({
+      selectedJointId: jointId,
+      selectedIds: [],
+      selectedMeasurementId: null,
+      selectedElasticId: null,
+    });
   },
   setDrawSize(size) {
     set({ drawSize: size });
@@ -202,7 +230,23 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     set({ measureAdjustId: id });
   },
   selectMeasurement(id) {
-    set({ selectedMeasurementId: id, selectedIds: [], selectedJointId: null });
+    set({
+      selectedMeasurementId: id,
+      selectedIds: [],
+      selectedJointId: null,
+      selectedElasticId: null,
+    });
+  },
+  setElasticFrom(att) {
+    set({ elasticFrom: att });
+  },
+  selectElastic(id) {
+    set({
+      selectedElasticId: id,
+      selectedIds: [],
+      selectedJointId: null,
+      selectedMeasurementId: null,
+    });
   },
   setBendLockEndAngles(on) {
     set({ bendLockEndAngles: on });

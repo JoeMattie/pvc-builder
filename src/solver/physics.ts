@@ -33,7 +33,7 @@ import {
 } from 'crashcat';
 import { vec3 } from 'mathcat';
 import { add, cross, dot, length, normalize, rotate, scale, sub } from '../geometry/math3';
-import { type Design, pipeSpec, type Quaternion, type Vec3 } from '../schema';
+import { type Attachment, type Design, pipeSpec, type Quaternion, type Vec3 } from '../schema';
 
 const UP: Vec3 = { x: 0, y: 1, z: 0 };
 const GRAVITY = 9.81;
@@ -47,6 +47,18 @@ const SCALE = 20;
  * so the crashcat/three debug renderer can be scaled back to metre space. */
 export const PHYSICS_SCALE = SCALE;
 const PIVOT_FRICTION_TORQUE = 40; // scaled N·m — light resistance, swings under load
+// Elastic bands: a spring force pulls two attachment points together once the
+// span exceeds the band's rest length (bands are pre-tensioned, so essentially
+// always). Real stiffness (N/m) is scaled into the sim's ×SCALE space:
+//   F_scaled = stiffnessNPerM · ELASTIC_K_SCALE · (len_scaled − restLen_scaled)
+// Physically exact would be SCALE³ (gravity uses SCALE⁴, extension carries one
+// SCALE); that's too stiff/ringy at 60 fps for a hand-drawn band, so a softer,
+// well-damped constant is used — TUNED so a default (~150 N/m) band visibly but
+// stably pulls two ~0.3 m pipes together without exploding (see the bench check).
+const ELASTIC_K_SCALE = SCALE * SCALE * 3;
+// Axial damping (scaled): resists the RELATIVE velocity of the two ends along
+// the band, killing the spring's ring so it settles instead of oscillating.
+const ELASTIC_DAMPING = SCALE * 40;
 // Friction resisting a wrapped pivot SLIDING along the pipe it wraps (scaled N).
 // A clamped collar grips the pipe, so it mostly stays put but slides under load /
 // on a steep tilt. TUNING KNOB — raise to grip harder, lower to slide freer.
@@ -120,12 +132,27 @@ function quatFromTo(a: Vec3, b: Vec3): Quaternion {
 }
 const conj = (q: Quaternion): Quaternion => ({ x: -q.x, y: -q.y, z: -q.z, w: q.w });
 
+/** A resolved elastic band: each end is a body + the attachment's offset in that
+ * body's local frame (scaled space, a mathcat tuple), plus the pre-scaled rest
+ * length and spring constant. Built once at world-build; the per-frame force
+ * loop only reads these. */
+interface SimElastic {
+  aBody: number;
+  aLocal: [number, number, number];
+  bBody: number;
+  bLocal: [number, number, number];
+  restLenScaled: number;
+  kScaled: number;
+}
+
 interface Sim {
   world: World;
   bodyOfMember: Map<string, number>;
   /** per node: an incident member body + the node's offset in that body's frame
    * (a mathcat tuple, so the per-frame read path stays allocation-free) */
   nodeSource: Map<string, { memberId: string; local: [number, number, number] }>;
+  /** resolved elastic bands (spring forces applied each step) */
+  elastics: SimElastic[];
   topoHash: string;
 }
 
@@ -133,7 +160,12 @@ let sim: Sim | null = null;
 
 /** Rebuild the sim when the topology or rest geometry changes. */
 export function physicsTopoHash(design: Design): string {
-  return JSON.stringify({ m: design.members, j: design.joints, n: design.nodes });
+  return JSON.stringify({
+    m: design.members,
+    j: design.joints,
+    n: design.nodes,
+    e: design.elastics,
+  });
 }
 
 function endpoints(design: Design, m: Design['members'][number]): { a: Vec3; b: Vec3 } | null {
@@ -210,6 +242,9 @@ function build(design: Design): Sim {
 
   const bodyOfMember = new Map<string, number>();
   const nodeSource = new Map<string, { memberId: string; local: [number, number, number] }>();
+  // per-body rest transform (scaled position + quaternion) — so an elastic
+  // attached at a point ALONG a member can be resolved to that body's local frame
+  const bodyRest = new Map<number, { pos: Vec3; quat: Quaternion }>();
   const nodePos = new Map(design.nodes.map((n) => [n.id, n.position]));
   const memberById = new Map(design.members.map((m) => [m.id, m]));
 
@@ -329,8 +364,15 @@ function build(design: Design): Sim {
     for (const id of memberIds) bodyOfMember.set(id, body.id);
 
     // each node's offset in the body's local frame, for reading positions back
-    const qc = conj({ x: bodyQuat[0], y: bodyQuat[1], z: bodyQuat[2], w: bodyQuat[3] });
+    const bodyQuatV: Quaternion = {
+      x: bodyQuat[0],
+      y: bodyQuat[1],
+      z: bodyQuat[2],
+      w: bodyQuat[3],
+    };
+    const qc = conj(bodyQuatV);
     const bodyPosV: Vec3 = { x: bodyPos[0], y: bodyPos[1], z: bodyPos[2] };
+    bodyRest.set(body.id, { pos: bodyPosV, quat: bodyQuatV });
     for (const s of segs) {
       for (const nid of [s.m.nodeA, s.m.nodeB]) {
         if (nodeSource.has(nid)) continue;
@@ -391,7 +433,51 @@ function build(design: Design): Sim {
     });
   }
 
-  return { world, bodyOfMember, nodeSource, topoHash: physicsTopoHash(design) };
+  // ── elastic bands: resolve each attachment to a body + local offset (scaled),
+  // exactly like nodeSource. A node end reuses its nodeSource offset; a point
+  // ALONG a member is lerped in world space then folded into that member's
+  // assembly body local frame. Skip a band whose ends don't both resolve or that
+  // land on the SAME body (no relative force to give).
+  const resolveAttachment = (
+    att: Attachment,
+  ): { bodyId: number; local: [number, number, number] } | null => {
+    if ('nodeId' in att) {
+      const src = nodeSource.get(att.nodeId);
+      if (!src) return null;
+      const bodyId = bodyOfMember.get(src.memberId);
+      return bodyId === undefined ? null : { bodyId, local: src.local };
+    }
+    const m = memberById.get(att.memberId);
+    if (!m) return null;
+    const a = nodePos.get(m.nodeA);
+    const b = nodePos.get(m.nodeB);
+    if (!a || !b) return null;
+    const bodyId = bodyOfMember.get(att.memberId);
+    if (bodyId === undefined) return null;
+    const rest = bodyRest.get(bodyId);
+    if (!rest) return null;
+    const t = Math.max(0, Math.min(1, att.t));
+    const world = add(a, scale(sub(b, a), t)); // metres
+    const l = rotate(conj(rest.quat), sub(scale(world, SCALE), rest.pos));
+    return { bodyId, local: [l.x, l.y, l.z] };
+  };
+
+  const elastics: SimElastic[] = [];
+  for (const e of design.elastics) {
+    const ra = resolveAttachment(e.a);
+    const rb = resolveAttachment(e.b);
+    if (!ra || !rb || ra.bodyId === rb.bodyId) continue;
+    elastics.push({
+      aBody: ra.bodyId,
+      aLocal: ra.local,
+      bBody: rb.bodyId,
+      bLocal: rb.local,
+      restLenScaled: e.restLengthM * SCALE,
+      kScaled: e.stiffnessNPerM * ELASTIC_K_SCALE,
+    });
+  }
+
+  return { world, bodyOfMember, nodeSource, elastics, topoHash: physicsTopoHash(design) };
 }
 
 export function startPhysics(design: Design): void {
@@ -412,10 +498,60 @@ export function activeTopoHash(): string {
   return sim?.topoHash ?? '';
 }
 
+// Reused scratch for the per-frame elastic force loop (allocation-free hot path).
+const _ea = vec3.create();
+const _eb = vec3.create();
+const _eva = vec3.create();
+const _evb = vec3.create();
+
+/** Apply each elastic band's spring + axial-damping force to its two bodies.
+ * Runs BEFORE the world integrates, so the forces are consumed by this step.
+ * World points are `body.position + quat⊗local` in SCALED space (like
+ * physicsNodePositions); a band pulls its ends together once stretched past its
+ * rest length (bands are pre-tensioned → essentially always). A force on a
+ * STATIC or missing body is skipped. */
+function applyElasticForces(): void {
+  const s = sim;
+  if (!s?.elastics.length) return;
+  for (const e of s.elastics) {
+    const aBody = rigidBody.get(s.world, e.aBody);
+    const bBody = rigidBody.get(s.world, e.bBody);
+    if (!aBody || !bBody) continue;
+    // world attachment points (scaled)
+    vec3.transformQuat(_ea, e.aLocal, aBody.quaternion);
+    vec3.add(_ea, _ea, aBody.position);
+    vec3.transformQuat(_eb, e.bLocal, bBody.quaternion);
+    vec3.add(_eb, _eb, bBody.position);
+    const dx = _eb[0] - _ea[0];
+    const dy = _eb[1] - _ea[1];
+    const dz = _eb[2] - _ea[2];
+    const len = Math.hypot(dx, dy, dz);
+    if (len < 1e-6) continue;
+    const stretch = len - e.restLenScaled;
+    if (stretch <= 0) continue; // slack → no push (a band never pushes apart)
+    const ux = dx / len;
+    const uy = dy / len;
+    const uz = dz / len;
+    // spring magnitude + axial damping (relative velocity of the two ends along
+    // the band axis) — the damping keeps the stiff spring from ringing/exploding
+    rigidBody.getVelocityAtPoint(_eva, aBody, _ea);
+    rigidBody.getVelocityAtPoint(_evb, bBody, _eb);
+    const vRel = (_evb[0] - _eva[0]) * ux + (_evb[1] - _eva[1]) * uy + (_evb[2] - _eva[2]) * uz;
+    const f = e.kScaled * stretch + ELASTIC_DAMPING * vRel;
+    const staticA = aBody.motionType === MotionType.STATIC;
+    const staticB = bBody.motionType === MotionType.STATIC;
+    // pull aBody toward bBody (+u), bBody toward aBody (−u)
+    if (!staticA) rigidBody.addForceAtPosition(s.world, aBody, [f * ux, f * uy, f * uz], _ea, true);
+    if (!staticB)
+      rigidBody.addForceAtPosition(s.world, bBody, [-f * ux, -f * uy, -f * uz], _eb, true);
+  }
+}
+
 /** EXPERIMENT: one coarse step per frame (clamped to MAX_DT), OR fixed 1/120 s
  * substeps (≤8/frame) when substeps are toggled on. */
 export function stepPhysics(dt: number): void {
   if (!sim) return;
+  applyElasticForces();
   if (!useSubsteps) {
     updateWorld(sim.world, undefined, Math.min(dt, MAX_DT));
     return;
