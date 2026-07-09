@@ -6,6 +6,16 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 
 ## Post-batch fixes (2026-07-08)
 
+- **Draw snaps onto pipes at ANY height** (bug: drawing on/between the Cube Frame's elevated top
+  pipes snapped both ends to the ground, and the on-pipe indicator jittered). Root cause:
+  `DrawController.targetOf` only ever raycast the **ground plane** (or a view-plane through the path
+  start), so an elevated pipe was far from the raw point and `snapPoint`'s 3D on-pipe test never
+  fired; the jitter was the start-plane's `dominantAxisNormal` flipping frame-to-frame. Fix: a pure
+  `closestPointOnSegmentToRay` (`ground.ts`) + `rayPipePoint` in DrawController raycast the pointer
+  ray against each straight pipe segment; when the ray is within a pipe's grab radius, `targetOf`
+  returns the 3D point ON that pipe (before the ground/plane fallback). `snapPoint` then resolves a
+  stable on-pipe/tee snap and `placeDrawPoint`'s existing on-body union machinery tees both ends at
+  their real height. Respects the snap-to-pipes toggle; straight members only (formed = follow-up).
 - **Sim precision isolated → CCD-only** (experiment branch `sim-precision-rollback`, NOT on main
   yet). The physics tunnelling fix in 258c139 bundled three mechanisms; an 8-way sweep of a
   settling welded elbow (400 steps of 1/60 s) isolated their effect:

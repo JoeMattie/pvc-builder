@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react';
 import { CatmullRomCurve3, type Ray, Raycaster, Vector2, Vector3 } from 'three';
 import { memberById, nodeById } from '../../design/docOps';
 import { marqueeFromDrag, memberSelectedBy, type Pt } from '../../design/marquee';
-import type { SnapResult } from '../../design/snapping';
+import { POINT_RADIUS_M, type SnapResult } from '../../design/snapping';
 import { length, sub } from '../../geometry/math3';
 import { type Member, pipeSpec, type Vec3 } from '../../schema';
 import { easedPos } from '../../state/animStore';
@@ -28,7 +28,7 @@ import { useThemeStore } from '../../state/themeStore';
 import { GROUND_SIZE_M, scenePalette } from '../theme';
 import { formatLengthDisplay } from '../units';
 import { orientZ, placeAxis } from './axis';
-import { dominantAxisNormal, rayToGround, rayToPlane } from './ground';
+import { closestPointOnSegmentToRay, dominantAxisNormal, rayToGround, rayToPlane } from './ground';
 
 // A click and an orbit-drag both start with a pointerdown on the ground; only
 // treat a pointerup as a "click" if the pointer barely moved.
@@ -151,10 +151,36 @@ export function DrawController() {
     if (tool === 'formed' && formedPoints.length) return formedPoints[formedPoints.length - 1];
     return undefined;
   };
+  // The 3D point on the nearest straight pipe the ray is hovering (within a grab
+  // radius), or null. Ray-vs-segment so it works at ANY height — the fix for
+  // drawing onto the Cube Frame's elevated pipes, which a ground/plane raycast
+  // leaves far below the pipe (so on-pipe snapping never fired, and the cursor
+  // jittered on the flip-flopping view plane).
+  const rayPipePoint = (ray: Ray): Vec3 | null => {
+    if (!useEditorStore.getState().snap.snapToPipes) return null;
+    const design = useAppStore.getState().current;
+    if (!design) return null;
+    let best: { point: Vec3; d: number } | null = null;
+    for (const m of design.members) {
+      if (m.kind !== 'straight') continue;
+      const a = easedPos(m.nodeA) ?? nodeById(design, m.nodeA)?.position;
+      const b = easedPos(m.nodeB) ?? nodeById(design, m.nodeB)?.position;
+      if (!a || !b) continue;
+      const { point, dist } = closestPointOnSegmentToRay(ray, a, b);
+      const tol = pipeSpec(m.size).odM / 2 + POINT_RADIUS_M; // pipe body + grab margin
+      if (dist <= tol && (!best || dist < best.d)) best = { point, d: dist };
+    }
+    return best ? best.point : null;
+  };
+
   const targetOf = (ray: Ray): Vec3 | null => {
     // when a draw plane is active, every point lands ON that plane (draw on a wall)
     const dp = useEditorStore.getState().drawPlane;
     if (dp) return rayToPlane(ray, dp.origin, dp.normal) ?? rayToGround(ray);
+    // hovering an existing pipe (any height) → the 3D point on it, so snapPoint
+    // resolves an on-pipe/tee snap instead of a ground point far below
+    const onPipe = rayPipePoint(ray);
+    if (onPipe) return onPipe;
     const from = fromPoint();
     if (!from) return rayToGround(ray);
     camera.getWorldDirection(fwd);
