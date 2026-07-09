@@ -69,6 +69,8 @@ export const migrations: Record<number, Migration> = {
     ...doc,
     measurements: Array.isArray(doc.measurements) ? doc.measurements : [],
   }),
+  // v6 → v7: added member `groups`; old docs get an empty array.
+  6: (doc) => ({ ...doc, groups: Array.isArray(doc.groups) ? doc.groups : [] }),
 };
 
 export class MigrationError extends Error {}

@@ -11,6 +11,9 @@ import {
   deleteMember,
   detachMemberEnd,
   extractSubgraph,
+  groupMemberIds,
+  groupMembers,
+  groupOfMember,
   healBodyJoints,
   joinContext,
   jointsAtNode,
@@ -39,6 +42,7 @@ import {
   subgraphExtent,
   swapReceiver,
   translateMember,
+  ungroupMembers,
   weldNodes,
 } from './docOps';
 import { resolveFittings } from './fittings';
@@ -78,6 +82,42 @@ function branchOnRun(onRun: Vec3, branchFar: Vec3): Design {
   );
   return d;
 }
+
+describe('groups', () => {
+  it('groups members and moves a member out of its old group', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0), V(1, 0, 1)]);
+    const g1 = groupMembers(design, [memberIds[0]!, memberIds[1]!]);
+    expect(g1.design.groups).toHaveLength(1);
+    expect(groupOfMember(g1.design, memberIds[0]!)?.id).toBe(g1.groupId);
+    // regrouping just member 0 into a new group removes it from the first
+    const g2 = groupMembers(g1.design, [memberIds[0]!]);
+    expect(groupOfMember(g2.design, memberIds[0]!)?.id).toBe(g2.groupId);
+    expect(groupMemberIds(g2.design, g1.groupId)).toEqual([memberIds[1]!]);
+  });
+
+  it('defers an on-body union across a group boundary, solves it on ungroup', () => {
+    // a branch END landing on a run's span normally heals into an on-body union
+    const base = branchOnRun(V(0, 0, 0), V(0, 0, 0.4));
+    expect(healBodyJoints(base).joints).toHaveLength(1); // union forms when ungrouped
+    // group only the run → the branch (ungrouped) must NOT union to it
+    const grouped = groupMembers(base, ['run']);
+    expect(healBodyJoints(grouped.design).joints).toHaveLength(0);
+    // dissolving the group auto-solves the deferred union
+    const solved = ungroupMembers(grouped.design, grouped.groupId);
+    expect(solved.groups).toHaveLength(0);
+    expect(solved.joints).toHaveLength(1);
+  });
+
+  it('prunes groups when a member is deleted', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0), V(1, 0, 1)]);
+    const g = groupMembers(design, [memberIds[0]!, memberIds[1]!]);
+    const afterDelete = deleteMember(g.design, memberIds[0]!);
+    expect(groupMemberIds(afterDelete, g.groupId)).toEqual([memberIds[1]!]);
+    // deleting the last member drops the empty group entirely
+    const empty = deleteMember(afterDelete, memberIds[1]!);
+    expect(empty.groups).toHaveLength(0);
+  });
+});
 
 describe('copy / paste subgraph', () => {
   it('extracts the selected members + their nodes + wholly-internal joints', () => {

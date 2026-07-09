@@ -35,8 +35,11 @@ import {
   deleteMembers,
   detachMemberEnd,
   dragNodeTo,
+  enterGroup,
+  exitGroup,
   finishFormed,
   finishPath,
+  groupSelection,
   hasClipboard,
   jointOrientationsOf,
   makeFreeHub,
@@ -61,6 +64,7 @@ import {
   swapJointReceiver,
   translateMemberBy,
   translateMembersBy,
+  ungroupSelection,
   weldDroppedNode,
 } from '../state/editorActions';
 import { useEditorStore } from '../state/editorStore';
@@ -281,7 +285,12 @@ export function EditorShell() {
         else if (editor.measureFrom || editor.measureAdjustId) {
           editor.setMeasureFrom(null);
           editor.setMeasureAdjustId(null);
-        } else clearSelection();
+        } else if (e.key === 'Escape' && editor.enteredGroupId) exitGroup();
+        else clearSelection();
+      } else if (e.key === 'g' || e.key === 'G') {
+        // G groups the selection; Shift+G ungroups it (auto-solves boundary unions)
+        if (e.shiftKey) ungroupSelection();
+        else groupSelection();
       } else if (e.key === ' ') {
         // spacebar → back to the select tool
         e.preventDefault();
@@ -397,6 +406,11 @@ export function EditorShell() {
     hook.cutSelection = () => cutSelection();
     hook.pasteClipboard = () => pasteClipboard();
     hook.hasClipboard = () => hasClipboard();
+    hook.groupSelection = () => groupSelection();
+    hook.ungroupSelection = () => ungroupSelection();
+    hook.enterGroup = (id: string) => enterGroup(id);
+    hook.exitGroup = () => exitGroup();
+    hook.getEnteredGroup = () => useEditorStore.getState().enteredGroupId;
     hook.selectJoint = (id: string | null) => useEditorStore.getState().selectJoint(id);
     hook.clearSelection = () => clearSelection();
     hook.deleteMembers = (ids: string[]) => deleteMembers(ids);

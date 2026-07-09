@@ -132,6 +132,34 @@ describe('v5 → v6 (measurements + doc-stored UI state)', () => {
   });
 });
 
+describe('v6 → v7 (member groups)', () => {
+  const v6 = {
+    schemaVersion: 6,
+    id: 'd1',
+    name: 'Cube frame',
+    unitsPreference: 'imperial',
+    enabledSizes: ['1/2"'],
+    lengthsLocked: false,
+    nodes: [{ id: 'n1', position: { x: 0, y: 0, z: 0 } }],
+    members: [],
+    joints: [],
+    measurements: [],
+  };
+
+  it('adds an empty groups array and validates', () => {
+    const out = migrateToLatest(JSON.parse(JSON.stringify(v6)));
+    expect(out.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(out.groups).toEqual([]);
+  });
+
+  it('preserves existing groups', () => {
+    const withGroups = { ...v6, groups: [{ id: 'g1', memberIds: ['m1', 'm2'] }] };
+    const out = migrateToLatest(JSON.parse(JSON.stringify(withGroups)));
+    expect(out.groups).toHaveLength(1);
+    expect(out.groups[0]?.memberIds).toEqual(['m1', 'm2']);
+  });
+});
+
 describe('applyMigrations', () => {
   it('chains steps and stamps the schemaVersion after each', () => {
     const registry: Record<number, Migration> = {

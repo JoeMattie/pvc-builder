@@ -16,6 +16,7 @@ import {
   placeDrawPoint,
   placeFormedPoint,
   placeMeasurePoint,
+  setSelectionGroupAware,
   snapDrawPoint,
   snapFormedPoint,
   snapMeasurePoint,
@@ -324,7 +325,7 @@ export function DrawController() {
             const hits = design.members
               .filter((m) => memberSelectedBy(memberScreenPts(m), rect, mode))
               .map((m) => m.id);
-            useEditorStore.getState().setSelection(hits);
+            setSelectionGroupAware(hits);
           }
         } else {
           // a plain click on empty space clears the selection (a pipe click

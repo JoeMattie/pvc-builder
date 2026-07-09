@@ -6,6 +6,7 @@ import { add, cross, dot, length, normalize, scale, sub } from '../geometry/math
 import { developedLengthM } from '../geometry/pipe';
 import type {
   Design,
+  Group,
   Joint,
   JointMode,
   Measurement,
@@ -531,12 +532,12 @@ export function deleteMember(design: Design, memberId: string): Design {
   const joints = design.joints.filter(
     (j) => memberIds.has(j.receiver) && memberIds.has(j.mover) && referenced.has(j.nodeId),
   );
-  return {
+  return pruneGroups({
     ...design,
     members,
     nodes: design.nodes.filter((n) => referenced.has(n.id)),
     joints,
-  };
+  });
 }
 
 // ── copy / paste: extract a self-contained fragment, then re-insert with fresh
@@ -1010,7 +1011,10 @@ export function healBodyJoints(design: Design): Design {
       if (incidentMembers(d, nodeId).length !== 1) continue;
       if (d.joints.some((j) => j.nodeId === nodeId && j.mover === m.id)) continue;
       const run = throughMemberAt(d, nodeId);
-      if (run) d = addBodyJoint(d, run.id, nodeId, 'anchor').design;
+      // don't auto-union across a group boundary — a branch snapped onto a grouped
+      // run (from outside) defers its union until the group is dissolved
+      if (run && memberGroupKey(d, m.id) === memberGroupKey(d, run.id))
+        d = addBodyJoint(d, run.id, nodeId, 'anchor').design;
     }
   }
   return dedupeJoints(d);
@@ -1089,4 +1093,114 @@ export function nodeDegrees(design: Design): Map<string, number> {
     deg.set(m.nodeB, (deg.get(m.nodeB) ?? 0) + 1);
   }
   return deg;
+}
+
+// ── groups (schema v7): named sets of members that select/move/copy as a unit
+// and defer unions across their boundary until dissolved ────────────────────
+
+/** The group containing `memberId`, or undefined. A member is in ≤1 group. */
+export function groupOfMember(design: Design, memberId: string): Group | undefined {
+  return design.groups.find((g) => g.memberIds.includes(memberId));
+}
+
+/** The id of the group containing `memberId`, or null (ungrouped). */
+export function memberGroupKey(design: Design, memberId: string): string | null {
+  return groupOfMember(design, memberId)?.id ?? null;
+}
+
+/** The group key of a node — the group of any member incident to it (null =
+ * ungrouped). Two nodes with different keys must not auto-union. */
+export function nodeGroupKey(design: Design, nodeId: string): string | null {
+  for (const m of design.members) {
+    if (m.nodeA === nodeId || m.nodeB === nodeId) {
+      const k = memberGroupKey(design, m.id);
+      if (k) return k;
+    }
+  }
+  return null;
+}
+
+/** Every member id in a group (empty if the group is gone). */
+export function groupMemberIds(design: Design, groupId: string): string[] {
+  return design.groups.find((g) => g.id === groupId)?.memberIds ?? [];
+}
+
+/** Group the given members into ONE new group. Members are first removed from
+ * any existing group (a member belongs to ≤1 group); groups left empty are
+ * dropped. Returns the new group id. */
+export function groupMembers(
+  design: Design,
+  memberIds: string[],
+  id: string = makeId('g'),
+): { design: Design; groupId: string } {
+  const ids = [...new Set(memberIds)].filter((mid) => memberById(design, mid));
+  if (!ids.length) return { design, groupId: id };
+  const idSet = new Set(ids);
+  const groups = design.groups
+    .map((g) => ({ ...g, memberIds: g.memberIds.filter((m) => !idSet.has(m)) }))
+    .filter((g) => g.memberIds.length > 0);
+  groups.push({ id, memberIds: ids });
+  return { design: { ...design, groups }, groupId: id };
+}
+
+/** Add members to an existing group (e.g. pipes drawn while inside it). No-op if
+ * the group is gone or every member is already in it. */
+export function addMembersToGroup(design: Design, groupId: string, memberIds: string[]): Design {
+  const idx = design.groups.findIndex((g) => g.id === groupId);
+  if (idx < 0) return design;
+  const g = design.groups[idx]!;
+  const add = memberIds.filter((m) => !g.memberIds.includes(m) && memberById(design, m));
+  if (!add.length) return design;
+  const groups = [...design.groups];
+  groups[idx] = { ...g, memberIds: [...g.memberIds, ...add] };
+  return { ...design, groups };
+}
+
+/** Remove group ids from every group + drop any that become empty (used after a
+ * member delete, and internally). */
+export function pruneGroups(design: Design): Design {
+  const memberIds = new Set(design.members.map((m) => m.id));
+  const groups = design.groups
+    .map((g) => ({ ...g, memberIds: g.memberIds.filter((m) => memberIds.has(m)) }))
+    .filter((g) => g.memberIds.length > 0);
+  return groups.length === design.groups.length &&
+    groups.every((g, i) => g.memberIds.length === design.groups[i]?.memberIds.length)
+    ? design
+    : { ...design, groups };
+}
+
+/** Weld every pair of coincident nodes allowed to merge (same group context),
+ * then heal on-body unions. Used to AUTO-SOLVE deferred unions when a group is
+ * dissolved: geometry that was snapped-but-not-unioned across the boundary now
+ * connects. */
+export function weldCoincidentNodes(design: Design, tol = 1e-4): Design {
+  let d = design;
+  let merged = true;
+  while (merged) {
+    merged = false;
+    for (let i = 0; i < d.nodes.length && !merged; i++) {
+      const a = d.nodes[i]!;
+      for (let j = i + 1; j < d.nodes.length; j++) {
+        const b = d.nodes[j]!;
+        if (
+          length(sub(a.position, b.position)) < tol &&
+          nodeGroupKey(d, a.id) === nodeGroupKey(d, b.id)
+        ) {
+          d = weldNodes(d, b.id, a.id);
+          merged = true;
+          break;
+        }
+      }
+    }
+  }
+  return healBodyJoints(d);
+}
+
+/** Dissolve a group and AUTO-SOLVE the unions its boundary deferred: remove the
+ * group record, then weld coincident nodes + heal on-body unions across what was
+ * the boundary. */
+export function ungroupMembers(design: Design, groupId: string): Design {
+  const groups = design.groups.filter((g) => g.id !== groupId);
+  if (groups.length === design.groups.length) return design;
+  return weldCoincidentNodes({ ...design, groups });
 }

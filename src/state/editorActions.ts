@@ -7,12 +7,16 @@ import {
   addControlPointAt,
   addFormedMember,
   addMeasurement,
+  addMembersToGroup,
   appendPipe,
   bendMember,
   connectPipe,
   deleteMember,
   detachMemberEnd as detachMemberEndOp,
   extractSubgraph,
+  groupMemberIds,
+  groupMembers as groupMembersOp,
+  groupOfMember,
   incidentMembers,
   makeFreeHub as makeFreeHubOp,
   makeManufacturedJoint as makeManufacturedJointOp,
@@ -21,6 +25,7 @@ import {
   memberEndpoints,
   moveControlPoint,
   nodeById,
+  nodeGroupKey,
   pasteSubgraph,
   reconcileBodyJoints,
   removeMeasurement,
@@ -37,6 +42,7 @@ import {
   subgraphExtent,
   swapReceiver as swapReceiverOp,
   translateMember,
+  ungroupMembers as ungroupMembersOp,
   weldNodes,
 } from '../design/docOps';
 import {
@@ -181,16 +187,20 @@ export function snapDrawPoint(raw: Vec3, lockAxis = false): SnapResult {
 export function placeDrawPoint(raw: Vec3, lockAxis = false): SnapResult {
   const app = useAppStore.getState();
   const editor = useEditorStore.getState();
+  const design = app.current;
   const snap = snapDrawPoint(raw, lockAxis);
   const size = editor.drawSize;
   const fromId = editor.drawingFromNodeId;
   // landing on a pipe's body (not an end node) forms an on-body tee around that
   // intact run — rigid/screwed (anchor) by default, switchable to a pivot later
   const wrapMember = snap.kind === 'on-pipe' ? snap.onPipeMemberId : undefined;
+  // a node to connect to, or null → place a fresh coincident node (grouped node
+  // snapped from outside: don't share it, defer the union to ungroup)
+  const joinNode = design ? drawJoinNode(design, snap) : null;
 
   if (!fromId) {
-    if (snap.kind === 'node' && snap.nodeId) {
-      editor.setDrawingFrom(snap.nodeId);
+    if (joinNode) {
+      editor.setDrawingFrom(joinNode);
     } else {
       let newId = '';
       app.updateCurrent((d) => {
@@ -206,18 +216,19 @@ export function placeDrawPoint(raw: Vec3, lockAxis = false): SnapResult {
     return snap;
   }
 
-  if (snap.nodeId === fromId) return snap; // clicked the current cursor — ignore
+  if (joinNode === fromId) return snap; // clicked the current cursor — ignore
 
   // a pending union at the path's on-pipe START node (fromId), now that its first
   // segment exists
   const startWrap = editor.drawStartWrapMember;
 
-  if (snap.kind === 'node' && snap.nodeId) {
+  if (joinNode) {
     app.updateCurrent((d) => {
-      const nd = connectPipe(d, fromId, snap.nodeId as string, size).design;
-      return startWrap ? addBodyJoint(nd, startWrap, fromId).design : nd;
+      const r = connectPipe(d, fromId, joinNode, size);
+      const nd = startWrap ? addBodyJoint(r.design, startWrap, fromId).design : r.design;
+      return withDrawnInGroup(nd, [r.memberId]);
     });
-    editor.setDrawingFrom(snap.nodeId);
+    editor.setDrawingFrom(joinNode);
   } else {
     let nextId = '';
     app.updateCurrent((d) => {
@@ -225,7 +236,7 @@ export function placeDrawPoint(raw: Vec3, lockAxis = false): SnapResult {
       nextId = r.nodeId;
       let nd = wrapMember ? addBodyJoint(r.design, wrapMember, nextId).design : r.design;
       if (startWrap) nd = addBodyJoint(nd, startWrap, fromId).design;
-      return nd;
+      return withDrawnInGroup(nd, [r.memberId]);
     });
     editor.setDrawingFrom(nextId);
   }
@@ -335,12 +346,108 @@ function updateReconciled(mutate: (d: Design) => Design): void {
   useAppStore.getState().updateCurrent((d) => reconcileBodyJoints(mutate(d)));
 }
 
+/** Group-aware member selection: clicking a member that belongs to a group —
+ * when you're NOT inside that group — selects the WHOLE group; otherwise just
+ * the clicked member. */
 export function selectMember(memberId: string): void {
-  useEditorStore.getState().setSelection([memberId]);
+  const design = useAppStore.getState().current;
+  const entered = useEditorStore.getState().enteredGroupId;
+  const g = design ? groupOfMember(design, memberId) : undefined;
+  if (g && g.id !== entered) useEditorStore.getState().setSelection(g.memberIds);
+  else useEditorStore.getState().setSelection([memberId]);
 }
 
 export function clearSelection(): void {
   useEditorStore.getState().setSelection([]);
+}
+
+/** Set the selection from a raw member-id list (e.g. a marquee), applying group
+ * rules: outside a group, each hit expands to its whole group; inside the entered
+ * group, hits are restricted to that group's members. Returns the final ids. */
+export function setSelectionGroupAware(memberIds: string[]): string[] {
+  const design = useAppStore.getState().current;
+  const entered = useEditorStore.getState().enteredGroupId;
+  if (!design) {
+    useEditorStore.getState().setSelection(memberIds);
+    return memberIds;
+  }
+  let out: string[];
+  if (entered) {
+    const active = new Set(groupMemberIds(design, entered));
+    out = memberIds.filter((id) => active.has(id));
+  } else {
+    const set = new Set<string>();
+    for (const id of memberIds) {
+      const g = groupOfMember(design, id);
+      if (g) for (const m of g.memberIds) set.add(m);
+      else set.add(id);
+    }
+    out = [...set];
+  }
+  useEditorStore.getState().setSelection(out);
+  return out;
+}
+
+// ── groups (G to group, Shift+G to ungroup, double-click to enter, Esc exit) ──
+
+/** Group the current selection into one group. Returns whether it grouped. */
+export function groupSelection(): boolean {
+  const ids = useEditorStore.getState().selectedIds;
+  if (!ids.length) return false;
+  useAppStore.getState().updateCurrent((d) => groupMembersOp(d, ids).design);
+  return true;
+}
+
+/** Ungroup the group(s) of the current selection (and/or the entered group),
+ * auto-solving the unions the boundary deferred. */
+export function ungroupSelection(): boolean {
+  const design = useAppStore.getState().current;
+  if (!design) return false;
+  const editor = useEditorStore.getState();
+  const groupIds = new Set<string>();
+  for (const id of editor.selectedIds) {
+    const g = groupOfMember(design, id);
+    if (g) groupIds.add(g.id);
+  }
+  if (editor.enteredGroupId) groupIds.add(editor.enteredGroupId);
+  if (!groupIds.size) return false;
+  useAppStore
+    .getState()
+    .updateCurrent((d) => [...groupIds].reduce((acc, gid) => ungroupMembersOp(acc, gid), d));
+  if (editor.enteredGroupId && groupIds.has(editor.enteredGroupId)) editor.setEnteredGroup(null);
+  return true;
+}
+
+/** Enter a group for editing (double-click a grouped member). */
+export function enterGroup(groupId: string): void {
+  const editor = useEditorStore.getState();
+  editor.setEnteredGroup(groupId);
+  editor.setSelection([]);
+}
+
+/** Exit the entered group (Esc). Returns whether one was exited. */
+export function exitGroup(): boolean {
+  const editor = useEditorStore.getState();
+  if (!editor.enteredGroupId) return false;
+  editor.setEnteredGroup(null);
+  editor.setSelection([]);
+  return true;
+}
+
+/** Add newly-drawn members to the entered group (so intra-group draws union). */
+function withDrawnInGroup(d: Design, memberIds: string[]): Design {
+  const entered = useEditorStore.getState().enteredGroupId;
+  return entered ? addMembersToGroup(d, entered, memberIds.filter(Boolean)) : d;
+}
+
+/** The node to connect a draw/join to, or null to place a fresh COINCIDENT node
+ * instead — snapping onto a grouped node FROM OUTSIDE must not share it (that
+ * would union across the boundary); the union is deferred until ungroup. */
+function drawJoinNode(design: Design, snap: SnapResult): string | null {
+  if (snap.kind !== 'node' || !snap.nodeId) return null;
+  const gk = nodeGroupKey(design, snap.nodeId);
+  const entered = useEditorStore.getState().enteredGroupId;
+  return gk && gk !== entered ? null : snap.nodeId;
 }
 
 // ── copy / cut / paste (transient clipboard; not persisted or undone) ────────
@@ -536,6 +643,9 @@ export function weldDroppedNode(nodeId: string): void {
     (n) => n.id !== nodeId && length(sub(n.position, dragged.position)) < WELD_TOL_M,
   );
   if (!other) return;
+  // don't weld across a group boundary — dropping onto a grouped end defers the
+  // union until the group is dissolved
+  if (nodeGroupKey(design, nodeId) !== nodeGroupKey(design, other.id)) return;
   useAppStore.getState().updateCurrent((d) => weldNodes(d, nodeId, other.id));
 }
 

@@ -10,12 +10,12 @@ import { type ThreeEvent, useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import { Color, type InstancedMesh, Matrix4, Raycaster, Vector2, Vector3 } from 'three';
 import { endCapAllowanceM } from '../../design/bom';
-import { incidentMembers, memberById, nodeById } from '../../design/docOps';
+import { groupOfMember, incidentMembers, memberById, nodeById } from '../../design/docOps';
 import { add, dot, length, normalize, scale, sub } from '../../geometry/math3';
 import { pipeSpec, type Vec3 } from '../../schema';
 import { easedPos } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
-import { bendMemberAt, placeDrawPoint, selectMember } from '../../state/editorActions';
+import { bendMemberAt, enterGroup, placeDrawPoint, selectMember } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
@@ -34,6 +34,7 @@ function InstancedPipes() {
   const selectedIds = useEditorStore((s) => s.selectedIds);
   const tool = useEditorStore((s) => s.tool);
   const drawingFrom = useEditorStore((s) => s.drawingFromNodeId);
+  const enteredGroupId = useEditorStore((s) => s.enteredGroupId);
   const night = useThemeStore((s) => s.night);
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
@@ -49,6 +50,13 @@ function InstancedPipes() {
   const structural = useMemo(() => (design ? buildPipeModel(design) : null), [design]);
   const count = structural?.cylinders.length ?? 0;
   const color = scenePalette(night).pvc;
+  // when a group is ENTERED, only its members are interactive; the rest fade
+  const activeSet = useMemo(() => {
+    if (!enteredGroupId || !design) return null;
+    const g = design.groups.find((gr) => gr.id === enteredGroupId);
+    return g ? new Set(g.memberIds) : null;
+  }, [design, enteredGroupId]);
+  const inactive = (id: string | undefined): boolean => !!activeSet && (!id || !activeSet.has(id));
 
   // refresh every instance transform from the eased positions, each frame
   useFrame(() => {
@@ -73,12 +81,15 @@ function InstancedPipes() {
     const selected = new Set(selectedIds);
     const base = new Color(color);
     const sel = new Color(SELECT_BLUE);
+    const faded = new Color(color).lerp(new Color(scenePalette(night).viewport), 0.82);
     for (let i = 0; i < structural.cylinders.length; i++) {
       const cyl = structural.cylinders[i];
-      if (cyl) mesh.setColorAt(i, selected.has(cyl.memberId) ? sel : base);
+      if (!cyl) continue;
+      const dim = activeSet && !activeSet.has(cyl.memberId);
+      mesh.setColorAt(i, dim ? faded : selected.has(cyl.memberId) ? sel : base);
     }
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  }, [structural, selectedIds, color]);
+  }, [structural, selectedIds, color, activeSet, night]);
 
   if (!design || !structural || count === 0) return null;
 
@@ -90,7 +101,7 @@ function InstancedPipes() {
   const onClick = editing
     ? (ev: ThreeEvent<MouseEvent>) => {
         const id = memberOf(ev);
-        if (!id) return;
+        if (!id || inactive(id)) return; // faded (non-entered-group) pipes are inert
         ev.stopPropagation();
         selectMember(id);
       }
@@ -102,7 +113,7 @@ function InstancedPipes() {
     editing && !drawingFrom
       ? (ev: ThreeEvent<MouseEvent>) => {
           const memberId = memberOf(ev);
-          if (!memberId) return;
+          if (!memberId || inactive(memberId)) return;
           ev.stopPropagation();
           const ne = ev.nativeEvent as MouseEvent;
           const store = useEditorStore.getState();
@@ -136,6 +147,16 @@ function InstancedPipes() {
       ? (ev: ThreeEvent<MouseEvent>) => {
           if (ev.instanceId == null) return;
           ev.stopPropagation();
+          // double-clicking a grouped pipe ENTERS its group (not draw); an
+          // ungrouped pipe (or one already inside the entered group) starts a draw
+          const memberId = structural.cylinders[ev.instanceId]?.memberId;
+          if (inactive(memberId)) return; // faded pipes ignore double-click too
+          const g = memberId ? groupOfMember(design, memberId) : undefined;
+          const entered = useEditorStore.getState().enteredGroupId;
+          if (g && g.id !== entered) {
+            enterGroup(g.id);
+            return;
+          }
           useEditorStore.getState().setTool('draw');
           placeDrawPoint(ev.point);
         }
@@ -149,7 +170,7 @@ function InstancedPipes() {
           if (ev.nativeEvent.button !== 0) return;
           const memberId =
             ev.instanceId == null ? undefined : structural.cylinders[ev.instanceId]?.memberId;
-          if (!memberId) return;
+          if (!memberId || inactive(memberId)) return;
           const m = memberById(design, memberId);
           if (!m) return;
           const a = easedPos(m.nodeA) ?? nodeById(design, m.nodeA)?.position;

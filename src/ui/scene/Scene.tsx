@@ -34,7 +34,11 @@ import {
   recordPose,
   type V3,
 } from '../../state/cameraStore';
-import { jointOrientationsOf, pivotAnglesOf } from '../../state/editorActions';
+import {
+  jointOrientationsOf,
+  pivotAnglesOf,
+  setSelectionGroupAware,
+} from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { GROUND_SIZE_M, scenePalette } from '../theme';
@@ -405,8 +409,7 @@ function DebugBridge() {
           return memberSelectedBy(worlds.map(toScreen), rect, mode);
         })
         .map((m) => m.id);
-      useEditorStore.getState().setSelection(hits);
-      return hits;
+      return setSelectionGroupAware(hits);
     };
   });
   return null;

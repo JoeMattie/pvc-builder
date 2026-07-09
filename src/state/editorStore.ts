@@ -87,6 +87,9 @@ export interface EditorState {
   simulating: boolean;
   /** dev overlay: draw the physics world (bodies + constraints) via crashcat/three */
   physicsDebug: boolean;
+  /** the group currently ENTERED for editing (double-click) — its members are
+   * interactive, everything else fades + is inert. null = not inside any group. */
+  enteredGroupId: string | null;
   /** the in-progress rubber-band selection rectangle (screen/client px), or null */
   marquee: { x0: number; y0: number; x1: number; y1: number } | null;
   /** an open right-click join menu: the pipe end being edited + screen anchor */
@@ -114,6 +117,7 @@ export interface EditorState {
   setDrawDirection(v: Vec3 | null): void;
   setSimulating(on: boolean): void;
   setPhysicsDebug(on: boolean): void;
+  setEnteredGroup(groupId: string | null): void;
   setMarquee(m: { x0: number; y0: number; x1: number; y1: number } | null): void;
   openJoinMenu(menu: { nodeId: string; moverId: string; x: number; y: number }): void;
   closeJoinMenu(): void;
@@ -142,6 +146,7 @@ const INITIAL = {
   drawDirection: null as Vec3 | null,
   simulating: false,
   physicsDebug: false,
+  enteredGroupId: null as string | null,
   marquee: null as { x0: number; y0: number; x1: number; y1: number } | null,
   joinMenu: null as { nodeId: string; moverId: string; x: number; y: number } | null,
   sizeMenu: null as { memberIds: string[]; x: number; y: number } | null,
@@ -217,6 +222,9 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   },
   setPhysicsDebug(on) {
     set({ physicsDebug: on });
+  },
+  setEnteredGroup(groupId) {
+    set({ enteredGroupId: groupId });
   },
   setMarquee(m) {
     set({ marquee: m });

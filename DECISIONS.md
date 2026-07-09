@@ -6,6 +6,21 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 
 ## Post-batch fixes (2026-07-08)
 
+- **Groups (schema v7)** (v0.1.14). A `group` = `{id, memberIds[]}`; a member is in ≤1 group. Pure
+  docOps: `groupMembers` (moves members out of any prior group), `ungroupMembers` (removes the record,
+  then `weldCoincidentNodes` + `healBodyJoints` AUTO-SOLVE the unions the boundary deferred),
+  `groupOfMember`/`memberGroupKey`/`nodeGroupKey`, `addMembersToGroup`, `pruneGroups` (called by
+  `deleteMember`). **Union suppression across a group boundary**: `healBodyJoints` skips an on-body
+  union when the branch + run have different group keys; `weldDroppedNode` and draw-node-sharing
+  (`drawJoinNode` places a fresh coincident node instead of sharing a grouped node) do the same — so
+  "snap from outside works but doesn't union". When no groups exist all keys are null → zero behaviour
+  change. Transient `enteredGroupId` in editorStore (reset on design open). Interaction (editorActions):
+  group-aware `selectMember` + `setSelectionGroupAware` (marquee) expand a hit to its whole group when
+  outside, restrict to the entered group when inside; `groupSelection` (G), `ungroupSelection` (Shift+G),
+  `enterGroup` (double-click a grouped pipe), `exitGroup` (Esc); pipes drawn while entered join that
+  group. Rendering: `InstancedPipes` fades non-entered-group members (lerp toward viewport bg) + gates
+  all pointer interactions on the active set. `__pvc` seams for all. FOLLOW-UP: joint/fitting layers
+  don't fade yet (only pipes) — a polish item.
 - **Copy / cut / paste** (v0.1.13). Pure docOps: `extractSubgraph(design, memberIds)` pulls the
   selected members + their nodes + any joints wholly among them (deep-cloned); `pasteSubgraph(design,
   sub, offset)` re-inserts them with fresh ids (nodes/members/joints remapped, formed control points

@@ -19,8 +19,10 @@ import {
  *     `pivots` and `wraps` arrays are folded into it.
  * v6: doc-stored UI state (`viewport`, `lengthDisplay`), persistent tape-measure
  *     objects (`measurements`), and `joint.manufactured` (render as off-the-shelf
- *     fitting). All additive/optional except `measurements` (defaults to []). */
-export const SCHEMA_VERSION = 6;
+ *     fitting). All additive/optional except `measurements` (defaults to []).
+ * v7: `groups` — named sets of members that move/select/copy as a unit and defer
+ *     unions across their boundary. Defaults to []. */
+export const SCHEMA_VERSION = 7;
 
 /** A junction where pipe ends meet. Position is SI metres. */
 export const nodeSchema = z.object({
@@ -132,6 +134,14 @@ export const viewportSchema = z.object({
   drawSize: nominalSizeSchema.optional(),
 });
 
+/** v7: a group — a named set of members that select / move / copy as a unit.
+ * A member belongs to at most one group. Snapping to a grouped member from
+ * outside works but defers the union until the group is dissolved. */
+export const groupSchema = z.object({
+  id: idSchema,
+  memberIds: z.array(idSchema),
+});
+
 /** The top-level design document — the single source of truth for the file
  * format. Resolved fittings are NOT stored (planfile §3): they are a pure
  * function of the design, recomputed continuously. */
@@ -151,6 +161,8 @@ export const designSchema = z.object({
   joints: z.array(jointSchema),
   /** v6: persistent tape-measure annotations (default []) */
   measurements: z.array(measurementSchema),
+  /** v7: member groups (default []) */
+  groups: z.array(groupSchema),
   /** v6: display-only length format (undefined = decimal inches) */
   lengthDisplay: lengthDisplaySchema.optional(),
   /** v6: doc-stored camera + tool state, restored on open */
@@ -165,6 +177,7 @@ export type JointMode = z.infer<typeof jointModeSchema>;
 export type Joint = z.infer<typeof jointSchema>;
 export type MeasurementEnd = z.infer<typeof measurementEndSchema>;
 export type Measurement = z.infer<typeof measurementSchema>;
+export type Group = z.infer<typeof groupSchema>;
 export type CameraPose = z.infer<typeof cameraPoseSchema>;
 export type Viewport = z.infer<typeof viewportSchema>;
 export type Design = z.infer<typeof designSchema>;
@@ -181,5 +194,6 @@ export function createEmptyDesign(id: string, name: string): Design {
     members: [],
     joints: [],
     measurements: [],
+    groups: [],
   };
 }

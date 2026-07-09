@@ -11,6 +11,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.1.14',
+    date: '2026-07-08',
+    changes: [
+      'Groups: press G to group the selection, Shift+G to ungroup. Clicking any grouped pipe selects the whole group; double-click to enter a group (others fade + go inert), Esc to exit.',
+      'Snapping to a grouped object from outside works but defers its union until the group is dissolved (auto-solved on ungroup).',
+    ],
+  },
+  {
     version: '0.1.13',
     date: '2026-07-08',
     changes: [
