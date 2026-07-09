@@ -4,6 +4,29 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Mobile layout: responsive compact chrome, no settings (2026-07-09)
+
+- **Compact chrome is purely responsive** (`useCompactChrome()` = width < 640): no user-facing
+  layout settings, the measured-stack system stays, and no absolute pixel offsets or
+  overlap-dodging were reintroduced. Desktop ≥ `lg` (1024) renders exactly as before.
+- **The tool palette docks into the left measured stack on phones** (order 4, below Snap's slot) as
+  an icons-only vertical rail — new `Pillbox compact` prop hides labels (`sr-only`), hotkey badges,
+  and the layout toggle (the rail is forced vertical, so the toggle is moot). It no longer floats
+  bottom-center over the scene at phone widths.
+- **The pinned Document island is a single row below `lg`**: export/import/workspace-reset hide
+  (`hidden lg:flex`), the save chip goes icon-only, and the name box narrows/truncates
+  (`w-44 max-w-[calc(100vw-13rem)]`). Tablet (768) also benefits: the row no longer collides with
+  the View island.
+- **Islands can start collapsed responsively**: `FloatingIsland` gained `defaultCollapsed` (applies
+  only when no collapse state is saved; workspace reset restores it). The Objects panel mounts
+  collapsed on phones.
+- **Simulate/Cut-list islands move to a new `bottom-right` placement on phones** (stacking
+  disabled there) so the Document/Workflow rows stay visible and tappable; the inspector island
+  moves `bottom-center`. On ≥640 they keep the right measured stack.
+- **Inline island titles are icon-only below `lg`**, and the Perspective toggle is icon-only
+  (`Axis3d`) below `lg`, so single-row islands fit tablet widths. Snap and View islands stay
+  `hidden sm:block` (absent on phones) — deliberate: no snapping/undo chrome at phone widths yet.
+
 ## Floating chrome: overlap allowed, measured stacks, pinned document panel (2026-07-09)
 
 - **Panel overlap is allowed by design.** `resolveOverlap`/`avoidOverlap` are deleted from

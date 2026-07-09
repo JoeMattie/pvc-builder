@@ -24,7 +24,8 @@ type Placement =
   | 'left-stack'
   | 'right-stack'
   | 'bottom-left'
-  | 'bottom-center';
+  | 'bottom-center'
+  | 'bottom-right';
 
 interface FloatingIslandProps {
   id: string;
@@ -32,6 +33,8 @@ interface FloatingIslandProps {
   children: ReactNode;
   className?: string;
   collapsible?: boolean;
+  /** Start collapsed when no collapse state is saved (responsive compact chrome). */
+  defaultCollapsed?: boolean;
   defaultSize?: Partial<Size>;
   /** false pins the panel at its default placement: no drag handle, no saved position. */
   draggable?: boolean;
@@ -140,6 +143,8 @@ function defaultPos(
       return { x: MARGIN + ox, y: bottomY + oy };
     case 'bottom-center':
       return { x: centerX + ox, y: bottomY + oy };
+    case 'bottom-right':
+      return { x: rightX + ox, y: bottomY + oy };
   }
 }
 
@@ -204,11 +209,12 @@ function parseSavedSize(id: string): Size | null {
   }
 }
 
-function parseSavedCollapse(id: string): boolean {
+function parseSavedCollapse(id: string): boolean | null {
   try {
-    return localStorage.getItem(collapseKey(id)) === '1';
+    const raw = localStorage.getItem(collapseKey(id));
+    return raw === null ? null : raw === '1';
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -398,6 +404,7 @@ export function FloatingIsland({
   children,
   className = '',
   collapsible = true,
+  defaultCollapsed = false,
   defaultSize,
   draggable = true,
   handleLabel = 'Move panel',
@@ -432,7 +439,9 @@ export function FloatingIsland({
   );
   const [pos, setPos] = useState<Pos | null>(null);
   const [size, setSize] = useState<Size | null>(() => sizeRef.current);
-  const [collapsed, setCollapsed] = useState(() => parseSavedCollapse(id));
+  const [collapsed, setCollapsed] = useState(
+    () => parseSavedCollapse(id) ?? (collapsible && defaultCollapsed),
+  );
   const [dragging, setDragging] = useState(false);
   const [resizing, setResizing] = useState(false);
   const layout = titleLayout ?? 'top';
@@ -524,7 +533,7 @@ export function FloatingIsland({
       if (!el) return;
       const baseSize = defaultSizeRef.current;
       userPositioned.current = false;
-      setCollapsed(false);
+      setCollapsed(collapsible && defaultCollapsed);
       sizeRef.current = baseSize ? clampSize(baseSize, minSize, maxSize) : null;
       setSize(sizeRef.current);
       requestAnimationFrame(() => {
@@ -545,7 +554,16 @@ export function FloatingIsland({
     };
     window.addEventListener(RESET_EVENT, reset);
     return () => window.removeEventListener(RESET_EVENT, reset);
-  }, [maxSize, minSize, resolvedOffset, placement, stackId, stackOrder]);
+  }, [
+    collapsible,
+    defaultCollapsed,
+    maxSize,
+    minSize,
+    resolvedOffset,
+    placement,
+    stackId,
+    stackOrder,
+  ]);
 
   const moveTo = (clientX: number, clientY: number) => {
     const el = ref.current;
@@ -756,7 +774,8 @@ export function FloatingIsland({
       {dragButton('top')}
       <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
         {Icon && <Icon size={13} className="shrink-0" />}
-        <span>{panelTitle}</span>
+        {/* inline titles go icon-only below lg so single-row islands fit tablet/phone widths */}
+        <span className="hidden lg:inline">{panelTitle}</span>
       </div>
       {titleActions}
       {collapseButton('top')}

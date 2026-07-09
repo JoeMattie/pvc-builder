@@ -118,7 +118,8 @@ export function EditorStatusChips() {
         )}`}
       >
         {saveState === 'saved' ? <CheckCircle2 size={12} /> : <Save size={12} />}
-        {saveState === 'saved' ? 'Saved' : 'Saving'}
+        {/* icon-only below lg so the pinned document row stays a single line */}
+        <span className="hidden lg:inline">{saveState === 'saved' ? 'Saved' : 'Saving'}</span>
       </span>
       <span
         title={warningTitle}

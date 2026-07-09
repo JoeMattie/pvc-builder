@@ -1,4 +1,5 @@
 import {
+  Axis3d,
   Box,
   Check,
   ChevronLeft,
@@ -62,6 +63,7 @@ const BOM_MAX_SIZE = { width: 560, height: 1000 };
 const BOM_DOCKED_MAX_SIZE = { width: 384, height: 1000 };
 const BOM_COMPACT_MAX_SIZE = { width: 320, height: 240 };
 const RIGHT_STACK_SIZE = { width: 352, height: 360 };
+const RIGHT_STACK_COMPACT_SIZE = { width: 300, height: 300 };
 const RIGHT_STACK_MIN_SIZE = { width: 288, height: 220 };
 const RIGHT_STACK_MAX_SIZE = { width: 430, height: 1000 };
 
@@ -349,7 +351,7 @@ export function EditorShell() {
                 e.preventDefault();
                 void saveNameEdit();
               }}
-              className="flex w-64 max-w-[calc(100vw-10rem)] items-center gap-1 rounded-lg border border-border bg-card px-2 py-1.5 shadow-sm"
+              className="flex w-56 max-w-[calc(100vw-9rem)] items-center gap-1 rounded-lg border border-border bg-card px-2 py-1.5 shadow-sm lg:w-64"
             >
               <input
                 ref={nameInputRef}
@@ -382,7 +384,7 @@ export function EditorShell() {
               </button>
             </form>
           ) : (
-            <div className="flex w-64 max-w-[calc(100vw-10rem)] items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-sm">
+            <div className="flex w-44 max-w-[calc(100vw-13rem)] items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-sm lg:w-64 lg:max-w-[calc(100vw-10rem)]">
               <Box size={16} className="shrink-0 text-muted-foreground" />
               <span className="truncate text-sm font-medium">{designName}</span>
               <button
@@ -396,7 +398,8 @@ export function EditorShell() {
               </button>
             </div>
           )}
-          <div className="flex items-center gap-0.5 rounded-lg border border-border bg-card px-1.5 py-1.5 shadow-sm">
+          {/* export/import/reset condense away below lg so the document row stays one line */}
+          <div className="hidden items-center gap-0.5 rounded-lg border border-border bg-card px-1.5 py-1.5 shadow-sm lg:flex">
             <button
               type="button"
               onClick={exportJson}
@@ -458,6 +461,7 @@ export function EditorShell() {
       <FloatingIsland
         id="object-tree"
         placement="left-stack"
+        defaultCollapsed={compactChrome}
         defaultSize={compactChrome ? OBJECT_TREE_COMPACT_SIZE : OBJECT_TREE_SIZE}
         maxSize={objectTreeMaxSize}
         minSize={OBJECT_TREE_MIN_SIZE}
@@ -478,7 +482,7 @@ export function EditorShell() {
       {showInspector && (
         <FloatingIsland
           id="inspector-stack"
-          placement="top-center"
+          placement={compactChrome ? 'bottom-center' : 'top-center'}
           handleLabel="Move inspector panels"
           icon={Box}
           title="Inspect"
@@ -491,17 +495,20 @@ export function EditorShell() {
         </FloatingIsland>
       )}
 
-      {/* tool pillbox (bottom-center) — sizes to its content so every button is
-          always visible; no resize, no scroll */}
+      {/* tool pillbox — sizes to its content so every button is always visible;
+          no resize, no scroll. Compact chrome docks it into the left measured
+          stack as an icons-only vertical rail instead of floating bottom-center. */}
       <FloatingIsland
         id="tool-pillbox"
-        placement="bottom-center"
+        placement={compactChrome ? 'left-stack' : 'bottom-center'}
         handleLabel="Move tool palette"
         icon={Waypoints}
+        stackId={compactChrome ? 'left' : undefined}
+        stackOrder={compactChrome ? 4 : undefined}
         title="Tools"
         titleLayout={toolbarVertical ? 'top' : 'inline'}
       >
-        <Pillbox layout={toolbarVertical ? 'vertical' : 'horizontal'} />
+        <Pillbox layout={toolbarVertical ? 'vertical' : 'horizontal'} compact={compactChrome} />
       </FloatingIsland>
 
       {/* snapping settings + display-units — bottom of the left stack */}
@@ -526,14 +533,20 @@ export function EditorShell() {
       {rightDockOpen ? (
         <FloatingIsland
           id="right-stack"
-          placement="right-stack"
+          placement={compactChrome ? 'bottom-right' : 'right-stack'}
           handleLabel="Move simulation and fabrication panels"
-          defaultSize={workflow === 'simulate' ? RIGHT_STACK_SIZE : undefined}
+          defaultSize={
+            workflow === 'simulate'
+              ? compactChrome
+                ? RIGHT_STACK_COMPACT_SIZE
+                : RIGHT_STACK_SIZE
+              : undefined
+          }
           maxSize={workflow === 'simulate' ? RIGHT_STACK_MAX_SIZE : undefined}
           minSize={workflow === 'simulate' ? RIGHT_STACK_MIN_SIZE : undefined}
           resizable={workflow === 'simulate'}
           icon={PlayCircle}
-          stackId="right"
+          stackId={compactChrome ? undefined : 'right'}
           stackOrder={1}
           title={workflow === 'simulate' ? 'Simulate' : 'Pivots'}
           titleLayout="top"
@@ -548,7 +561,7 @@ export function EditorShell() {
       {bomOpen && (
         <FloatingIsland
           id="bom-panel"
-          placement="right-stack"
+          placement={compactChrome ? 'bottom-right' : 'right-stack'}
           defaultSize={compactChrome ? BOM_COMPACT_SIZE : BOM_SIZE}
           maxSize={bomMaxSize}
           minSize={BOM_MIN_SIZE}
@@ -556,7 +569,7 @@ export function EditorShell() {
           handleLabel="Move BOM panel"
           resizeLabel="Resize BOM panel"
           icon={ClipboardList}
-          stackId="right"
+          stackId={compactChrome ? undefined : 'right'}
           stackOrder={2}
           title="Cut list"
           titleActions={
@@ -627,13 +640,15 @@ export function EditorShell() {
             onClick={toggleProjection}
             aria-pressed={projection === 'perspective'}
             title="Toggle perspective camera"
-            className={`rounded-md px-2.5 py-1.5 text-xs font-medium ${
+            className={`flex items-center rounded-md px-2.5 py-1.5 text-xs font-medium ${
               projection === 'perspective'
                 ? 'bg-accent text-accent-foreground'
                 : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
             }`}
           >
-            Perspective
+            {/* icon-only below lg so the view toolbar fits tablet widths */}
+            <Axis3d size={15} className="lg:hidden" />
+            <span className="hidden lg:inline">Perspective</span>
           </button>
           <button
             type="button"

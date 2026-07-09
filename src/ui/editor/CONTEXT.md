@@ -7,7 +7,7 @@ import stores/actions, but must not introduce new document write paths.
 
 | File | Responsibility | Notes |
 |---|---|---|
-| `EditorWorkflowStatus.tsx` | Exports `EditorWorkflowStatus` (inline Design/Fabricate/Simulate row in the workflow island) AND `EditorStatusChips` (autosave + warning-count chips, rendered in the Document panel) | Driven by `editorStore.sceneStatus`; Fabricate opens the existing cut-list panel |
+| `EditorWorkflowStatus.tsx` | Exports `EditorWorkflowStatus` (inline Design/Fabricate/Simulate row in the workflow island) AND `EditorStatusChips` (autosave + warning-count chips, rendered in the Document panel; save-chip label is icon-only below `lg`) | Driven by `editorStore.sceneStatus`; Fabricate opens the existing cut-list panel |
 | `SimulationPanel.tsx` | Dedicated Simulate workspace controls | Play/Stop, damping, mannequin, debug, and reset; NO "Simulate" heading (the island title bar has it) and NO lengths lock — that moved to the toolbar as "Drag lock" (`../Pillbox.tsx`, toggles `design.lengthsLocked`) |
 | `PvcAutomationBridge.tsx` | Registers and merges `window.__pvc` methods | Preserve method names/signatures; this is the scripted automation contract |
 | `editorStatus.ts` | Derives editor warning totals from fittings, intersections, and formed-pipe bend checks | Summary only; detailed diagnostics stay in their existing panels |

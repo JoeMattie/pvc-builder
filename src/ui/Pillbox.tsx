@@ -60,8 +60,15 @@ function ToolbarTooltip({ label, children }: { label: string; children: ReactNod
 }
 
 /** Floating tool pillbox (planfile §1): each tool with its icon + visible
- * hotkey badge, plus the active pipe size the draw tool lays. */
-export function Pillbox({ layout }: { layout?: ToolPaletteLayout }) {
+ * hotkey badge, plus the active pipe size the draw tool lays. `compact` renders
+ * an icons-only vertical rail for phone-width chrome (labels/hotkeys hidden). */
+export function Pillbox({
+  layout,
+  compact = false,
+}: {
+  layout?: ToolPaletteLayout;
+  compact?: boolean;
+}) {
   const tool = useEditorStore((s) => s.tool);
   const setTool = useEditorStore((s) => s.setTool);
   const drawSize = useEditorStore((s) => s.drawSize);
@@ -89,7 +96,7 @@ export function Pillbox({ layout }: { layout?: ToolPaletteLayout }) {
     updateCurrent((doc) => ({ ...doc, lengthsLocked: locked }));
   const buttonClass = (active = false, disabled = false) =>
     `flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium ${
-      vertical ? 'w-full justify-start' : ''
+      vertical ? (compact ? 'w-full justify-center' : 'w-full justify-start') : ''
     } ${
       disabled
         ? 'cursor-not-allowed text-muted-foreground/35'
@@ -121,8 +128,10 @@ export function Pillbox({ layout }: { layout?: ToolPaletteLayout }) {
             className={buttonClass(active)}
           >
             <Icon size={15} />{' '}
-            <span className={vertical ? 'inline' : 'hidden lg:inline'}>{label}</span>
-            {key && (
+            <span className={compact ? 'sr-only' : vertical ? 'inline' : 'hidden lg:inline'}>
+              {label}
+            </span>
+            {key && !compact && (
               <kbd
                 className={`ml-0.5 rounded px-1 py-px font-mono text-[10px] leading-none ${
                   vertical ? 'ml-auto inline' : 'hidden 2xl:inline'
@@ -152,13 +161,15 @@ export function Pillbox({ layout }: { layout?: ToolPaletteLayout }) {
           className={buttonClass(false, !canGroup)}
         >
           <GroupIcon size={15} />
-          <kbd
-            className={`rounded bg-muted px-1 py-px font-mono text-[10px] leading-none text-muted-foreground ${
-              vertical ? '' : 'hidden 2xl:inline'
-            }`}
-          >
-            G
-          </kbd>
+          {!compact && (
+            <kbd
+              className={`rounded bg-muted px-1 py-px font-mono text-[10px] leading-none text-muted-foreground ${
+                vertical ? '' : 'hidden 2xl:inline'
+              }`}
+            >
+              G
+            </kbd>
+          )}
         </button>
       </ToolbarTooltip>
       <ToolbarTooltip label="Ungroup selected or entered group. Shortcut: Shift+G.">
@@ -172,13 +183,15 @@ export function Pillbox({ layout }: { layout?: ToolPaletteLayout }) {
           className={buttonClass(false, !canUngroup)}
         >
           <Ungroup size={15} />
-          <kbd
-            className={`rounded bg-muted px-1 py-px font-mono text-[10px] leading-none text-muted-foreground ${
-              vertical ? '' : 'hidden 2xl:inline'
-            }`}
-          >
-            ⇧G
-          </kbd>
+          {!compact && (
+            <kbd
+              className={`rounded bg-muted px-1 py-px font-mono text-[10px] leading-none text-muted-foreground ${
+                vertical ? '' : 'hidden 2xl:inline'
+              }`}
+            >
+              ⇧G
+            </kbd>
+          )}
         </button>
       </ToolbarTooltip>
 
@@ -191,7 +204,9 @@ export function Pillbox({ layout }: { layout?: ToolPaletteLayout }) {
           className={buttonClass(lengthsLocked)}
         >
           {lengthsLocked ? <Lock size={15} /> : <LockOpen size={15} />}
-          <span className={vertical ? 'inline' : 'hidden xl:inline'}>Drag lock</span>
+          <span className={compact ? 'sr-only' : vertical ? 'inline' : 'hidden xl:inline'}>
+            Drag lock
+          </span>
         </button>
       </ToolbarTooltip>
 
@@ -208,7 +223,7 @@ export function Pillbox({ layout }: { layout?: ToolPaletteLayout }) {
             aria-pressed={drawSize === size}
             onClick={() => setDrawSize(size)}
             className={`rounded-md px-2 py-1.5 font-medium text-xs tabular-nums ${
-              vertical ? 'w-full text-left' : ''
+              vertical ? (compact ? 'w-full text-center' : 'w-full text-left') : ''
             } ${
               drawSize === size
                 ? 'bg-accent text-accent-foreground ring-1 ring-ring/40'
@@ -220,25 +235,30 @@ export function Pillbox({ layout }: { layout?: ToolPaletteLayout }) {
         ))}
       </fieldset>
 
-      <Separator />
+      {/* compact chrome forces the vertical rail, so the layout toggle is moot there */}
+      {!compact && (
+        <>
+          <Separator />
 
-      <ToolbarTooltip
-        label={`Switch tools to ${preferredLayout === 'horizontal' ? 'vertical' : 'horizontal'} layout.`}
-      >
-        <button
-          type="button"
-          aria-label="Toggle tool palette layout"
-          onClick={toggleToolPaletteLayout}
-          className={buttonClass(false)}
-        >
-          {preferredLayout === 'horizontal' ? (
-            <UnfoldVertical size={15} />
-          ) : (
-            <UnfoldHorizontal size={15} />
-          )}
-          <span className={vertical ? 'inline' : 'sr-only'}>Layout</span>
-        </button>
-      </ToolbarTooltip>
+          <ToolbarTooltip
+            label={`Switch tools to ${preferredLayout === 'horizontal' ? 'vertical' : 'horizontal'} layout.`}
+          >
+            <button
+              type="button"
+              aria-label="Toggle tool palette layout"
+              onClick={toggleToolPaletteLayout}
+              className={buttonClass(false)}
+            >
+              {preferredLayout === 'horizontal' ? (
+                <UnfoldVertical size={15} />
+              ) : (
+                <UnfoldHorizontal size={15} />
+              )}
+              <span className={vertical ? 'inline' : 'sr-only'}>Layout</span>
+            </button>
+          </ToolbarTooltip>
+        </>
+      )}
     </div>
   );
 }
