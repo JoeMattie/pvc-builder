@@ -329,8 +329,9 @@ export function JointLayer() {
   return (
     <>
       {design.joints.map((j) => {
-        // end-to-end frees are drawn by InstancedFreeHubs; skip them here
+        // end-to-end frees → InstancedFreeHubs; wrapped (swivel) → InstancedWrapJoints
         if (j.mode === 'free' && !j.onBody) return null;
+        if (j.mode === 'wrapped') return null;
         if (j.mode === 'free')
           return (
             <FreeJoint

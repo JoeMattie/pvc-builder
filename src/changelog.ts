@@ -11,6 +11,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.1.11',
+    date: '2026-07-08',
+    changes: [
+      'Instanced rendering now covers wrapped pivots, auto-resolved fittings, conflict markers, and pipe-end details too — every dense model (incl. the random-wrapped T-rex) is now a handful of draw calls',
+    ],
+  },
+  {
     version: '0.1.10',
     date: '2026-07-08',
     changes: [

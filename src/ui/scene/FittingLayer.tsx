@@ -1,87 +1,190 @@
 // Renders auto-resolved fittings at each junction and flags conflicts
-// (planfile §4/§6). Fitting TYPES come from the snapped document (stable), but
-// the geometry is placed at eased render positions so fittings glide with the
-// pipe. Skipped for large designs (e.g. the T-rex wireframe) — a mesh with
-// high-degree vertices is all conflicts and needs no connectors.
+// (planfile §4/§6). Fitting TYPES come from the snapped document (stable), so
+// they're resolved ONCE (useMemo); the geometry is rebuilt from eased positions
+// and drawn INSTANCED — every fitting cylinder in one draw call, every hub sphere
+// in another, every conflict marker in a third — so a junction-dense model (e.g.
+// the rigid T-rex, ~260 fittings) is a handful of draw calls, not ~340 meshes.
+// The per-frame rebuild is gated on the anim tick so an idle scene costs nothing.
+import { useFrame } from '@react-three/fiber';
+import { useEffect, useMemo, useRef } from 'react';
+import { type InstancedMesh, Matrix4 } from 'three';
 import { memberById, nodeById } from '../../design/docOps';
-import { resolveFittings } from '../../design/fittings';
+import { type FittingEnd, type FittingType, resolveFittings } from '../../design/fittings';
 import { normalize, sub } from '../../geometry/math3';
 import type { Vec3 } from '../../schema';
 import { easedPos, useAnim } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
 import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
-import { placeAxis } from './axis';
-import { buildFittingMesh, type FittingCyl } from './fittingMesh';
+import { buildFittingMesh } from './fittingMesh';
+import { cylinderMatrix, hideMatrix, sphereMatrix } from './instancing';
 
 /** Above this many members, skip fitting resolution/rendering entirely. */
 const MAX_FITTING_MEMBERS = 800;
 
-function Cyl({ c, color }: { c: FittingCyl; color: string }) {
-  const placed = placeAxis(c.a, c.b);
-  if (!placed) return null;
-  return (
-    <mesh position={placed.mid} quaternion={placed.quat} castShadow>
-      <cylinderGeometry args={[c.radiusM, c.radiusM, placed.len, 18]} />
-      <meshPhysicalMaterial color={color} roughness={0.5} metalness={0} clearcoat={0.4} />
-    </mesh>
-  );
+interface FitSpec {
+  nodeId: string;
+  type: FittingType;
+  reducing: boolean;
+  ends: { memberId: string; size: FittingEnd['size']; otherId: string }[];
+}
+
+function buildSpec(design: ReturnType<typeof useAppStore.getState>['current']): {
+  fits: FitSpec[];
+  conflictNodes: string[];
+  cylCount: number;
+  sphCount: number;
+} {
+  if (!design || design.members.length > MAX_FITTING_MEMBERS)
+    return { fits: [], conflictNodes: [], cylCount: 0, sphCount: 0 };
+  const { fittings, conflicts } = resolveFittings(design);
+  const fits: FitSpec[] = fittings.map((f) => ({
+    nodeId: f.nodeId,
+    type: f.type,
+    reducing: f.reducing,
+    ends: f.ends.map((e) => {
+      const m = memberById(design, e.memberId);
+      return {
+        memberId: e.memberId,
+        size: e.size,
+        otherId: m ? (m.nodeA === f.nodeId ? m.nodeB : m.nodeA) : f.nodeId,
+      };
+    }),
+  }));
+  // count prims once (at doc positions) to size the instance buffers — the prim
+  // count per fitting is a function of its type, which is stable
+  const at = (id: string): Vec3 => nodeById(design, id)?.position ?? { x: 0, y: 0, z: 0 };
+  let cylCount = 0;
+  let sphCount = 0;
+  for (const f of fits) {
+    const mesh = fittingMeshOf(f, at);
+    for (const p of mesh.prims) p.kind === 'cylinder' ? cylCount++ : sphCount++;
+  }
+  return { fits, conflictNodes: conflicts.map((c) => c.nodeId), cylCount, sphCount };
+}
+
+function fittingMeshOf(f: FitSpec, at: (id: string) => Vec3) {
+  const position = at(f.nodeId);
+  const ends = f.ends.map((e) => ({
+    memberId: e.memberId,
+    size: e.size,
+    dir: normalize(sub(at(e.otherId), position)),
+  }));
+  return buildFittingMesh({ nodeId: f.nodeId, type: f.type, reducing: f.reducing, position, ends });
 }
 
 export function FittingLayer() {
-  // re-render while easing so fittings track the pipe
-  useAnim((s) => s.v);
   const design = useAppStore((s) => s.current);
   const night = useThemeStore((s) => s.night);
-  if (!design || design.members.length > MAX_FITTING_MEMBERS) return null;
+  const spec = useMemo(() => buildSpec(design), [design]);
+  const cylRef = useRef<InstancedMesh>(null);
+  const sphRef = useRef<InstancedMesh>(null);
+  const conflictRef = useRef<InstancedMesh>(null);
+  const mat = useRef(new Matrix4()).current;
+  const lastV = useRef(-1);
 
+  const fill = () => {
+    if (!design) return;
+    const at = (id: string): Vec3 =>
+      easedPos(id) ?? nodeById(design, id)?.position ?? { x: 0, y: 0, z: 0 };
+    const cyl = cylRef.current;
+    const sph = sphRef.current;
+    let ci = 0;
+    let si = 0;
+    for (const f of spec.fits) {
+      const mesh = fittingMeshOf(f, at);
+      for (const p of mesh.prims) {
+        if (p.kind === 'cylinder') {
+          if (cyl && ci < spec.cylCount) {
+            if (!cylinderMatrix(mat, p.a, p.b, p.radiusM)) hideMatrix(mat);
+            cyl.setMatrixAt(ci++, mat);
+          }
+        } else if (sph && si < spec.sphCount) {
+          sphereMatrix(mat, p.center, p.radiusM);
+          sph.setMatrixAt(si++, mat);
+        }
+      }
+    }
+    if (cyl) {
+      for (let i = ci; i < spec.cylCount; i++) {
+        hideMatrix(mat);
+        cyl.setMatrixAt(i, mat);
+      }
+      cyl.instanceMatrix.needsUpdate = true;
+    }
+    if (sph) {
+      for (let i = si; i < spec.sphCount; i++) {
+        hideMatrix(mat);
+        sph.setMatrixAt(i, mat);
+      }
+      sph.instanceMatrix.needsUpdate = true;
+    }
+    const conflict = conflictRef.current;
+    if (conflict) {
+      for (let i = 0; i < spec.conflictNodes.length; i++) {
+        const id = spec.conflictNodes[i];
+        sphereMatrix(mat, id ? at(id) : { x: 0, y: 0, z: 0 }, 0.02);
+        conflict.setMatrixAt(i, mat);
+      }
+      conflict.instanceMatrix.needsUpdate = true;
+    }
+  };
+
+  // fill once on (re)build; then only when the eased positions actually change
+  // (anim tick), so an idle scene pays nothing per frame
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fill closes over spec; re-run on spec change
+  useEffect(() => {
+    lastV.current = -1;
+    fill();
+    lastV.current = useAnim.getState().v;
+  }, [spec]);
+  useFrame(() => {
+    const v = useAnim.getState().v;
+    if (v === lastV.current) return;
+    lastV.current = v;
+    fill();
+  });
+
+  if (!design || !spec.fits.length) return null;
   const pal = scenePalette(night);
-  const eased = (id: string): Vec3 =>
-    easedPos(id) ?? nodeById(design, id)?.position ?? { x: 0, y: 0, z: 0 };
-  const { fittings, conflicts } = resolveFittings(design);
 
   return (
     <>
-      {fittings.map((f) => {
-        // recompute position + end directions from eased node positions
-        const position = eased(f.nodeId);
-        const ends = f.ends.map((e) => {
-          const m = memberById(design, e.memberId);
-          const otherId = m ? (m.nodeA === f.nodeId ? m.nodeB : m.nodeA) : f.nodeId;
-          return { ...e, dir: normalize(sub(eased(otherId), position)) };
-        });
-        const mesh = buildFittingMesh({ ...f, position, ends });
-        return (
-          <group key={f.nodeId}>
-            {mesh.prims.map((p, i) =>
-              p.kind === 'cylinder' ? (
-                // biome-ignore lint/suspicious/noArrayIndexKey: primitives are positional per fitting
-                <Cyl key={i} c={p} color={pal.fitting} />
-              ) : (
-                <mesh
-                  // biome-ignore lint/suspicious/noArrayIndexKey: primitives are positional per fitting
-                  key={i}
-                  position={[p.center.x, p.center.y, p.center.z]}
-                  castShadow
-                >
-                  <sphereGeometry args={[p.radiusM, 18, 14]} />
-                  <meshPhysicalMaterial color={pal.fitting} roughness={0.5} clearcoat={0.4} />
-                </mesh>
-              ),
-            )}
-          </group>
-        );
-      })}
-
-      {conflicts.map((c) => {
-        const p = eased(c.nodeId);
-        return (
-          <mesh key={c.nodeId} position={[p.x, p.y, p.z]}>
-            <sphereGeometry args={[0.02, 16, 12]} />
-            <meshBasicMaterial color={pal.conflict} transparent opacity={0.55} />
-          </mesh>
-        );
-      })}
+      {spec.cylCount > 0 && (
+        <instancedMesh
+          key={`fc-${spec.cylCount}`}
+          ref={cylRef}
+          args={[undefined, undefined, spec.cylCount]}
+          frustumCulled={false}
+          castShadow
+        >
+          <cylinderGeometry args={[1, 1, 1, 18]} />
+          <meshPhysicalMaterial color={pal.fitting} roughness={0.5} metalness={0} clearcoat={0.4} />
+        </instancedMesh>
+      )}
+      {spec.sphCount > 0 && (
+        <instancedMesh
+          key={`fs-${spec.sphCount}`}
+          ref={sphRef}
+          args={[undefined, undefined, spec.sphCount]}
+          frustumCulled={false}
+          castShadow
+        >
+          <sphereGeometry args={[1, 18, 14]} />
+          <meshPhysicalMaterial color={pal.fitting} roughness={0.5} metalness={0} clearcoat={0.4} />
+        </instancedMesh>
+      )}
+      {spec.conflictNodes.length > 0 && (
+        <instancedMesh
+          key={`fx-${spec.conflictNodes.length}`}
+          ref={conflictRef}
+          args={[undefined, undefined, spec.conflictNodes.length]}
+          frustumCulled={false}
+        >
+          <sphereGeometry args={[1, 16, 12]} />
+          <meshBasicMaterial color={pal.conflict} transparent opacity={0.55} />
+        </instancedMesh>
+      )}
     </>
   );
 }

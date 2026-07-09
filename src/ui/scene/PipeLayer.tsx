@@ -13,16 +13,15 @@ import { endCapAllowanceM } from '../../design/bom';
 import { incidentMembers, memberById, nodeById } from '../../design/docOps';
 import { add, dot, length, normalize, scale, sub } from '../../geometry/math3';
 import { pipeSpec, type Vec3 } from '../../schema';
-import { easedPos, useAnim } from '../../state/animStore';
+import { easedPos } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
 import { bendMemberAt, placeDrawPoint, selectMember } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
-import { orientZ, placeAxis } from './axis';
 import { dominantAxisNormal, rayToPlane } from './ground';
-import { cylinderMatrix, hideMatrix } from './instancing';
-import { buildPipeModel, type PipeEnd } from './pipeModel';
+import { cylinderMatrix, hideMatrix, ringMatrix } from './instancing';
+import { buildPipeModel } from './pipeModel';
 
 const RADIAL_SEGMENTS = 20;
 const SELECT_BLUE = '#2a78d6';
@@ -220,19 +219,93 @@ function InstancedPipes() {
   );
 }
 
-/** Hollow end bores + the end-cap ghost — few in number, so they stay
- * declarative and re-render off the anim tick with the eased positions. */
+/** Hollow end bores + the end-cap ghosts, each as one InstancedMesh with
+ * imperative per-frame transforms (no anim-tick re-render). */
 function PipeDecorations() {
-  useAnim((s) => s.v);
   const design = useAppStore((s) => s.current);
   const night = useThemeStore((s) => s.night);
-  if (!design) return null;
-  const model = buildPipeModel(design, easedPos);
-  const at = (id: string): Vec3 | undefined => easedPos(id) ?? nodeById(design, id)?.position;
+  const boreRef = useRef<InstancedMesh>(null);
+  const capRef = useRef<InstancedMesh>(null);
+  const mat = useRef(new Matrix4()).current;
 
-  // GHOST end-cap extensions (BOM: a wrapped pipe END is cut 1" + 1 radius longer
-  // for an end cap) — shown translucent; real geometry is unchanged
-  const ghostCaps = design.joints.flatMap((j) => {
+  // structural counts (recompute only on design change) fix the instance buffers
+  const counts = useMemo(() => {
+    if (!design) return { bores: 0, caps: 0 };
+    const at = (id: string) => nodeById(design, id)?.position;
+    return { bores: buildPipeModel(design).ends.length, caps: ghostCaps(design, at).length };
+  }, [design]);
+
+  useFrame(() => {
+    if (!design) return;
+    const at = (id: string): Vec3 | undefined => easedPos(id) ?? nodeById(design, id)?.position;
+    const bore = boreRef.current;
+    if (bore) {
+      const ends = buildPipeModel(design, easedPos).ends;
+      for (let i = 0; i < counts.bores; i++) {
+        const e = ends[i];
+        if (e) {
+          const inner = Math.max(e.odM / 2 - e.wallM, 0.001);
+          // sit the disc just outside the end face so the cylinder cap doesn't hide it
+          const c = {
+            x: e.center.x + e.dir.x * 0.0004,
+            y: e.center.y + e.dir.y * 0.0004,
+            z: e.center.z + e.dir.z * 0.0004,
+          };
+          ringMatrix(mat, c, e.dir, inner);
+        } else hideMatrix(mat);
+        bore.setMatrixAt(i, mat);
+      }
+      bore.instanceMatrix.needsUpdate = true;
+    }
+    const cap = capRef.current;
+    if (cap) {
+      const caps = ghostCaps(design, at);
+      for (let i = 0; i < counts.caps; i++) {
+        const g = caps[i];
+        if (!g || !cylinderMatrix(mat, g.a, g.b, g.r)) hideMatrix(mat);
+        cap.setMatrixAt(i, mat);
+      }
+      cap.instanceMatrix.needsUpdate = true;
+    }
+  });
+
+  if (!design) return null;
+  return (
+    <>
+      {counts.bores > 0 && (
+        <instancedMesh
+          key={`bore-${counts.bores}`}
+          ref={boreRef}
+          args={[undefined, undefined, counts.bores]}
+          frustumCulled={false}
+        >
+          <circleGeometry args={[1, 24]} />
+          <meshStandardMaterial color={night ? '#0c0e12' : '#3a3d44'} roughness={0.9} side={2} />
+        </instancedMesh>
+      )}
+      {counts.caps > 0 && (
+        <instancedMesh
+          key={`cap-${counts.caps}`}
+          ref={capRef}
+          args={[undefined, undefined, counts.caps]}
+          frustumCulled={false}
+        >
+          <cylinderGeometry args={[1, 1, 1, RADIAL_SEGMENTS]} />
+          <meshBasicMaterial color="#2a78d6" transparent opacity={0.22} />
+        </instancedMesh>
+      )}
+    </>
+  );
+}
+
+/** GHOST end-cap extensions (BOM: a wrapped pipe END is cut 1" + 1 radius longer
+ * for an end cap) — a translucent stub past the receiver's end; real geometry is
+ * unchanged. Pure so both the structural count and the per-frame fill share it. */
+function ghostCaps(
+  design: NonNullable<ReturnType<typeof useAppStore.getState>['current']>,
+  at: (id: string) => Vec3 | undefined,
+): Array<{ a: Vec3; b: Vec3; r: number }> {
+  return design.joints.flatMap((j) => {
     if (j.mode !== 'wrapped') return [];
     const recv = memberById(design, j.receiver);
     if (recv?.kind !== 'straight' || (recv.nodeA !== j.nodeId && recv.nodeB !== j.nodeId))
@@ -245,63 +318,21 @@ function PipeDecorations() {
     const dir = normalize(d);
     return [
       {
-        id: `${j.id}-cap`,
         a: endPos,
         b: add(endPos, scale(dir, endCapAllowanceM(recv.size))),
         r: pipeSpec(recv.size).odM / 2,
       },
     ];
   });
-
-  return (
-    <>
-      {model.ends.map((e) => (
-        <Bore key={e.nodeId} end={e} night={night} />
-      ))}
-      {ghostCaps.map((c) => (
-        <GhostCap key={c.id} a={c.a} b={c.b} r={c.r} />
-      ))}
-    </>
-  );
 }
 
-/** Renders the current design's pipe: instanced bodies + declarative end
- * decorations. */
+/** Renders the current design's pipe: instanced bodies + instanced end
+ * decorations (hollow bores + end-cap ghosts). */
 export function PipeLayer() {
   return (
     <>
       <InstancedPipes />
       <PipeDecorations />
     </>
-  );
-}
-
-/** A translucent extension past a pipe end — the end-cap allowance ghost. */
-function GhostCap({ a, b, r }: { a: Vec3; b: Vec3; r: number }) {
-  const placed = placeAxis(a, b);
-  if (!placed) return null;
-  return (
-    <mesh position={placed.mid} quaternion={placed.quat}>
-      <cylinderGeometry args={[r, r, placed.len, RADIAL_SEGMENTS]} />
-      <meshBasicMaterial color="#2a78d6" transparent opacity={0.22} />
-    </mesh>
-  );
-}
-
-/** A hollow pipe end: a recessed dark bore disc inside the pipe's rim, so the
- * open end reads as tube with wall thickness (OD rim − bore = the wall). */
-function Bore({ end, night }: { end: PipeEnd; night: boolean }) {
-  const inner = Math.max(end.odM / 2 - end.wallM, 0.001);
-  const quat = orientZ(end.dir);
-  const c: [number, number, number] = [
-    end.center.x + end.dir.x * 0.0004,
-    end.center.y + end.dir.y * 0.0004,
-    end.center.z + end.dir.z * 0.0004,
-  ];
-  return (
-    <mesh position={c} quaternion={quat}>
-      <circleGeometry args={[inner, 24]} />
-      <meshStandardMaterial color={night ? '#0c0e12' : '#3a3d44'} roughness={0.9} side={2} />
-    </mesh>
   );
 }

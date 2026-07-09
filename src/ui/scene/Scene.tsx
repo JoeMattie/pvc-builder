@@ -42,6 +42,7 @@ import { DrawController } from './DrawController';
 import { FittingLayer } from './FittingLayer';
 import { FormedLayer } from './FormedLayer';
 import { InstancedFreeHubs } from './InstancedFreeHubs';
+import { InstancedWrapJoints } from './InstancedWrapJoints';
 import { IntersectionLayer } from './IntersectionLayer';
 import { JointLayer } from './JointLayer';
 import { MeasureLayer } from './MeasureLayer';
@@ -136,6 +137,7 @@ export function Scene() {
       <FittingLayer />
       <JointLayer />
       <InstancedFreeHubs />
+      <InstancedWrapJoints />
       <IntersectionLayer />
       <MeasureLayer />
 

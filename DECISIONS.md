@@ -6,6 +6,19 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 
 ## Post-batch fixes (2026-07-08)
 
+- **Instancing extended to (nearly) all repeated node/object types** (v0.1.11). The v0.1.7 pattern was
+  universal (reads design structure, not model-specific), so it was extended beyond pipes + free hubs
+  to: **wrapped (swivel) pivots** (`InstancedWrapJoints` — ONE canonical arrow baked in the joint's
+  local frame, each instance re-orients/scales it via `wrapFrameMatrix`; the loop rides the receiver
+  axis so it doesn't deform as the branch swivels — confirmed identical to the declarative render),
+  **auto-resolved fittings + conflicts** (`FittingLayer` now instanced: types resolved once, geometry
+  rebuilt from eased positions in a **v-gated** useFrame so idle costs nothing), and **hollow bores +
+  end-cap ghosts** (`PipeDecorations`). Measured scene census (plain meshes): rigid **~900→78**, pivots
+  **3064→78**, wrapped **1285→78** (+ a handful of `InstancedMesh` each) — every dense model is now a
+  few draw calls. Genuinely unique geometry stays per-mesh: formed/bent tubes (unique curves), and the
+  RARE rigid-pin wraps / on-body free / anchor tees (kept declarative in `JointLayer`). New matrix
+  helpers: `coneMatrix`, `wrapFrameMatrix` (uses `makeBasis` — the wrap loop's local frame is
+  left-handed, so it's set directly, not via `compose`).
 - **T-rex: prune overlapping pipes + a random-wrapped variant** (v0.1.10). `scripts/gen-trex.mjs`
   gained (1) a **prune pass** — after tris→quads, drop the SHORTER of any near-collinear pair whose
   shorter member is ≥50% buried within ~one OD of the longer (removes wireframe artifacts where a
