@@ -57,6 +57,7 @@ import {
   snapDrawPoint,
   swapJointReceiver,
   translateMemberBy,
+  translateMembersBy,
   weldDroppedNode,
 } from '../state/editorActions';
 import { useEditorStore } from '../state/editorStore';
@@ -208,6 +209,31 @@ export function EditorShell() {
         return;
       }
       if (typing) return;
+
+      // arrow / numpad nudge of the selected pipe(s) by one grid step. Arrows +
+      // numpad-arrows move in the X/Z ground plane; Ctrl+Up/Down (or the numpad
+      // Home/PgUp = up, End/PgDn = down) move vertically in Y.
+      if (editor.selectedIds.length && !editor.drawingFromNodeId) {
+        const s = editor.snap.gridStepM;
+        const K = e.key;
+        const C = e.code;
+        let d: Vec3 | null = null;
+        if (mod && K === 'ArrowUp') d = { x: 0, y: s, z: 0 };
+        else if (mod && K === 'ArrowDown') d = { x: 0, y: -s, z: 0 };
+        else if (K === 'Home' || K === 'PageUp' || C === 'Numpad7' || C === 'Numpad9')
+          d = { x: 0, y: s, z: 0 };
+        else if (K === 'End' || K === 'PageDown' || C === 'Numpad1' || C === 'Numpad3')
+          d = { x: 0, y: -s, z: 0 };
+        else if (K === 'ArrowLeft' || C === 'Numpad4') d = { x: -s, y: 0, z: 0 };
+        else if (K === 'ArrowRight' || C === 'Numpad6') d = { x: s, y: 0, z: 0 };
+        else if (K === 'ArrowUp' || C === 'Numpad8') d = { x: 0, y: 0, z: -s };
+        else if (K === 'ArrowDown' || C === 'Numpad2') d = { x: 0, y: 0, z: s };
+        if (d) {
+          e.preventDefault();
+          translateMembersBy(editor.selectedIds, d);
+          return;
+        }
+      }
 
       // typed-length entry: while a draw path is open, digits/units type into the
       // length pill; Enter commits the segment at that distance (must run BEFORE

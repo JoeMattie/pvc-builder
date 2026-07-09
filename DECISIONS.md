@@ -6,6 +6,16 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 
 ## Post-batch fixes (2026-07-08)
 
+- **Toggleable drag modifiers + arrow-key nudge.**
+  - **Toggleable Ctrl/Shift during a drag** (`useGroundDrag` in `SelectionHandles.tsx`). Modifier
+    state is now a live `DragMods` seeded from the pointer-down and flipped by each mid-drag key
+    PRESS (releases ignored), re-applied to the last point — so press-and-release switches modes
+    without holding the key or moving the mouse. On the endpoint drag: **Shift** toggles world-axis
+    lock; **Ctrl** toggles detach — pressing it breaks the union (`detachMemberEnd`) and pressing it
+    again re-welds (`weldNodesInto` → `weldNodes`), both inside the drag's single undo step.
+  - **Arrow / numpad nudge** of the selection (`EditorShell` keydown): arrows + numpad-arrows move
+    the selected pipe(s) one grid step in the X/Z ground plane; **Ctrl+Up/Down**, or the numpad
+    **Home/PgUp** (up) and **End/PgDn** (down), move in Y. One `translateMembersBy` per press.
 - **Draw-on-plane pipe-relative cardinals** (the deferred Wave-2 2C follow-up). The wall angle
   previously snapped only to world cardinals (±X/±Z). A new pure `planeCardinalFromCursor`
   (`design/snapping.ts`) also offers, for each straight pipe touching the plane origin (an endpoint
