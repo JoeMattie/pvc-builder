@@ -4,8 +4,9 @@
 // take-off math is exact given the fitting take-off constants below (which are
 // documented ESTIMATES to be replaced with manufacturer tables). No three/UI
 // types. Hand-rolled CSV.
-import { bendDihedralsRad } from '../geometry/pipe';
+
 import { dot, sub } from '../geometry/math3';
+import { bendDihedralsRad } from '../geometry/pipe';
 import { type Design, type JointMode, type NominalSize, pipeSpec } from '../schema';
 import { formatLengthDisplay } from '../ui/units';
 import { memberById, memberLengthM, nodeById } from './docOps';

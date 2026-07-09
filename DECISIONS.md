@@ -6,6 +6,14 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 
 ## Post-batch fixes (2026-07-08)
 
+- **Copy / cut / paste** (v0.1.13). Pure docOps: `extractSubgraph(design, memberIds)` pulls the
+  selected members + their nodes + any joints wholly among them (deep-cloned); `pasteSubgraph(design,
+  sub, offset)` re-inserts them with fresh ids (nodes/members/joints remapped, formed control points
+  offset too). Clipboard is a transient module var in `editorActions` (not persisted, not undone).
+  Paste offset = the fragment's X bounding-box extent + one grid gap, so the copy always clears the
+  original; the pasted members come in selected. Ctrl+C / Ctrl+X / Ctrl+V in EditorShell (mod-gated so
+  they beat the plain c/v tool hotkeys) + `__pvc` seams. Groups-aware paste (re-group a pasted group)
+  will follow with groups.
 - **BOM: manufactured on-body unions split the run + todo.txt retired** (v0.1.12). The last open
   todo.txt item: a manufactured ON-BODY union (a real socket tee inserted into an INTACT run) means
   that run pipe is physically CUT into pieces. `bom()` now collects split points (`joint.manufactured

@@ -10,6 +10,7 @@ import {
   dedupeJoints,
   deleteMember,
   detachMemberEnd,
+  extractSubgraph,
   healBodyJoints,
   joinContext,
   jointsAtNode,
@@ -21,6 +22,7 @@ import {
   moveControlPoint,
   nodeById,
   nodeDegrees,
+  pasteSubgraph,
   reconcileBodyJoints,
   removeJoint,
   removeMeasurement,
@@ -34,6 +36,7 @@ import {
   setNodePosition,
   splitMemberAt,
   startPath,
+  subgraphExtent,
   swapReceiver,
   translateMember,
   weldNodes,
@@ -75,6 +78,51 @@ function branchOnRun(onRun: Vec3, branchFar: Vec3): Design {
   );
   return d;
 }
+
+describe('copy / paste subgraph', () => {
+  it('extracts the selected members + their nodes + wholly-internal joints', () => {
+    // an L (2 members) + a separate stray pipe; select just the L
+    const { design: l, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0), V(1, 0, 1)]);
+    // corner joint: make the middle a wrapped pivot so a joint sits between the two
+    const withJoint = setJoinMode(l, l.members[0]!.nodeB, memberIds[1]!, 'wrapped');
+    const sub = extractSubgraph(withJoint, memberIds);
+    expect(sub.members.length).toBe(2);
+    expect(sub.nodes.length).toBe(3); // shared middle node counted once
+    expect(sub.joints.length).toBe(1); // the corner joint (both members copied)
+  });
+
+  it('pastes with fresh ids, offset, and re-links joints', () => {
+    const { design: l, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0), V(1, 0, 1)]);
+    const withJoint = setJoinMode(l, l.members[0]!.nodeB, memberIds[1]!, 'wrapped');
+    const sub = extractSubgraph(withJoint, memberIds);
+    const offset = V(2, 0, 0);
+    const { design: pasted, memberIds: newIds } = pasteSubgraph(withJoint, sub, offset);
+    // everything doubled, all ids new
+    expect(pasted.members.length).toBe(4);
+    expect(pasted.nodes.length).toBe(6);
+    expect(pasted.joints.length).toBe(2);
+    expect(newIds.every((id) => !memberIds.includes(id))).toBe(true);
+    // the pasted joint references only pasted members (re-linked, not dangling)
+    const newSet = new Set(newIds);
+    const pastedJoint = pasted.joints.find((j) => newSet.has(j.mover));
+    expect(pastedJoint && newSet.has(pastedJoint.receiver)).toBe(true);
+    // pasted geometry is shifted by the offset
+    const origCorner = nodeById(withJoint, l.members[0]!.nodeB)!.position;
+    const shifted = pasted.nodes.some(
+      (n) =>
+        Math.abs(n.position.x - (origCorner.x + 2)) < 1e-9 &&
+        Math.abs(n.position.z - origCorner.z) < 1e-9,
+    );
+    expect(shifted).toBe(true);
+  });
+
+  it('extent is the node bounding-box size', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0), V(1, 0, 2)]);
+    const ext = subgraphExtent(extractSubgraph(design, memberIds));
+    expect(ext.x).toBeCloseTo(1, 9);
+    expect(ext.z).toBeCloseTo(2, 9);
+  });
+});
 
 describe('healBodyJoints', () => {
   it('creates a rigid on-body union for a branch end sitting on a run span', () => {

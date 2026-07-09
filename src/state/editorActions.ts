@@ -12,6 +12,7 @@ import {
   connectPipe,
   deleteMember,
   detachMemberEnd as detachMemberEndOp,
+  extractSubgraph,
   incidentMembers,
   makeFreeHub as makeFreeHubOp,
   makeManufacturedJoint as makeManufacturedJointOp,
@@ -20,10 +21,12 @@ import {
   memberEndpoints,
   moveControlPoint,
   nodeById,
+  pasteSubgraph,
   reconcileBodyJoints,
   removeMeasurement,
   resetJoints as resetJointsOp,
   rotateMember,
+  type Subgraph,
   setJoinMode as setJoinModeOp,
   setJointAngle as setJointAngleOp,
   setMeasurementOffset,
@@ -31,6 +34,7 @@ import {
   setMemberSize as setMemberSizeOp,
   setNodePosition,
   startPath,
+  subgraphExtent,
   swapReceiver as swapReceiverOp,
   translateMember,
   weldNodes,
@@ -337,6 +341,53 @@ export function selectMember(memberId: string): void {
 
 export function clearSelection(): void {
   useEditorStore.getState().setSelection([]);
+}
+
+// ── copy / cut / paste (transient clipboard; not persisted or undone) ────────
+
+/** In-memory clipboard: a detached fragment of a design. Not reactive (paste is
+ * keyboard-driven), not persisted, not part of undo. */
+let clipboard: Subgraph | null = null;
+
+export function hasClipboard(): boolean {
+  return !!clipboard && clipboard.members.length > 0;
+}
+
+/** Copy the current selection into the clipboard. Returns whether anything was
+ * copied. */
+export function copySelection(): boolean {
+  const design = useAppStore.getState().current;
+  const ids = useEditorStore.getState().selectedIds;
+  if (!design || !ids.length) return false;
+  clipboard = extractSubgraph(design, ids);
+  return clipboard.members.length > 0;
+}
+
+/** Paste the clipboard, offset so the copy clears the original entirely (its
+ * bounding-box width in X + one grid gap), and select the pasted members. */
+export function pasteClipboard(): boolean {
+  const design = useAppStore.getState().current;
+  if (!design || !clipboard?.members.length) return false;
+  const ext = subgraphExtent(clipboard);
+  const gap = useEditorStore.getState().snap.gridStepM || 0.0254;
+  const offset: Vec3 = { x: ext.x + gap, y: 0, z: 0 };
+  let newIds: string[] = [];
+  useAppStore.getState().updateCurrent((d) => {
+    const r = pasteSubgraph(d, clipboard as Subgraph, offset);
+    newIds = r.memberIds;
+    return r.design;
+  });
+  useEditorStore.getState().setSelection(newIds);
+  return true;
+}
+
+/** Cut = copy + delete the selection (one undo step for the delete). */
+export function cutSelection(): boolean {
+  if (!copySelection()) return false;
+  const ids = useEditorStore.getState().selectedIds;
+  deleteMembers(ids);
+  useEditorStore.getState().setSelection([]);
+  return true;
 }
 
 /** Free move of a node to a ground point (the endpoint grab handle). Snaps to

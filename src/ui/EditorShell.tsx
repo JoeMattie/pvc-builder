@@ -29,16 +29,20 @@ import { requestPose, resetPose, setView, type ViewName } from '../state/cameraS
 import {
   bendMemberAt,
   clearSelection,
+  copySelection,
+  cutSelection,
   deleteMeasurement,
   deleteMembers,
   detachMemberEnd,
   dragNodeTo,
   finishFormed,
   finishPath,
+  hasClipboard,
   jointOrientationsOf,
   makeFreeHub,
   makeManufacturedJoint,
   moveFormedControlPoint,
+  pasteClipboard,
   pivotAnglesOf,
   placeDrawAtDistance,
   placeDrawPoint,
@@ -204,6 +208,21 @@ export function EditorShell() {
         return;
       }
       if (typing) return;
+
+      // copy / cut / paste the selection (mod-gated, so it also beats the plain
+      // 'c'/'v' tool hotkeys below)
+      if (mod && e.key.toLowerCase() === 'c') {
+        if (copySelection()) e.preventDefault();
+        return;
+      }
+      if (mod && e.key.toLowerCase() === 'x') {
+        if (cutSelection()) e.preventDefault();
+        return;
+      }
+      if (mod && e.key.toLowerCase() === 'v') {
+        if (pasteClipboard()) e.preventDefault();
+        return;
+      }
 
       // arrow / numpad nudge of the selected pipe(s) by one grid step. Arrows +
       // numpad-arrows move in the X/Z ground plane; Ctrl+Up/Down (or the numpad
@@ -374,6 +393,10 @@ export function EditorShell() {
     hook.moveControlPoint = (memberId: string, index: number, raw: Vec3) =>
       moveFormedControlPoint(memberId, index, raw);
     hook.selectMember = (id: string) => selectMember(id);
+    hook.copySelection = () => copySelection();
+    hook.cutSelection = () => cutSelection();
+    hook.pasteClipboard = () => pasteClipboard();
+    hook.hasClipboard = () => hasClipboard();
     hook.selectJoint = (id: string | null) => useEditorStore.getState().selectJoint(id);
     hook.clearSelection = () => clearSelection();
     hook.deleteMembers = (ids: string[]) => deleteMembers(ids);

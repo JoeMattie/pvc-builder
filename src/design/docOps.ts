@@ -539,6 +539,99 @@ export function deleteMember(design: Design, memberId: string): Design {
   };
 }
 
+// ── copy / paste: extract a self-contained fragment, then re-insert with fresh
+// ids (offset so the paste clears the original) ──────────────────────────────
+
+/** A copyable fragment: members + the nodes they use + any joints wholly between
+ * them. Ids are the ORIGINAL ids (remapped on paste). */
+export interface Subgraph {
+  nodes: Node[];
+  members: Member[];
+  joints: Joint[];
+}
+
+/** Pull the selected members (+ their nodes + joints wholly among them) out as a
+ * copyable fragment (deep-cloned so it's independent of the live document). */
+export function extractSubgraph(design: Design, memberIds: string[]): Subgraph {
+  const idSet = new Set(memberIds);
+  const members = design.members.filter((m) => idSet.has(m.id));
+  const nodeIds = new Set<string>();
+  for (const m of members) {
+    nodeIds.add(m.nodeA);
+    nodeIds.add(m.nodeB);
+  }
+  const nodes = design.nodes.filter((n) => nodeIds.has(n.id));
+  const joints = design.joints.filter(
+    (j) => idSet.has(j.receiver) && idSet.has(j.mover) && nodeIds.has(j.nodeId),
+  );
+  return {
+    nodes: nodes.map((n) => structuredClone(n)),
+    members: members.map((m) => structuredClone(m)),
+    joints: joints.map((j) => structuredClone(j)),
+  };
+}
+
+/** Bounding-box extent (max − min per axis) of a subgraph's node positions. */
+export function subgraphExtent(sub: Subgraph): Vec3 {
+  const first = sub.nodes[0];
+  if (!first) return { x: 0, y: 0, z: 0 };
+  const lo = { ...first.position };
+  const hi = { ...first.position };
+  for (const n of sub.nodes) {
+    lo.x = Math.min(lo.x, n.position.x);
+    lo.y = Math.min(lo.y, n.position.y);
+    lo.z = Math.min(lo.z, n.position.z);
+    hi.x = Math.max(hi.x, n.position.x);
+    hi.y = Math.max(hi.y, n.position.y);
+    hi.z = Math.max(hi.z, n.position.z);
+  }
+  return { x: hi.x - lo.x, y: hi.y - lo.y, z: hi.z - lo.z };
+}
+
+/** Paste `sub` into `design`, translated by `offset`, with fresh ids throughout
+ * (nodes, members, joints, and formed control points all shifted). Returns the
+ * new member ids so the caller can select the pasted copy. */
+export function pasteSubgraph(
+  design: Design,
+  sub: Subgraph,
+  offset: Vec3,
+): { design: Design; memberIds: string[]; nodeIds: string[] } {
+  const nodeIdMap = new Map<string, string>();
+  const newNodes: Node[] = sub.nodes.map((n) => {
+    const id = makeId('n');
+    nodeIdMap.set(n.id, id);
+    return { id, position: add(n.position, offset) };
+  });
+  const memberIdMap = new Map<string, string>();
+  const newMembers: Member[] = sub.members.map((m) => {
+    const id = makeId('m');
+    memberIdMap.set(m.id, id);
+    const nodeA = nodeIdMap.get(m.nodeA) ?? m.nodeA;
+    const nodeB = nodeIdMap.get(m.nodeB) ?? m.nodeB;
+    return m.kind === 'formed'
+      ? { ...m, id, nodeA, nodeB, controlPoints: m.controlPoints.map((p) => add(p, offset)) }
+      : { ...m, id, nodeA, nodeB };
+  });
+  const newJoints: Joint[] = [];
+  for (const j of sub.joints) {
+    const nodeId = nodeIdMap.get(j.nodeId);
+    const receiver = memberIdMap.get(j.receiver);
+    const mover = memberIdMap.get(j.mover);
+    if (nodeId && receiver && mover)
+      newJoints.push({ ...j, id: makeId('jt'), nodeId, receiver, mover });
+  }
+  return {
+    design: {
+      ...design,
+      nodes: [...design.nodes, ...newNodes],
+      members: [...design.members, ...newMembers],
+      joints: [...design.joints, ...newJoints],
+    },
+    memberIds: newMembers.map((m) => m.id),
+    nodeIds: newNodes.map((n) => n.id),
+  };
+}
+
 // ── measurements: persistent tape-measure annotations (schema v6) ───────────
 
 /** World position of one measurement end: a pinned node's live position, or a

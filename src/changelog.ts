@@ -11,6 +11,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.1.13',
+    date: '2026-07-08',
+    changes: [
+      'Copy (Ctrl+C), cut (Ctrl+X), and paste (Ctrl+V) the selection — the pasted copy is offset so it clears the original and comes in selected',
+    ],
+  },
+  {
     version: '0.1.12',
     date: '2026-07-08',
     changes: [
