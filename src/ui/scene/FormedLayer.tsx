@@ -8,7 +8,11 @@ import { nodeById } from '../../design/docOps';
 import { type FormedMember, pipeSpec, type Vec3 } from '../../schema';
 import { easedPos, useAnim } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
-import { moveFormedControlPoint, selectMember } from '../../state/editorActions';
+import {
+  addFormedControlPoint,
+  moveFormedControlPoint,
+  selectMember,
+} from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
@@ -104,12 +108,20 @@ export function FormedLayer() {
         const r = pipeSpec(m.size).odM / 2;
         const segs = Math.max(24, (m.controlPoints.length + 1) * 20);
         const isSel = selected.has(m.id);
-        const click = onSelect
-          ? (e: ThreeEvent<MouseEvent>) => {
-              e.stopPropagation();
-              onSelect(m.id);
-            }
-          : undefined;
+        // select on click (select/move/rotate); in the Bend tool, clicking the
+        // tube instead ADDS a control point where you clicked
+        const click =
+          tool === 'bend'
+            ? (e: ThreeEvent<MouseEvent>) => {
+                e.stopPropagation();
+                addFormedControlPoint(m.id, { x: e.point.x, y: e.point.y, z: e.point.z });
+              }
+            : onSelect
+              ? (e: ThreeEvent<MouseEvent>) => {
+                  e.stopPropagation();
+                  onSelect(m.id);
+                }
+              : undefined;
         return (
           <group key={m.id}>
             {/* biome-ignore lint/a11y/noStaticElementInteractions: r3f <mesh> is a scene node */}

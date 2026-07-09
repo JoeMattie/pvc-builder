@@ -6,6 +6,11 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 
 ## Post-batch fixes (2026-07-08)
 
+- **Bent pipes are editable like straight ones.** `SelectionHandles` no longer bails on formed
+  members — a bent pipe now gets endpoint move handles + length arrows (drag its ends to extend /
+  reposition; the curve reshapes). It's also click-selectable in select/move/rotate. And in the
+  **Bend tool, clicking the tube ADDS a control point** where you clicked (`addControlPointAt` —
+  inserts into the nearest polyline segment), so you can add bend handles by clicking.
 - **Wrapped pivots SLIDE along the pipe (physics)** + **bent pipes are STATIC in sim.** In Play
   mode: (1) a wrapped joint is now a **cylindrical** 6DOF constraint (`sixDOFConstraint`) — free
   translation AND rotation along the receiver axis, each with friction, the other 4 DOF fixed, the

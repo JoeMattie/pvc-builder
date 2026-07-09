@@ -602,9 +602,10 @@ export function SelectionHandles() {
   useAnim((s) => s.v);
   if (!design) return null;
   const member = selectedIds[0] ? memberById(design, selectedIds[0]) : undefined;
-  // length arrows + endpoint drag apply to straight pipe only (formed pipes are
-  // edited by their control points, a later slice)
-  if (member?.kind !== 'straight') return null;
+  // endpoint move + length editing for BOTH straight and formed pipes (a bent
+  // pipe extends by dragging its ends, just like a straight one; its bend shape
+  // — the control points — is tweaked separately with the Bend tool)
+  if (!member) return null;
   const a = nodeById(design, member.nodeA);
   const b = nodeById(design, member.nodeB);
   if (!a || !b) return null;

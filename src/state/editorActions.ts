@@ -4,6 +4,7 @@
 // the appStore (undo/autosave) and transient editorStore.
 import {
   addBodyJoint,
+  addControlPointAt,
   addFormedMember,
   addMeasurement,
   appendPipe,
@@ -597,6 +598,11 @@ export function bendMemberAt(
  * clamped to the ground. */
 export function moveFormedControlPoint(memberId: string, index: number, raw: Vec3): void {
   updateReconciled((d) => moveControlPoint(d, memberId, index, clampGround(raw)));
+}
+
+/** Add a control point to a formed pipe where the tube was clicked (Bend tool). */
+export function addFormedControlPoint(memberId: string, raw: Vec3): void {
+  useAppStore.getState().updateCurrent((d) => addControlPointAt(d, memberId, clampGround(raw)));
 }
 
 /** Delete a measurement. */

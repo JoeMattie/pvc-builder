@@ -299,6 +299,48 @@ export function moveControlPoint(
   };
 }
 
+/** Add a control point to a formed pipe at `point`, inserted into whichever
+ * segment of its polyline (nodeA → controls → nodeB) the point is nearest — so
+ * clicking the tube adds a bend handle where you clicked. No-op for a straight
+ * member. */
+export function addControlPointAt(design: Design, memberId: string, point: Vec3): Design {
+  const m = memberById(design, memberId);
+  if (m?.kind !== 'formed') return design;
+  const a = nodeById(design, m.nodeA)?.position;
+  const b = nodeById(design, m.nodeB)?.position;
+  if (!a || !b) return design;
+  const pts = [a, ...m.controlPoints, b];
+  let bestI = 0;
+  let bestD = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const d = length(sub(point, closestPointOnSegment(point, pts[i]!, pts[i + 1]!)));
+    if (d < bestD) {
+      bestD = d;
+      bestI = i;
+    }
+  }
+  // controlPoints index for a click in segment bestI is bestI (controlPoints[k]
+  // is polyline point k+1), so the new point lands between pts[bestI] and pts[bestI+1]
+  const fillets = m.filletRadiiM ?? [];
+  const fillet = fillets[0] ?? 0;
+  return {
+    ...design,
+    members: design.members.map((mm) =>
+      mm.id === memberId
+        ? {
+            ...m,
+            controlPoints: [
+              ...m.controlPoints.slice(0, bestI),
+              point,
+              ...m.controlPoints.slice(bestI),
+            ],
+            filletRadiiM: [...fillets.slice(0, bestI), fillet, ...fillets.slice(bestI)],
+          }
+        : mm,
+    ),
+  };
+}
+
 /** Change a member's nominal size (the right-click size switcher). Reducing
  * tees are DERIVED from the receiver/mover sizes (see `resolveFittings`), so no
  * joint record changes — the unions re-resolve automatically. */

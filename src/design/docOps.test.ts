@@ -3,6 +3,7 @@ import { developedLengthM } from '../geometry/pipe';
 import { createEmptyDesign, type Design, type Vec3 } from '../schema';
 import {
   addBodyJoint,
+  addControlPointAt,
   addMeasurement,
   appendPipe,
   bendMember,
@@ -878,5 +879,49 @@ describe('measurements', () => {
     const perp = measurePerp(V(0, 0, 0), V(1, 0, 0));
     expect(perp.y).toBe(0);
     expect(perp.x * 1 + perp.y * 0 + perp.z * 0).toBeCloseTo(0, 9); // ⟂ to +X
+  });
+});
+
+describe('addControlPointAt (add a bend handle to a formed pipe)', () => {
+  function formed(): Design {
+    const d = createEmptyDesign('d', 'F');
+    d.nodes.push({ id: 'a', position: V(0, 0, 0) }, { id: 'b', position: V(1, 0, 0) });
+    d.members.push({
+      id: 'm',
+      kind: 'formed',
+      nodeA: 'a',
+      nodeB: 'b',
+      controlPoints: [V(0.5, 0, 0.3)],
+      filletRadiiM: [0.06],
+      size: '3/4"',
+    });
+    return d;
+  }
+  const cps = (d: Design) => {
+    const m = d.members[0]!;
+    return m.kind === 'formed' ? m.controlPoints : [];
+  };
+
+  it('inserts into the FIRST segment when clicked near it', () => {
+    // polyline a(0,0,0) -> c(0.5,0,0.3) -> b(1,0,0); click near the a→c leg
+    const out = addControlPointAt(formed(), 'm', V(0.25, 0, 0.15));
+    expect(cps(out)).toHaveLength(2);
+    expect(cps(out)[0]).toEqual(V(0.25, 0, 0.15)); // new point is first
+    expect(cps(out)[1]).toEqual(V(0.5, 0, 0.3)); // original follows
+  });
+
+  it('inserts into the SECOND segment (appends) when clicked near it', () => {
+    const out = addControlPointAt(formed(), 'm', V(0.75, 0, 0.15));
+    expect(cps(out)).toHaveLength(2);
+    expect(cps(out)[0]).toEqual(V(0.5, 0, 0.3)); // original stays first
+    expect(cps(out)[1]).toEqual(V(0.75, 0, 0.15)); // new point appended
+  });
+
+  it('grows filletRadiiM in step and is a no-op on a straight member', () => {
+    const out = addControlPointAt(formed(), 'm', V(0.25, 0, 0.15));
+    const m = out.members[0]!;
+    if (m.kind === 'formed') expect(m.filletRadiiM).toHaveLength(2);
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0)]);
+    expect(addControlPointAt(design, memberIds[0]!, V(0.5, 0, 0.2))).toEqual(design);
   });
 });
