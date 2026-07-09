@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Moon, Plus, Sparkles, Sun, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Layers, Moon, Plus, Sparkles, Sun, Trash2 } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { APP_VERSION, CHANGELOG } from '../changelog';
 import { EXAMPLES } from '../examples';
@@ -43,6 +43,82 @@ function Changelog() {
   );
 }
 
+// The technology stack, grouped for the "Built with" panel. Kept in sync with
+// package.json by hand (names/roles, not versions, so it doesn't go stale).
+const STACK: { group: string; items: { name: string; role: string }[] }[] = [
+  {
+    group: 'Core',
+    items: [
+      { name: 'React 19', role: 'UI' },
+      { name: 'TypeScript', role: 'types' },
+      { name: 'Vite', role: 'build' },
+    ],
+  },
+  {
+    group: '3D',
+    items: [
+      { name: 'three.js', role: 'WebGL renderer' },
+      { name: 'react-three-fiber', role: 'React ↔ three' },
+      { name: 'drei', role: 'r3f helpers' },
+    ],
+  },
+  {
+    group: 'Simulation',
+    items: [{ name: 'CrashCat', role: 'rigid-body physics' }],
+  },
+  {
+    group: 'State & data',
+    items: [
+      { name: 'Zustand + Zundo', role: 'store + undo' },
+      { name: 'Immer', role: 'immutable edits' },
+      { name: 'Zod', role: 'schema' },
+      { name: 'Dexie', role: 'IndexedDB' },
+    ],
+  },
+  {
+    group: 'UI',
+    items: [
+      { name: 'Tailwind CSS', role: 'styling' },
+      { name: 'Radix UI', role: 'primitives' },
+      { name: 'lucide-react', role: 'icons' },
+    ],
+  },
+  {
+    group: 'Tooling',
+    items: [
+      { name: 'Biome', role: 'lint/format' },
+      { name: 'Vitest', role: 'unit tests' },
+      { name: 'Playwright', role: 'e2e smoke' },
+    ],
+  },
+];
+
+/** "Built with" — the technology stack, shown alongside the project list. */
+function StackInfo() {
+  return (
+    <aside className="w-full shrink-0 lg:sticky lg:top-12 lg:w-60">
+      <div className="border-border bg-card flex flex-col gap-4 rounded-lg border p-4">
+        <h2 className="text-muted-foreground flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide">
+          <Layers size={13} /> Built with
+        </h2>
+        {STACK.map((section) => (
+          <div key={section.group} className="flex flex-col gap-1.5">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+              {section.group}
+            </div>
+            {section.items.map((it) => (
+              <div key={it.name} className="flex items-baseline justify-between gap-2 text-xs">
+                <span className="font-medium">{it.name}</span>
+                <span className="text-muted-foreground shrink-0 text-[11px]">{it.role}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
 /** Project list screen (planfile §7): fast create / open / delete, plus
  * bundled examples. The full inspect + import/export lands in Phase 5. */
 export function ProjectList() {
@@ -64,94 +140,98 @@ export function ProjectList() {
   };
 
   return (
-    <div className="mx-auto flex min-h-full max-w-2xl flex-col gap-6 px-6 py-12">
-      <header className="flex items-baseline gap-2">
-        <h1 className="font-sans text-2xl font-semibold">PVC Builder</h1>
-        <span className="text-muted-foreground text-xs font-medium">v{APP_VERSION}</span>
-        <p className="text-muted-foreground ml-auto text-sm">A 3D-first PVC design studio.</p>
-        <button
-          type="button"
-          onClick={toggleNight}
-          aria-label="Toggle day/night"
-          title="Toggle day/night"
-          className="text-muted-foreground hover:text-foreground self-center rounded-md p-1.5"
-        >
-          {night ? <Sun size={16} /> : <Moon size={16} />}
-        </button>
-      </header>
-
-      <form onSubmit={onCreate} className="flex gap-2">
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="New design name…"
-          aria-label="New design name"
-          className="border-input bg-background flex-1 rounded-md border px-3 py-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-        />
-        <button
-          type="submit"
-          disabled={!name.trim()}
-          className="bg-primary text-primary-foreground inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium disabled:opacity-50"
-        >
-          <Plus size={16} /> Create
-        </button>
-      </form>
-
-      <section className="flex flex-col gap-2">
-        <h2 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
-          Examples
-        </h2>
-        {EXAMPLES.map((ex) => (
+    <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col gap-8 px-6 py-12 lg:flex-row lg:items-start">
+      <div className="flex flex-1 flex-col gap-6">
+        <header className="flex items-baseline gap-2">
+          <h1 className="font-sans text-2xl font-semibold">PVC Builder</h1>
+          <span className="text-muted-foreground text-xs font-medium">v{APP_VERSION}</span>
+          <p className="text-muted-foreground ml-auto text-sm">A 3D-first PVC design studio.</p>
           <button
-            key={ex.id}
             type="button"
-            onClick={() => void createFromExample(ex.id)}
-            className="border-border bg-card flex items-center gap-3 rounded-lg border px-4 py-3 text-left hover:bg-accent"
+            onClick={toggleNight}
+            aria-label="Toggle day/night"
+            title="Toggle day/night"
+            className="text-muted-foreground hover:text-foreground self-center rounded-md p-1.5"
           >
-            <Sparkles size={16} className="text-muted-foreground shrink-0" />
-            <span>
-              <span className="block text-sm font-medium">{ex.name}</span>
-              <span className="text-muted-foreground block text-xs">{ex.description}</span>
-            </span>
+            {night ? <Sun size={16} /> : <Moon size={16} />}
           </button>
-        ))}
-      </section>
+        </header>
 
-      <section className="flex flex-col gap-2">
-        {projects.length === 0 ? (
-          <p className="text-muted-foreground py-8 text-center text-sm">
-            No designs yet. Create one to start building.
-          </p>
-        ) : (
-          projects.map((p) => (
-            <div
-              key={p.id}
-              className="border-border bg-card flex items-center gap-3 rounded-lg border px-4 py-3"
+        <form onSubmit={onCreate} className="flex gap-2">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="New design name…"
+            aria-label="New design name"
+            className="border-input bg-background flex-1 rounded-md border px-3 py-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          />
+          <button
+            type="submit"
+            disabled={!name.trim()}
+            className="bg-primary text-primary-foreground inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium disabled:opacity-50"
+          >
+            <Plus size={16} /> Create
+          </button>
+        </form>
+
+        <section className="flex flex-col gap-2">
+          <h2 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+            Examples
+          </h2>
+          {EXAMPLES.map((ex) => (
+            <button
+              key={ex.id}
+              type="button"
+              onClick={() => void createFromExample(ex.id)}
+              className="border-border bg-card flex items-center gap-3 rounded-lg border px-4 py-3 text-left hover:bg-accent"
             >
-              <button
-                type="button"
-                onClick={() => void openProject(p.id)}
-                className="flex-1 text-left"
-              >
-                <div className="text-sm font-medium">{p.name}</div>
-                <div className="text-muted-foreground text-xs">
-                  {new Date(p.updatedAt).toLocaleString()}
-                </div>
-              </button>
-              <button
-                type="button"
-                aria-label={`Delete ${p.name}`}
-                onClick={() => void deleteProject(p.id)}
-                className="text-muted-foreground hover:text-destructive rounded-md p-2"
-              >
-                <Trash2 size={16} />
-              </button>
-            </div>
-          ))
-        )}
-      </section>
+              <Sparkles size={16} className="text-muted-foreground shrink-0" />
+              <span>
+                <span className="block text-sm font-medium">{ex.name}</span>
+                <span className="text-muted-foreground block text-xs">{ex.description}</span>
+              </span>
+            </button>
+          ))}
+        </section>
 
-      <Changelog />
+        <section className="flex flex-col gap-2">
+          {projects.length === 0 ? (
+            <p className="text-muted-foreground py-8 text-center text-sm">
+              No designs yet. Create one to start building.
+            </p>
+          ) : (
+            projects.map((p) => (
+              <div
+                key={p.id}
+                className="border-border bg-card flex items-center gap-3 rounded-lg border px-4 py-3"
+              >
+                <button
+                  type="button"
+                  onClick={() => void openProject(p.id)}
+                  className="flex-1 text-left"
+                >
+                  <div className="text-sm font-medium">{p.name}</div>
+                  <div className="text-muted-foreground text-xs">
+                    {new Date(p.updatedAt).toLocaleString()}
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Delete ${p.name}`}
+                  onClick={() => void deleteProject(p.id)}
+                  className="text-muted-foreground hover:text-destructive rounded-md p-2"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))
+          )}
+        </section>
+
+        <Changelog />
+      </div>
+
+      <StackInfo />
     </div>
   );
 }
