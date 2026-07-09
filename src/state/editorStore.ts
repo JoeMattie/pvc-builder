@@ -1,7 +1,12 @@
 import { create } from 'zustand';
 import type { Guide } from '../design/guides';
 import { DEFAULT_GRID_M } from '../design/snapping';
-import { getSnapPref, setSnapPref } from '../persistence/prefs';
+import {
+  getRendererEffectsPref,
+  getSnapPref,
+  setRendererEffectsPref,
+  setSnapPref,
+} from '../persistence/prefs';
 import type { Attachment, MeasurementEnd, NominalSize, Vec3 } from '../schema';
 
 /** Snapping configuration (the snap pill). A workspace preference, persisted
@@ -65,6 +70,8 @@ export type Projection = 'ortho' | 'perspective';
  * all-in-one workspace exposes fabrication labels by default. */
 export type SceneStatus = 'design' | 'fabricate' | 'simulate';
 
+export type ToolPaletteLayout = 'horizontal' | 'vertical';
+
 /** Sparse hover target for scene semantic labels. Keep this structural and
  * transient; it should never hold three.js objects or document data copies. */
 export type HoveredSceneItem =
@@ -124,6 +131,10 @@ export interface EditorState {
   physicsDebug: boolean;
   /** wireframe view: draw pipes as fat lines + junctions as dots (no solids) */
   wireframe: boolean;
+  /** renderer postprocessing: conservative AO/cavity + SMAA, workspace preference */
+  rendererEffects: boolean;
+  /** tool palette layout: horizontal bottom bar or vertical palette */
+  toolPaletteLayout: ToolPaletteLayout;
   /** the group currently ENTERED for editing (double-click) — its members are
    * interactive, everything else fades + is inert. null = not inside any group. */
   enteredGroupId: string | null;
@@ -172,6 +183,10 @@ export interface EditorState {
   setPhysicsDebug(on: boolean): void;
   setWireframe(on: boolean): void;
   toggleWireframe(): void;
+  setRendererEffects(on: boolean): void;
+  toggleRendererEffects(): void;
+  setToolPaletteLayout(layout: ToolPaletteLayout): void;
+  toggleToolPaletteLayout(): void;
   setEnteredGroup(groupId: string | null): void;
   addGuide(guide: Guide): void;
   clearGuides(): void;
@@ -212,6 +227,8 @@ const INITIAL = {
   simulating: false,
   physicsDebug: false,
   wireframe: false,
+  rendererEffects: getRendererEffectsPref(),
+  toolPaletteLayout: 'horizontal' as ToolPaletteLayout,
   enteredGroupId: null as string | null,
   guides: [] as Guide[],
   guideDraft: null as { refOrigin: Vec3; dir: Vec3 } | null,
@@ -342,6 +359,23 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   toggleWireframe() {
     set({ wireframe: !get().wireframe });
   },
+  setRendererEffects(on) {
+    setRendererEffectsPref(on);
+    set({ rendererEffects: on });
+  },
+  toggleRendererEffects() {
+    const next = !get().rendererEffects;
+    setRendererEffectsPref(next);
+    set({ rendererEffects: next });
+  },
+  setToolPaletteLayout(layout) {
+    set({ toolPaletteLayout: layout });
+  },
+  toggleToolPaletteLayout() {
+    set({
+      toolPaletteLayout: get().toolPaletteLayout === 'horizontal' ? 'vertical' : 'horizontal',
+    });
+  },
   setEnteredGroup(groupId) {
     set({ enteredGroupId: groupId });
   },
@@ -381,6 +415,10 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     set({ snap: next });
   },
   resetTransient() {
-    set({ ...INITIAL }); // snap is a workspace pref, left untouched
+    set({
+      ...INITIAL,
+      rendererEffects: get().rendererEffects,
+      toolPaletteLayout: get().toolPaletteLayout,
+    }); // workspace prefs are left untouched
   },
 }));

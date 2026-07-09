@@ -85,7 +85,7 @@ const CONCEPTS: { title: string; body: string }[] = [
   },
   {
     title: 'Object tree',
-    body: 'The panel on the left lists every pipe and group. Click to select (Ctrl-click to multi-select); clicking a grouped object enters its group and greys out the rest. Each group carries a subtle colour cast set from its swatch, and the tree has Group / Ungroup buttons.',
+    body: 'The panel on the left lists every pipe and group. Click to select (Ctrl-click to multi-select); clicking a grouped object enters its group and greys out the rest. Each group carries a subtle colour cast set from its swatch; grouping controls live in the main tool toolbar.',
   },
   {
     title: 'Guide lines',
@@ -105,7 +105,7 @@ const CONCEPTS: { title: string; body: string }[] = [
   },
   {
     title: 'Simulate (Play)',
-    body: 'Toggle the Lengths lock to hold every member length, then pose wrapped pivots with the sliders or drag free hubs directly. Press Play (Ctrl+Space) to run rigid-body physics; the bug icon overlays the live bodies + constraints. The BOM / cut list gives take-offs, allowances, and a CSV export.',
+    body: 'Toggle the Drag lock in the tool bar to hold every member length, then pose wrapped pivots with the sliders or drag free hubs directly. Press Play (Ctrl+Space) to run rigid-body physics; the bug icon overlays the live bodies + constraints. The BOM / cut list gives take-offs, allowances, and a CSV export.',
   },
 ];
 

@@ -26,6 +26,7 @@ import { orientY, orientZ, placeAxis } from './axis';
 import { buildFittingMesh, type FittingCyl } from './fittingMesh';
 import { anchorRendersAsTee } from './jointStyle';
 import { FREE_JOINT_GAP_M, WRAP_END_GAP_M } from './pipeModel';
+import { canOpenRightClickMenu, recordPointerDebug } from './rightClickGesture';
 import { buildWrapArrow } from './wrapArrow';
 
 const MAX_JOINT_MEMBERS = 800;
@@ -45,7 +46,7 @@ function AnchorTee({
   selectable,
   selected,
   fitting,
-  onContext,
+  onMenuPointerUp,
   onHover,
   onHoverOut,
 }: {
@@ -53,7 +54,7 @@ function AnchorTee({
   selectable: boolean;
   selected: boolean;
   fitting: string;
-  onContext?: (e: ThreeEvent<MouseEvent>) => void;
+  onMenuPointerUp?: (e: ThreeEvent<PointerEvent>) => void;
   onHover?: (e: ThreeEvent<PointerEvent>) => void;
   onHoverOut?: () => void;
 }) {
@@ -92,8 +93,8 @@ function AnchorTee({
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: r3f group is a scene node
     <group
-      onContextMenu={onContext}
       onClick={onSelect}
+      onPointerUp={onMenuPointerUp}
       onPointerMove={onHover}
       onPointerOut={onHoverOut}
     >
@@ -137,14 +138,14 @@ function WrapJoint({
   joint,
   selectable,
   selected,
-  onContext,
+  onMenuPointerUp,
   onHover,
   onHoverOut,
 }: {
   joint: Joint;
   selectable: boolean;
   selected: boolean;
-  onContext?: (e: ThreeEvent<MouseEvent>) => void;
+  onMenuPointerUp?: (e: ThreeEvent<PointerEvent>) => void;
   onHover?: (e: ThreeEvent<PointerEvent>) => void;
   onHoverOut?: () => void;
 }) {
@@ -193,8 +194,8 @@ function WrapJoint({
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: r3f group is a scene node
     <group
-      onContextMenu={onContext}
       onClick={onSelect}
+      onPointerUp={onMenuPointerUp}
       onPointerMove={onHover}
       onPointerOut={onHoverOut}
     >
@@ -231,14 +232,14 @@ function FreeJoint({
   joint,
   selectable,
   ball,
-  onContext,
+  onMenuPointerUp,
   onHover,
   onHoverOut,
 }: {
   joint: Joint;
   selectable: boolean;
   ball: string;
-  onContext?: (e: ThreeEvent<MouseEvent>) => void;
+  onMenuPointerUp?: (e: ThreeEvent<PointerEvent>) => void;
   onHover?: (e: ThreeEvent<PointerEvent>) => void;
   onHoverOut?: () => void;
 }) {
@@ -279,7 +280,7 @@ function FreeJoint({
     // biome-ignore lint/a11y/noStaticElementInteractions: r3f group is a scene node
     <group
       onClick={onSelect}
-      onContextMenu={onContext}
+      onPointerUp={onMenuPointerUp}
       onPointerMove={onHover}
       onPointerOut={onHoverOut}
     >
@@ -342,11 +343,20 @@ export function JointLayer() {
   // right-clicking the joint hardware (the collar / ball) re-opens its menu —
   // the pipe ends are pulled back at a free pivot, so the pipe alone can't catch
   // a click on the ball. Uses the joint's own node + mover (not a raycast guess).
-  const onContext = (j: Joint) =>
+  const onMenuPointerUp = (j: Joint) =>
     editing
-      ? (e: ThreeEvent<MouseEvent>) => {
+      ? (e: ThreeEvent<PointerEvent>) => {
+          if (e.nativeEvent.button !== 2) return;
           e.stopPropagation();
-          const ne = e.nativeEvent as MouseEvent;
+          const ne = e.nativeEvent;
+          if (!canOpenRightClickMenu(ne.pointerId, 'joint', ne.clientX, ne.clientY)) return;
+          recordPointerDebug('menu-open', {
+            pointerId: ne.pointerId,
+            x: ne.clientX,
+            y: ne.clientY,
+            target: 'joint',
+            id: j.id,
+          });
           useEditorStore
             .getState()
             .openJoinMenu({ nodeId: j.nodeId, moverId: j.mover, x: ne.clientX, y: ne.clientY });
@@ -354,7 +364,8 @@ export function JointLayer() {
       : undefined;
   const onHover = (j: Joint) =>
     editing
-      ? () => {
+      ? (e: ThreeEvent<PointerEvent>) => {
+          e.stopPropagation();
           useEditorStore.getState().setHoveredSceneItem({ kind: 'joint', id: j.id });
         }
       : undefined;
@@ -376,7 +387,7 @@ export function JointLayer() {
               joint={j}
               selectable={selectable}
               ball={pal.accent}
-              onContext={onContext(j)}
+              onMenuPointerUp={onMenuPointerUp(j)}
               onHover={onHover(j)}
               onHoverOut={onHoverOut}
             />
@@ -390,7 +401,7 @@ export function JointLayer() {
               selectable={selectable}
               selected={isSelected(j)}
               fitting={pal.fitting}
-              onContext={onContext(j)}
+              onMenuPointerUp={onMenuPointerUp(j)}
               onHover={onHover(j)}
               onHoverOut={onHoverOut}
             />
@@ -401,7 +412,7 @@ export function JointLayer() {
             joint={j}
             selectable={selectable}
             selected={isSelected(j)}
-            onContext={onContext(j)}
+            onMenuPointerUp={onMenuPointerUp(j)}
             onHover={onHover(j)}
             onHoverOut={onHoverOut}
           />

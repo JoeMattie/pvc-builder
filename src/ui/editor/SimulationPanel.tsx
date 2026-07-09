@@ -1,4 +1,4 @@
-import { Bug, Gauge, Lock, LockOpen, PersonStanding, Play, RotateCcw, Square } from 'lucide-react';
+import { Bug, Gauge, PersonStanding, Play, RotateCcw, Square } from 'lucide-react';
 import { useAppStore } from '../../state/appStore';
 import { resetPivots, setJointDamping, setMannequin } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
@@ -12,7 +12,6 @@ function chipClass(active = false): string {
  * the live CrashCat physics world. */
 export function SimulationPanel() {
   const design = useAppStore((s) => s.current);
-  const updateCurrent = useAppStore((s) => s.updateCurrent);
   const simulating = useEditorStore((s) => s.simulating);
   const setSimulating = useEditorStore((s) => s.setSimulating);
   const physicsDebug = useEditorStore((s) => s.physicsDebug);
@@ -20,23 +19,16 @@ export function SimulationPanel() {
 
   if (!design) return null;
 
-  const lengthsLocked = design.lengthsLocked;
   const damping = design.jointDamping ?? 1;
   const jointCount = design.joints.length;
   const elasticCount = design.elastics.length;
-  const setLengthsLocked = (locked: boolean) =>
-    updateCurrent((doc) => ({ ...doc, lengthsLocked: locked }));
 
   return (
-    <div className="w-[min(92vw,22rem)] rounded-xl border border-border bg-card p-3 shadow-md">
+    <div className="w-full rounded-lg border border-border bg-card p-3 shadow-md">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <div className="text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">
-            Simulate
-          </div>
-          <div className="truncate text-sm font-medium">
-            {simulating ? 'Physics live' : 'Design pose'}
-          </div>
+        {/* the island title bar already reads "Simulate" — just the state here */}
+        <div className="truncate text-sm font-medium">
+          {simulating ? 'Physics live' : 'Design pose'}
         </div>
         <button
           type="button"
@@ -54,9 +46,6 @@ export function SimulationPanel() {
       </div>
 
       <div className="mb-3 grid grid-cols-2 gap-1 text-[10px]">
-        <span className={`rounded px-1.5 py-1 ${chipClass(lengthsLocked)}`}>
-          lengths {lengthsLocked ? 'locked' : 'free'}
-        </span>
         <span className={`rounded px-1.5 py-1 ${chipClass(simulating)}`}>
           {simulating ? 'CrashCat running' : 'ready'}
         </span>
@@ -65,6 +54,9 @@ export function SimulationPanel() {
         </span>
         <span className="rounded bg-muted px-1.5 py-1 text-muted-foreground">
           elastics {elasticCount}
+        </span>
+        <span className={`rounded px-1.5 py-1 ${chipClass(design.mannequin)}`}>
+          body {design.mannequin ? 'on' : 'off'}
         </span>
       </div>
 
@@ -88,19 +80,6 @@ export function SimulationPanel() {
         </label>
 
         <div className="grid grid-cols-2 gap-1">
-          <button
-            type="button"
-            onClick={() => setLengthsLocked(!lengthsLocked)}
-            aria-pressed={lengthsLocked}
-            className={`flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium ${
-              lengthsLocked
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-            }`}
-          >
-            {lengthsLocked ? <Lock size={13} /> : <LockOpen size={13} />}
-            Lengths
-          </button>
           <button
             type="button"
             onClick={() => setMannequin(!design.mannequin)}

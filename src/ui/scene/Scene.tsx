@@ -7,8 +7,8 @@ import {
   PerspectiveCamera,
 } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
-import { useEffect, useRef } from 'react';
-import { MOUSE, Vector3 } from 'three';
+import { lazy, Suspense, useEffect, useRef } from 'react';
+import { MOUSE, Quaternion, Vector3 } from 'three';
 import { nodeById } from '../../design/docOps';
 import { marqueeFromDrag, memberSelectedBy, type Pt } from '../../design/marquee';
 import type { Vec3 } from '../../schema';
@@ -56,6 +56,16 @@ import { MannequinLayer } from './MannequinLayer';
 import { MeasureLayer } from './MeasureLayer';
 import { PhysicsDebug } from './PhysicsDebug';
 import { PipeLayer } from './PipeLayer';
+import { pickSnapPoint, SNAP_PX } from './pipePick';
+import {
+  beginRightClickGesture,
+  clearPointerDebugEvents,
+  finishRightClickGesture,
+  getPointerDebugEvents,
+  recordPointerDebug,
+  shouldSuppressNativeContextMenu,
+  updateRightClickGesture,
+} from './rightClickGesture';
 import { SceneLabels } from './SceneLabels';
 import { MoveGizmo, RotateGizmo, SelectionHandles } from './SelectionHandles';
 import { WireframeLayer } from './WireframeLayer';
@@ -89,6 +99,26 @@ function GroundGrid({ pal }: { pal: ReturnType<typeof scenePalette> }) {
   );
 }
 
+// Lazy chunk: keeps `postprocessing` out of the main bundle (effects default off).
+const RendererEffectsPass = lazy(() => import('./RendererEffectsPass'));
+
+/** Warm the postprocessing chunk before the user toggles effects on. Called from
+ * the project list on idle; the WebGL pass itself still initializes on toggle
+ * (it needs the live GL context and can't run in a worker). */
+export function preloadRendererEffects(): void {
+  void import('./RendererEffectsPass');
+}
+
+function RendererEffects() {
+  const enabled = useEditorStore((s) => s.rendererEffects);
+  if (!enabled) return null;
+  return (
+    <Suspense fallback={null}>
+      <RendererEffectsPass />
+    </Suspense>
+  );
+}
+
 /** Everything inside the Canvas: camera, studio lighting, ground grid + shadow
  * catcher, pipe meshes, the draw controller, and selection drag handles. */
 export function Scene() {
@@ -97,7 +127,6 @@ export function Scene() {
   // every frame) from re-rendering the grid, gizmo, cameras, and lights.
   const projection = useEditorStore((s) => s.projection);
   const tool = useEditorStore((s) => s.tool);
-  const drawingFromNodeId = useEditorStore((s) => s.drawingFromNodeId);
   const wireframe = useEditorStore((s) => s.wireframe);
   const night = useThemeStore((s) => s.night);
   const pal = scenePalette(night);
@@ -173,8 +202,9 @@ export function Scene() {
       {/* move-tool translate gizmo / rotate-tool ring gizmo on the selection */}
       {tool === 'move' && <MoveGizmo />}
       {tool === 'rotate' && <RotateGizmo />}
-      {/* extend-tool push cylinders on pipe ends */}
-      {tool === 'extend' && !drawingFromNodeId && <ExtendLayer />}
+      {/* extend-tool push cylinders on pipe ends — stay visible during an active
+          push so chained pushes can re-anchor without a round trip */}
+      {tool === 'extend' && <ExtendLayer />}
 
       {/* middle = pan, right = free rotate; left is reserved (drawing / select
           / future marquee), so it never orbits. `key={projection}` remounts the
@@ -186,8 +216,9 @@ export function Scene() {
         enableDamping
         zoomToCursor
         target={getCameraPose().target}
-        mouseButtons={{ MIDDLE: MOUSE.PAN, RIGHT: MOUSE.ROTATE }}
+        mouseButtons={{ MIDDLE: MOUSE.PAN }}
       />
+      <CursorAnchorOrbit />
       <CameraPoseSync />
       <ViewController />
 
@@ -197,10 +228,120 @@ export function Scene() {
 
       <GeometryAnimator />
       <PhysicsDebug />
+      <RendererEffects />
       <VelocityZoom />
       <DebugBridge />
     </>
   );
+}
+
+/** Right-drag orbit around a model point under the cursor when one exists.
+ * Empty-space drags use the current controls target; they never retarget to an
+ * arbitrary ground-plane point under the mouse. */
+function CursorAnchorOrbit() {
+  const gl = useThree((s) => s.gl);
+  const camera = useThree((s) => s.camera);
+  const controls = useThree((s) => s.controls) as {
+    dispatchEvent?: (event: { type: string }) => void;
+    target: Vector3;
+    update: () => void;
+  } | null;
+  const drag = useRef<{
+    pointerId: number;
+    anchor: Vector3;
+    lastX: number;
+    lastY: number;
+    moved: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!controls) return;
+    const el = gl.domElement;
+    const anchorAt = (clientX: number, clientY: number): Vector3 | null => {
+      const design = useAppStore.getState().current;
+      if (design) {
+        const snap = pickSnapPoint(camera, el, design, clientX, clientY, SNAP_PX, {
+          nodes: true,
+          pipes: true,
+        });
+        if (snap) return new Vector3(snap.point.x, snap.point.y, snap.point.z);
+      }
+      return controls.target.clone();
+    };
+
+    const rotateAround = (anchor: Vector3, dx: number, dy: number) => {
+      if (dx === 0 && dy === 0) return;
+      const yaw = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), -dx * 0.006);
+      const right = new Vector3(1, 0, 0).applyQuaternion(camera.quaternion).normalize();
+      const pitch = new Quaternion().setFromAxisAngle(right, -dy * 0.006);
+      const q = yaw.multiply(pitch);
+      camera.position.sub(anchor).applyQuaternion(q).add(anchor);
+      controls.target.sub(anchor).applyQuaternion(q).add(anchor);
+      controls.update();
+      controls.dispatchEvent?.({ type: 'change' });
+    };
+
+    const onDown = (e: PointerEvent) => {
+      if (e.button !== 2) return;
+      const anchor = anchorAt(e.clientX, e.clientY);
+      if (!anchor) return;
+      beginRightClickGesture(e.pointerId, e.clientX, e.clientY, 'orbit');
+      drag.current = {
+        pointerId: e.pointerId,
+        anchor,
+        lastX: e.clientX,
+        lastY: e.clientY,
+        moved: false,
+      };
+    };
+    const onMove = (e: PointerEvent) => {
+      const d = drag.current;
+      if (!d || d.pointerId !== e.pointerId || (e.buttons & 2) === 0) return;
+      const dx = e.clientX - d.lastX;
+      const dy = e.clientY - d.lastY;
+      const orbiting = updateRightClickGesture(e.pointerId, e.clientX, e.clientY);
+      if (orbiting && !d.moved) {
+        d.moved = true;
+        recordPointerDebug('right-orbit-start', {
+          pointerId: e.pointerId,
+          x: e.clientX,
+          y: e.clientY,
+          target: 'orbit',
+          moved: true,
+        });
+      }
+      d.lastX = e.clientX;
+      d.lastY = e.clientY;
+      if (!orbiting) return;
+      e.preventDefault();
+      rotateAround(d.anchor, dx, dy);
+    };
+    const onUp = (e: PointerEvent) => {
+      if (!drag.current || drag.current.pointerId !== e.pointerId) return;
+      finishRightClickGesture(e.pointerId);
+      drag.current = null;
+    };
+    const onContext = (e: MouseEvent) => {
+      if (!shouldSuppressNativeContextMenu()) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    };
+
+    el.addEventListener('pointerdown', onDown, { capture: true });
+    window.addEventListener('pointermove', onMove, { capture: true });
+    window.addEventListener('pointerup', onUp, { capture: true });
+    window.addEventListener('pointercancel', onUp, { capture: true });
+    el.addEventListener('contextmenu', onContext, { capture: true });
+    return () => {
+      el.removeEventListener('pointerdown', onDown, { capture: true } as EventListenerOptions);
+      window.removeEventListener('pointermove', onMove, { capture: true } as EventListenerOptions);
+      window.removeEventListener('pointerup', onUp, { capture: true } as EventListenerOptions);
+      window.removeEventListener('pointercancel', onUp, { capture: true } as EventListenerOptions);
+      el.removeEventListener('contextmenu', onContext, { capture: true } as EventListenerOptions);
+    };
+  }, [gl, camera, controls]);
+
+  return null;
 }
 
 /** Velocity-aware wheel zoom: scale OrbitControls' per-tick zoom step by how
@@ -405,6 +546,8 @@ function DebugBridge() {
     w.__pvc.getEasedPos = (id: string) => easedPos(id) ?? null;
     // orthographic zoom factor (rises as you zoom in) — for verifying wheel zoom
     w.__pvc.getZoom = () => (camera as { zoom?: number }).zoom ?? null;
+    w.__pvc.getPointerDebug = () => getPointerDebugEvents();
+    w.__pvc.clearPointerDebug = () => clearPointerDebugEvents();
     const toScreen = (p: { x: number; y: number; z: number }): Pt => {
       const rect = gl.domElement.getBoundingClientRect();
       const v = new Vector3(p.x, p.y, p.z).project(camera);

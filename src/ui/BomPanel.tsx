@@ -11,7 +11,13 @@ const trim = (v: number, dp: number): string => String(Number(v.toFixed(dp)));
 
 /** BOM / cut-list panel (planfile §8): per-pipe cut lengths, fitting counts,
  * totals, and a CSV download. */
-export function BomPanel({ onClose }: { onClose: () => void }) {
+export function BomPanel({
+  hideHeader = false,
+  onClose,
+}: {
+  hideHeader?: boolean;
+  onClose: () => void;
+}) {
   const design = useAppStore((s) => s.current);
   if (!design) return null;
   const b = bom(design);
@@ -20,32 +26,34 @@ export function BomPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg bg-card/70">
-      <div className="flex items-center justify-between border-border border-b px-3 py-2">
-        <span className="text-sm font-medium">Cut list</span>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() =>
-              downloadFile(
-                suggestedFileName(design).replace(/\.pvc\.json$/, '.csv'),
-                bomToCsv(design),
-                'text/csv',
-              )
-            }
-            className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-          >
-            <Download size={13} /> CSV
-          </button>
-          <button
-            type="button"
-            aria-label="Close cut list"
-            onClick={onClose}
-            className="rounded-md p-1 text-muted-foreground hover:bg-accent"
-          >
-            <X size={15} />
-          </button>
+      {!hideHeader && (
+        <div className="flex items-center justify-between border-border border-b px-3 py-2">
+          <span className="text-sm font-medium">Cut list</span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() =>
+                downloadFile(
+                  suggestedFileName(design).replace(/\.pvc\.json$/, '.csv'),
+                  bomToCsv(design),
+                  'text/csv',
+                )
+              }
+              className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            >
+              <Download size={13} /> CSV
+            </button>
+            <button
+              type="button"
+              aria-label="Close cut list"
+              onClick={onClose}
+              className="rounded-md p-1 text-muted-foreground hover:bg-accent"
+            >
+              <X size={15} />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="scrollbar-minimal min-h-0 flex-1 overflow-y-auto px-3 py-2 text-xs">
         {b.cuts.length === 0 ? (
@@ -54,25 +62,6 @@ export function BomPanel({ onClose }: { onClose: () => void }) {
           </p>
         ) : (
           <>
-            {b.warnings.length > 0 && (
-              <div className="mb-3 rounded-md border border-border bg-muted/40 p-2">
-                <div className="mb-1 flex items-center gap-1.5 font-medium text-[11px] text-foreground uppercase tracking-wide">
-                  <AlertTriangle size={13} />
-                  Assumptions
-                </div>
-                <div className="space-y-1 text-muted-foreground">
-                  {b.warnings.map((w) => (
-                    <div
-                      key={w.key}
-                      className={w.severity === 'fabrication' ? 'text-destructive' : undefined}
-                    >
-                      {w.message}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             <table className="w-full tabular-nums">
               <thead className="text-muted-foreground">
                 <tr>
@@ -87,14 +76,20 @@ export function BomPanel({ onClose }: { onClose: () => void }) {
                   const base = c.cutLengthM - extra;
                   const sources = cutSourceSummary(c);
                   const hasBends = (c.bendSchedule?.length ?? 0) > 0;
-                  const hasDetails = sources.length > 0 || hasBends;
                   return (
                     <Fragment key={`${c.memberId}-${c.segment ?? 'x'}`}>
                       <tr>
-                        <td>
+                        <td
+                          title={sources.length > 0 ? `Sources: ${sources.join('; ')}` : undefined}
+                        >
                           P{i + 1}
                           {c.kind === 'formed' ? ' ·bent' : ''}
                           {c.segment !== undefined ? ' ·tee split' : ''}
+                          {sources.length > 0 && (
+                            <span aria-hidden className="text-muted-foreground">
+                              *
+                            </span>
+                          )}
                         </td>
                         <td>{c.size}</td>
                         <td className="text-right">
@@ -108,33 +103,23 @@ export function BomPanel({ onClose }: { onClose: () => void }) {
                           )}
                         </td>
                       </tr>
-                      {hasDetails && (
+                      {hasBends && (
                         <tr>
                           <td colSpan={3} className="pb-2 text-muted-foreground">
-                            <div className="mt-0.5 space-y-1 border-border border-l pl-2">
-                              {hasBends && (
-                                <div>
-                                  <span className="font-medium text-foreground">Bends:</span>{' '}
-                                  {c.bendSchedule!.map((bend) => (
-                                    <span
-                                      key={bend.bend}
-                                      className={bend.belowMin ? 'text-destructive' : undefined}
-                                    >
-                                      B{bend.bend} {angle(bend.deflectionRad)}, twist{' '}
-                                      {angle(bend.dihedralRad)}, R{' '}
-                                      {bend.radiusM > 1e-9 ? fmt(bend.radiusM) : 'unspecified'}
-                                      {bend.belowMin ? ` (min ${fmt(bend.minRadiusM)})` : ''}
-                                      {bend.bend === c.bendSchedule!.length ? '' : '; '}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                              {sources.length > 0 && (
-                                <div className="break-words">
-                                  <span className="font-medium text-foreground">Sources:</span>{' '}
-                                  {sources.join('; ')}
-                                </div>
-                              )}
+                            <div className="mt-0.5 border-border border-l pl-2">
+                              <span className="font-medium text-foreground">Bends:</span>{' '}
+                              {c.bendSchedule!.map((bend) => (
+                                <span
+                                  key={bend.bend}
+                                  className={bend.belowMin ? 'text-destructive' : undefined}
+                                >
+                                  B{bend.bend} {angle(bend.deflectionRad)}, twist{' '}
+                                  {angle(bend.dihedralRad)}, R{' '}
+                                  {bend.radiusM > 1e-9 ? fmt(bend.radiusM) : 'unspecified'}
+                                  {bend.belowMin ? ` (min ${fmt(bend.minRadiusM)})` : ''}
+                                  {bend.bend === c.bendSchedule!.length ? '' : '; '}
+                                </span>
+                              ))}
                             </div>
                           </td>
                         </tr>
@@ -193,6 +178,25 @@ export function BomPanel({ onClose }: { onClose: () => void }) {
               <div className="mt-2 text-destructive">
                 {b.conflicts} joint conflict{b.conflicts === 1 ? '' : 's'}
               </div>
+            )}
+
+            {b.warnings.length > 0 && (
+              <details className="mt-3 rounded-md border border-border bg-muted/40 px-2 py-1.5">
+                <summary className="flex cursor-pointer select-none list-none items-center gap-1.5 font-medium text-[11px] text-muted-foreground uppercase tracking-wide hover:text-foreground [&::-webkit-details-marker]:hidden">
+                  <AlertTriangle size={12} />
+                  Assumptions ({b.warnings.length})
+                </summary>
+                <div className="mt-1.5 space-y-1 text-muted-foreground">
+                  {b.warnings.map((w) => (
+                    <div
+                      key={w.key}
+                      className={w.severity === 'fabrication' ? 'text-destructive' : undefined}
+                    >
+                      {w.message}
+                    </div>
+                  ))}
+                </div>
+              </details>
             )}
           </>
         )}

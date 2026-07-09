@@ -29,6 +29,8 @@ import { dominantAxisNormal, rayToPlane } from './ground';
 import { cylinderMatrix, hideMatrix, ringMatrix } from './instancing';
 import { startWindowPointerDrag } from './interactions';
 import { buildPipeModel } from './pipeModel';
+import { pickSnapPoint, SNAP_PX } from './pipePick';
+import { canOpenRightClickMenu, recordPointerDebug } from './rightClickGesture';
 
 const RADIAL_SEGMENTS = 20;
 const SELECT_BLUE = '#2a78d6';
@@ -50,6 +52,7 @@ function InstancedPipes() {
   const ndc = useMemo(() => new Vector2(), []);
   const fwd = useMemo(() => new Vector3(), []);
   const meshRef = useRef<InstancedMesh>(null);
+  const hoverClear = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mat = useRef(new Matrix4()).current;
 
   // structural (doc-position) model: fixes the instance order + count +
@@ -106,12 +109,34 @@ function InstancedPipes() {
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   }, [structural, selectedIds, color, activeSet, night, design]);
 
+  useEffect(
+    () => () => {
+      if (hoverClear.current) clearTimeout(hoverClear.current);
+    },
+    [],
+  );
+
   if (!design || !structural || count === 0) return null;
 
   const editing = tool === 'select' || tool === 'move' || tool === 'rotate' || tool === 'extend';
   const semanticHover = tool === 'select' || tool === 'move' || tool === 'rotate';
-  const memberOf = (ev: ThreeEvent<MouseEvent>): string | undefined =>
+  const memberOf = (ev: { instanceId?: number | null }): string | undefined =>
     ev.instanceId == null ? undefined : structural.cylinders[ev.instanceId]?.memberId;
+  const clearHoverLater = () => {
+    if (hoverClear.current) clearTimeout(hoverClear.current);
+    hoverClear.current = setTimeout(() => {
+      const store = useEditorStore.getState();
+      if (store.hoveredSceneItem?.kind === 'member') {
+        recordPointerDebug('hover-clear', { target: 'pipe', id: store.hoveredSceneItem.id });
+        store.setHoveredSceneItem(null);
+      }
+    }, 80);
+  };
+  const keepHover = () => {
+    if (!hoverClear.current) return;
+    clearTimeout(hoverClear.current);
+    hoverClear.current = null;
+  };
 
   // click-to-select in select / move / rotate (pick a pipe without leaving the gizmo)
   const onClick = editing
@@ -125,19 +150,53 @@ function InstancedPipes() {
 
   // right-click: a genuine multi-pipe junction (near an end) opens the join
   // selector; anywhere else opens the size switcher for the pipe / multi-select
-  const onContextMenu =
+  const onMenuPointerUp =
     editing && !drawingFrom
-      ? (ev: ThreeEvent<MouseEvent>) => {
+      ? (ev: ThreeEvent<PointerEvent>) => {
+          if (ev.nativeEvent.button !== 2) return;
           const memberId = memberOf(ev);
           if (!memberId || inactive(memberId)) return;
           ev.stopPropagation();
-          const ne = ev.nativeEvent as MouseEvent;
+          const ne = ev.nativeEvent;
+          if (!canOpenRightClickMenu(ne.pointerId, 'pipe', ne.clientX, ne.clientY)) return;
           const store = useEditorStore.getState();
           const m = memberById(design, memberId);
           if (m?.kind === 'straight') {
             const pa = nodeById(design, m.nodeA)?.position;
             const pb = nodeById(design, m.nodeB)?.position;
             if (pa && pb) {
+              const snap = pickSnapPoint(
+                camera,
+                gl.domElement,
+                design,
+                ne.clientX,
+                ne.clientY,
+                SNAP_PX * 3,
+                {
+                  nodes: true,
+                  pipes: false,
+                },
+              );
+              if (
+                snap?.kind === 'node' &&
+                (snap.id === m.nodeA || snap.id === m.nodeB) &&
+                incidentMembers(design, snap.id).length >= 2
+              ) {
+                recordPointerDebug('menu-open', {
+                  pointerId: ne.pointerId,
+                  x: ne.clientX,
+                  y: ne.clientY,
+                  target: 'pipe-join-snap',
+                  id: memberId,
+                });
+                store.openJoinMenu({
+                  nodeId: snap.id,
+                  moverId: memberId,
+                  x: ne.clientX,
+                  y: ne.clientY,
+                });
+                return;
+              }
               const nearA = length(sub(ev.point, pa)) <= length(sub(ev.point, pb));
               const nodeId = nearA ? m.nodeA : m.nodeB;
               const endPos = nearA ? pa : pb;
@@ -146,6 +205,13 @@ function InstancedPipes() {
                 length(sub(ev.point, endPos)) < endZone &&
                 incidentMembers(design, nodeId).length >= 2
               ) {
+                recordPointerDebug('menu-open', {
+                  pointerId: ne.pointerId,
+                  x: ne.clientX,
+                  y: ne.clientY,
+                  target: 'pipe-join',
+                  id: memberId,
+                });
                 store.openJoinMenu({ nodeId, moverId: memberId, x: ne.clientX, y: ne.clientY });
                 return;
               }
@@ -153,6 +219,13 @@ function InstancedPipes() {
           }
           const sel = store.selectedIds;
           const memberIds = sel.includes(memberId) && sel.length > 1 ? sel : [memberId];
+          recordPointerDebug('menu-open', {
+            pointerId: ne.pointerId,
+            x: ne.clientX,
+            y: ne.clientY,
+            target: 'pipe-size',
+            id: memberId,
+          });
           store.openSizeMenu({ memberIds, x: ne.clientX, y: ne.clientY });
         }
       : undefined;
@@ -230,16 +303,19 @@ function InstancedPipes() {
           ev.instanceId == null ? undefined : structural.cylinders[ev.instanceId]?.memberId;
         const store = useEditorStore.getState();
         if (!id || inactive(id)) {
-          if (store.hoveredSceneItem?.kind === 'member') store.setHoveredSceneItem(null);
+          if (store.hoveredSceneItem?.kind === 'member') clearHoverLater();
           return;
         }
+        ev.stopPropagation();
+        keepHover();
+        if (store.hoveredSceneItem?.kind !== 'member' || store.hoveredSceneItem.id !== id)
+          recordPointerDebug('hover-member', { target: 'pipe', id });
         store.setHoveredSceneItem({ kind: 'member', id });
       }
     : undefined;
   const onPointerOut = semanticHover
     ? () => {
-        const store = useEditorStore.getState();
-        if (store.hoveredSceneItem?.kind === 'member') store.setHoveredSceneItem(null);
+        clearHoverLater();
       }
     : undefined;
 
@@ -254,7 +330,7 @@ function InstancedPipes() {
       castShadow
       receiveShadow
       onClick={onClick}
-      onContextMenu={onContextMenu}
+      onPointerUp={onMenuPointerUp}
       onDoubleClick={onDoubleClick}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}

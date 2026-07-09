@@ -77,6 +77,28 @@ test('draw → fittings → BOM → JSON round-trip → joints, on the built app
   expect(free.mode).toBe('free');
   expect(free.dof).toBe(3);
 
+  const initialRendererEffects = await page.evaluate(() => (window as any).__pvc.getEditor().rendererEffects);
+  expect(initialRendererEffects).toBe(false);
+
+  const rendererModes = await page.evaluate(async () => {
+    const p = (window as any).__pvc;
+    p.setRendererEffects(false);
+    p.setNight(false);
+    p.setWireframe(true);
+    await new Promise((res) => requestAnimationFrame(() => res(undefined)));
+    const wire = { editor: p.getEditor(), stats: p.sceneStats() };
+    p.setRendererEffects(true);
+    p.setNight(true);
+    p.setWireframe(false);
+    await new Promise((res) => requestAnimationFrame(() => res(undefined)));
+    const solid = { editor: p.getEditor(), stats: p.sceneStats() };
+    return { wire, solid };
+  });
+  expect(rendererModes.wire.editor.rendererEffects).toBe(false);
+  expect(rendererModes.wire.stats.meshes + rendererModes.wire.stats.instanced).toBeGreaterThan(0);
+  expect(rendererModes.solid.editor.rendererEffects).toBe(true);
+  expect(rendererModes.solid.stats.meshes + rendererModes.solid.stats.instanced).toBeGreaterThan(0);
+
   // elastic band: place a pre-tensioned band between the L's two far ends via the
   // two-click seams, retune its tension, then simulate and confirm it pulls them
   // together (positions stay finite)

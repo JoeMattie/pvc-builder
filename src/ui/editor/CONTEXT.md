@@ -7,8 +7,8 @@ import stores/actions, but must not introduce new document write paths.
 
 | File | Responsibility | Notes |
 |---|---|---|
-| `EditorWorkflowStatus.tsx` | Left-side workflow/status surface for Design/Fabricate/Simulate, save state, warning count, and geometry state | Driven by `editorStore.sceneStatus`; Fabricate opens the existing BOM panel |
-| `SimulationPanel.tsx` | Dedicated Simulate workspace controls | Play/Stop, damping, length lock, mannequin, debug, and reset live here so Simulate differs visibly from Design |
+| `EditorWorkflowStatus.tsx` | Exports `EditorWorkflowStatus` (inline Design/Fabricate/Simulate row in the workflow island) AND `EditorStatusChips` (autosave + warning-count chips, rendered in the Document panel) | Driven by `editorStore.sceneStatus`; Fabricate opens the existing cut-list panel |
+| `SimulationPanel.tsx` | Dedicated Simulate workspace controls | Play/Stop, damping, mannequin, debug, and reset; NO "Simulate" heading (the island title bar has it) and NO lengths lock — that moved to the toolbar as "Drag lock" (`../Pillbox.tsx`, toggles `design.lengthsLocked`) |
 | `PvcAutomationBridge.tsx` | Registers and merges `window.__pvc` methods | Preserve method names/signatures; this is the scripted automation contract |
 | `editorStatus.ts` | Derives editor warning totals from fittings, intersections, and formed-pipe bend checks | Summary only; detailed diagnostics stay in their existing panels |
 | `useEditorHotkeys.ts` | Global keyboard, right-click, and context-menu behavior | Keep in sync with `../HelpPanel.tsx` and `../Pillbox.tsx` |

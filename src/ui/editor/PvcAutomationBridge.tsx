@@ -74,6 +74,8 @@ export function PvcAutomationBridge() {
         selectedJointId: s.selectedJointId,
         drawSize: s.drawSize,
         drawingFromNodeId: s.drawingFromNodeId,
+        rendererEffects: s.rendererEffects,
+        toolPaletteLayout: s.toolPaletteLayout,
         snap: s.snap,
         night: useThemeStore.getState().night,
       };
@@ -227,6 +229,9 @@ export function PvcAutomationBridge() {
     hook.setSimulating = (on: boolean) => useEditorStore.getState().setSimulating(on);
     hook.setPhysicsDebug = (on: boolean) => useEditorStore.getState().setPhysicsDebug(on);
     hook.setWireframe = (on: boolean) => useEditorStore.getState().setWireframe(on);
+    hook.setRendererEffects = (on: boolean) => useEditorStore.getState().setRendererEffects(on);
+    hook.setToolPaletteLayout = (layout: 'horizontal' | 'vertical') =>
+      useEditorStore.getState().setToolPaletteLayout(layout);
     hook.getPhysics = () => physicsNodePositions();
 
     // Mannequin (static human collision body) + global damping (friction/drag).

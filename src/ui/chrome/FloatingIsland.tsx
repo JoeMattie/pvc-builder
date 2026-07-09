@@ -1,4 +1,12 @@
-import { GripHorizontal, GripVertical } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  GripHorizontal,
+  GripVertical,
+  type LucideIcon,
+} from 'lucide-react';
 import {
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
@@ -23,13 +31,22 @@ interface FloatingIslandProps {
   placement: Placement;
   children: ReactNode;
   className?: string;
+  collapsible?: boolean;
   defaultSize?: Partial<Size>;
+  /** false pins the panel at its default placement: no drag handle, no saved position. */
+  draggable?: boolean;
   handleLabel?: string;
+  icon?: LucideIcon;
   maxSize?: Partial<Size>;
   minSize?: Partial<Size>;
   offset?: { x?: number; y?: number };
   resizable?: boolean;
   resizeLabel?: string;
+  stackId?: string;
+  stackOrder?: number;
+  title?: string;
+  titleActions?: ReactNode;
+  titleLayout?: 'inline' | 'side' | 'top';
 }
 
 interface Pos {
@@ -44,8 +61,10 @@ interface Size {
 
 const MARGIN = 16;
 const GAP = 10;
+const SNAP_THRESHOLD = 12;
 const POS_PREFIX = 'pvc:floating-island:';
 const SIZE_PREFIX = 'pvc:floating-island-size:';
+const COLLAPSE_PREFIX = 'pvc:floating-island-collapsed:';
 const RESET_EVENT = 'pvc:floating-layout-reset';
 
 function storageKey(id: string): string {
@@ -56,12 +75,20 @@ function sizeKey(id: string): string {
   return `${SIZE_PREFIX}${id}`;
 }
 
+function collapseKey(id: string): string {
+  return `${COLLAPSE_PREFIX}${id}`;
+}
+
 export function resetFloatingLayout() {
   if (typeof window === 'undefined') return;
   try {
     for (let i = window.localStorage.length - 1; i >= 0; i--) {
       const key = window.localStorage.key(i);
-      if (key?.startsWith(POS_PREFIX) || key?.startsWith(SIZE_PREFIX)) {
+      if (
+        key?.startsWith(POS_PREFIX) ||
+        key?.startsWith(SIZE_PREFIX) ||
+        key?.startsWith(COLLAPSE_PREFIX)
+      ) {
         window.localStorage.removeItem(key);
       }
     }
@@ -69,11 +96,18 @@ export function resetFloatingLayout() {
     // Layout reset is best-effort; mounted islands still reset through the event.
   }
   window.dispatchEvent(new Event(RESET_EVENT));
+  // Two follow-up settle passes so measured stacks converge: order-1 panels
+  // need order-0 rects committed to the DOM first, order-2 need order-1.
+  requestLayoutSettle();
 }
 
-function clamp(pos: Pos, width: number, height: number): Pos {
-  const maxX = Math.max(MARGIN, window.innerWidth - width - MARGIN);
-  const maxY = Math.max(MARGIN, window.innerHeight - height - MARGIN);
+export function clampFloatingPos(
+  pos: Pos,
+  size: Size,
+  viewport: Size = { width: window.innerWidth, height: window.innerHeight },
+): Pos {
+  const maxX = Math.max(MARGIN, viewport.width - size.width - MARGIN);
+  const maxY = Math.max(MARGIN, viewport.height - size.height - MARGIN);
   return {
     x: Math.min(maxX, Math.max(MARGIN, pos.x)),
     y: Math.min(maxY, Math.max(MARGIN, pos.y)),
@@ -109,6 +143,41 @@ function defaultPos(
   }
 }
 
+function stackedDefaultPos(
+  el: HTMLDivElement,
+  placement: Placement,
+  width: number,
+  height: number,
+  offset: { x?: number; y?: number } | undefined,
+  stackId: string | undefined,
+  stackOrder: number,
+): Pos {
+  const base = defaultPos(placement, width, height, offset);
+  if (!stackId) return base;
+
+  const lowerPeers = Array.from(
+    document.querySelectorAll<HTMLElement>(`[data-floating-stack="${stackId}"]`),
+  )
+    .filter(
+      (peer) =>
+        peer !== el &&
+        peer.offsetParent !== null &&
+        getComputedStyle(peer).visibility !== 'hidden' &&
+        peer.dataset.floatingUserPositioned !== 'true' &&
+        Number(peer.dataset.floatingOrder ?? 0) < stackOrder,
+    )
+    .sort((a, b) => Number(a.dataset.floatingOrder ?? 0) - Number(b.dataset.floatingOrder ?? 0));
+
+  let y = MARGIN + (offset?.y ?? 0);
+  for (const peer of lowerPeers) {
+    const rect = peer.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) continue;
+    y = Math.max(y, rect.bottom + GAP);
+  }
+
+  return clampFloatingPos({ x: base.x, y }, { width, height });
+}
+
 function parseSaved(id: string): Pos | null {
   try {
     const raw = localStorage.getItem(storageKey(id));
@@ -135,11 +204,27 @@ function parseSavedSize(id: string): Size | null {
   }
 }
 
+function parseSavedCollapse(id: string): boolean {
+  try {
+    return localStorage.getItem(collapseKey(id)) === '1';
+  } catch {
+    return false;
+  }
+}
+
 function savePos(id: string, pos: Pos) {
   try {
     localStorage.setItem(storageKey(id), JSON.stringify(pos));
   } catch {
     // Non-critical; dragging still works without persistence.
+  }
+}
+
+function saveCollapse(id: string, collapsed: boolean) {
+  try {
+    localStorage.setItem(collapseKey(id), collapsed ? '1' : '0');
+  } catch {
+    // Non-critical; collapsing still works without persistence.
   }
 }
 
@@ -167,105 +252,166 @@ function clampSize(
   size: Size,
   minSize: Partial<Size> | undefined,
   maxSize: Partial<Size> | undefined,
+  bounds?: Partial<Size>,
 ): Size {
-  const viewportMaxWidth = window.innerWidth - MARGIN * 2;
-  const viewportMaxHeight = window.innerHeight - MARGIN * 2;
-  const maxWidth = Math.max(160, Math.min(maxSize?.width ?? viewportMaxWidth, viewportMaxWidth));
-  const maxHeight = Math.max(80, Math.min(maxSize?.height ?? viewportMaxHeight, viewportMaxHeight));
+  const viewportMaxWidth = Math.max(80, (bounds?.width ?? window.innerWidth) - MARGIN * 2);
+  const viewportMaxHeight = Math.max(48, (bounds?.height ?? window.innerHeight) - MARGIN * 2);
   const minWidth = minSize?.width ?? 180;
   const minHeight = minSize?.height ?? 48;
+  const maxWidth = Math.max(
+    minWidth,
+    Math.min(maxSize?.width ?? viewportMaxWidth, viewportMaxWidth),
+  );
+  const maxHeight = Math.max(
+    minHeight,
+    Math.min(maxSize?.height ?? viewportMaxHeight, viewportMaxHeight),
+  );
   return {
     width: Math.min(maxWidth, Math.max(minWidth, size.width)),
     height: Math.min(maxHeight, Math.max(minHeight, size.height)),
   };
 }
 
-function rectFrom(pos: Pos, width: number, height: number): DOMRect {
-  return new DOMRect(pos.x, pos.y, width, height);
+export interface FloatingRect {
+  bottom: number;
+  height: number;
+  left: number;
+  right: number;
+  top: number;
+  width: number;
 }
 
-function overlaps(a: DOMRect, b: DOMRect): boolean {
-  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+function rectFrom(pos: Pos, width: number, height: number): FloatingRect {
+  return {
+    left: pos.x,
+    top: pos.y,
+    right: pos.x + width,
+    bottom: pos.y + height,
+    width,
+    height,
+  };
 }
 
-function overlapArea(a: DOMRect, b: DOMRect): number {
-  const width = Math.min(a.right, b.right) - Math.max(a.left, b.left);
-  const height = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
-  return width > 0 && height > 0 ? width * height : 0;
+function rectOf(r: DOMRect): FloatingRect {
+  return {
+    left: r.left,
+    top: r.top,
+    right: r.right,
+    bottom: r.bottom,
+    width: r.width,
+    height: r.height,
+  };
 }
 
-function resolveOverlap(el: HTMLDivElement, pos: Pos): Pos {
-  const box = el.getBoundingClientRect();
-  const preferred = clamp(pos, box.width, box.height);
-  const others = Array.from(
-    document.querySelectorAll<HTMLElement>('[data-floating-island]'),
-  ).filter(
-    (other) =>
-      other !== el &&
-      other.offsetParent !== null &&
-      getComputedStyle(other).visibility !== 'hidden',
-  );
+export function snapFloatingPos(
+  pos: Pos,
+  size: Size,
+  others: FloatingRect[],
+  viewport: Size = { width: window.innerWidth, height: window.innerHeight },
+  threshold = SNAP_THRESHOLD,
+): Pos {
+  const current = rectFrom(pos, size.width, size.height);
+  let next = pos;
+  let bestX = threshold + 1;
+  let bestY = threshold + 1;
 
-  const otherRects = others.map((other) => other.getBoundingClientRect());
-  const preferredRect = rectFrom(preferred, box.width, box.height);
-  if (!otherRects.some((other) => overlaps(preferredRect, other))) return preferred;
-
-  const xValues = [
-    preferred.x,
-    MARGIN,
-    (window.innerWidth - box.width) / 2,
-    window.innerWidth - box.width - MARGIN,
-  ];
-  const yValues = [
-    preferred.y,
-    MARGIN,
-    (window.innerHeight - box.height) / 2,
-    window.innerHeight - box.height - MARGIN,
-  ];
-  for (const other of otherRects) {
-    xValues.push(other.left - box.width - GAP, other.right + GAP);
-    yValues.push(other.top - box.height - GAP, other.bottom + GAP);
-  }
-
-  let best = preferred;
-  let bestOverlap = Number.POSITIVE_INFINITY;
-  let bestDistance = Number.POSITIVE_INFINITY;
-
-  for (const x of xValues) {
-    for (const y of yValues) {
-      const candidate = clamp({ x, y }, box.width, box.height);
-      const rect = rectFrom(candidate, box.width, box.height);
-      const area = otherRects.reduce((sum, other) => sum + overlapArea(rect, other), 0);
-      const distance = Math.hypot(candidate.x - preferred.x, candidate.y - preferred.y);
-      if (
-        area < bestOverlap - 1 ||
-        (Math.abs(area - bestOverlap) <= 1 && distance < bestDistance)
-      ) {
-        best = candidate;
-        bestOverlap = area;
-        bestDistance = distance;
+  for (const other of others) {
+    const xTargets = [
+      other.left,
+      other.right - current.width,
+      other.left - current.width - GAP,
+      other.right + GAP,
+    ];
+    const yTargets = [
+      other.top,
+      other.bottom - current.height,
+      other.top - current.height - GAP,
+      other.bottom + GAP,
+    ];
+    for (const x of xTargets) {
+      const d = Math.abs(pos.x - x);
+      if (d <= threshold && d < bestX) {
+        bestX = d;
+        next = { ...next, x };
+      }
+    }
+    for (const y of yTargets) {
+      const d = Math.abs(pos.y - y);
+      if (d <= threshold && d < bestY) {
+        bestY = d;
+        next = { ...next, y };
       }
     }
   }
 
-  return best;
+  return clampFloatingPos(next, size, viewport);
 }
 
-/** Draggable viewport chrome wrapper. It clamps to the viewport and does a
- * lightweight collision pass against sibling floating islands so default chrome
- * and dragged chrome do not stack directly on top of each other. */
+export function constrainFloatingSize(
+  size: Size,
+  pos: Pos,
+  minSize: Partial<Size> | undefined,
+  maxSize: Partial<Size> | undefined,
+  viewport: Size = { width: window.innerWidth, height: window.innerHeight },
+  chrome: Partial<Size> = {},
+): Size {
+  const available = {
+    width: Math.max(80, viewport.width - pos.x - MARGIN - (chrome.width ?? 0) + MARGIN * 2),
+    height: Math.max(48, viewport.height - pos.y - MARGIN - (chrome.height ?? 0) + MARGIN * 2),
+  };
+  return clampSize(size, minSize, maxSize, available);
+}
+
+function siblingRects(el: HTMLDivElement): FloatingRect[] {
+  return Array.from(document.querySelectorAll<HTMLElement>('[data-floating-island]'))
+    .filter(
+      (other) =>
+        other !== el &&
+        other.offsetParent !== null &&
+        getComputedStyle(other).visibility !== 'hidden',
+    )
+    .map((other) => rectOf(other.getBoundingClientRect()));
+}
+
+function labelFromHandle(handleLabel: string): string {
+  return handleLabel
+    .replace(/^Move\s+/i, '')
+    .replace(/\s+panel$/i, '')
+    .replace(/\s+palette$/i, '')
+    .trim();
+}
+
+function isNoDragTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    !!target.closest('button,input,select,textarea,a,[role="button"],[data-floating-no-drag]')
+  );
+}
+
+/** Draggable viewport chrome wrapper. Panels clamp to the viewport and snap
+ * magnetically to sibling edges while dragging; overlap is allowed by design.
+ * Default (non-user-moved) positions come from measured stacks (`stackId` +
+ * `stackOrder`) rather than fixed offsets. */
 export function FloatingIsland({
   id,
   placement,
   children,
   className = '',
+  collapsible = true,
   defaultSize,
+  draggable = true,
   handleLabel = 'Move panel',
+  icon: Icon,
   maxSize,
   minSize,
   offset,
   resizable = false,
   resizeLabel = 'Resize panel',
+  stackId,
+  stackOrder = 0,
+  title,
+  titleActions,
+  titleLayout,
 }: FloatingIslandProps) {
   const offsetX = offset?.x;
   const offsetY = offset?.y;
@@ -281,16 +427,21 @@ export function FloatingIsland({
   const resize = useRef<{ height: number; width: number; x: number; y: number } | null>(null);
   const userPositioned = useRef(false);
   const defaultSizeRef = useRef<Size | null>(fallbackSize(defaultSize));
-  const sizeRef = useRef<Size | null>(parseSavedSize(id) ?? fallbackSize(defaultSize));
+  const sizeRef = useRef<Size | null>(
+    (resizable ? parseSavedSize(id) : null) ?? fallbackSize(defaultSize),
+  );
   const [pos, setPos] = useState<Pos | null>(null);
   const [size, setSize] = useState<Size | null>(() => sizeRef.current);
+  const [collapsed, setCollapsed] = useState(() => parseSavedCollapse(id));
   const [dragging, setDragging] = useState(false);
   const [resizing, setResizing] = useState(false);
+  const layout = titleLayout ?? 'top';
+  const panelTitle = title ?? (labelFromHandle(handleLabel) || 'Panel');
 
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const savedSize = parseSavedSize(id);
+    const savedSize = resizable ? parseSavedSize(id) : null;
     const baseSize = savedSize ?? fallbackSize(defaultSize);
     if (baseSize) {
       const nextSize = clampSize(baseSize, minSize, maxSize);
@@ -299,21 +450,39 @@ export function FloatingIsland({
       setSize(nextSize);
     }
     const box = el.getBoundingClientRect();
-    const savedPos = parseSaved(id);
+    const savedPos = draggable ? parseSaved(id) : null;
     userPositioned.current = savedPos !== null;
-    const preferred = savedPos ?? defaultPos(placement, box.width, box.height, resolvedOffset);
+    const preferred =
+      savedPos ??
+      stackedDefaultPos(el, placement, box.width, box.height, resolvedOffset, stackId, stackOrder);
     requestAnimationFrame(() => {
-      const resolved = resolveOverlap(el, preferred);
+      const resolved = clampFloatingPos(preferred, { width: box.width, height: box.height });
       posRef.current = resolved;
       setPos(resolved);
+      // Measured stacks need peers' rects committed to the DOM: run the
+      // double-settle so order-1 then order-2 members land after their peers
+      // (mount is as racy as reset — every island measures simultaneously).
+      if (stackId && !userPositioned.current) requestLayoutSettle();
     });
-  }, [id, placement, resolvedOffset, defaultSize, minSize, maxSize]);
+  }, [
+    id,
+    placement,
+    resolvedOffset,
+    defaultSize,
+    minSize,
+    maxSize,
+    draggable,
+    resizable,
+    stackId,
+    stackOrder,
+  ]);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
 
     const settle = () => {
+      if (drag.current || resize.current) return;
       const box = el.getBoundingClientRect();
       const currentSize = sizeRef.current;
       if (currentSize) {
@@ -324,8 +493,16 @@ export function FloatingIsland({
       const preferred =
         userPositioned.current && posRef.current
           ? posRef.current
-          : defaultPos(placement, box.width, box.height, resolvedOffset);
-      const resolved = resolveOverlap(el, preferred);
+          : stackedDefaultPos(
+              el,
+              placement,
+              box.width,
+              box.height,
+              resolvedOffset,
+              stackId,
+              stackOrder,
+            );
+      const resolved = clampFloatingPos(preferred, { width: box.width, height: box.height });
       posRef.current = resolved;
       setPos(resolved);
     };
@@ -339,7 +516,7 @@ export function FloatingIsland({
       window.removeEventListener('resize', settle);
       ro?.disconnect();
     };
-  }, [placement, resolvedOffset, minSize, maxSize]);
+  }, [placement, resolvedOffset, minSize, maxSize, stackId, stackOrder]);
 
   useEffect(() => {
     const reset = () => {
@@ -347,26 +524,43 @@ export function FloatingIsland({
       if (!el) return;
       const baseSize = defaultSizeRef.current;
       userPositioned.current = false;
+      setCollapsed(false);
       sizeRef.current = baseSize ? clampSize(baseSize, minSize, maxSize) : null;
       setSize(sizeRef.current);
       requestAnimationFrame(() => {
         const box = el.getBoundingClientRect();
-        const preferred = defaultPos(placement, box.width, box.height, resolvedOffset);
-        const resolved = resolveOverlap(el, preferred);
+        const preferred = stackedDefaultPos(
+          el,
+          placement,
+          box.width,
+          box.height,
+          resolvedOffset,
+          stackId,
+          stackOrder,
+        );
+        const resolved = clampFloatingPos(preferred, { width: box.width, height: box.height });
         posRef.current = resolved;
         setPos(resolved);
       });
     };
     window.addEventListener(RESET_EVENT, reset);
     return () => window.removeEventListener(RESET_EVENT, reset);
-  }, [maxSize, minSize, resolvedOffset, placement]);
+  }, [maxSize, minSize, resolvedOffset, placement, stackId, stackOrder]);
 
   const moveTo = (clientX: number, clientY: number) => {
     const el = ref.current;
     const d = drag.current;
     if (!el || !d) return;
     const box = el.getBoundingClientRect();
-    const next = clamp({ x: clientX - d.dx, y: clientY - d.dy }, box.width, box.height);
+    const clamped = clampFloatingPos(
+      { x: clientX - d.dx, y: clientY - d.dy },
+      { width: box.width, height: box.height },
+    );
+    const next = snapFloatingPos(
+      clamped,
+      { width: box.width, height: box.height },
+      siblingRects(el),
+    );
     posRef.current = next;
     setPos(next);
   };
@@ -377,7 +571,8 @@ export function FloatingIsland({
     setDragging(false);
     const current = posRef.current;
     if (!el || !current) return;
-    const resolved = resolveOverlap(el, current);
+    const box = el.getBoundingClientRect();
+    const resolved = clampFloatingPos(current, { width: box.width, height: box.height });
     posRef.current = resolved;
     setPos(resolved);
     userPositioned.current = true;
@@ -388,13 +583,17 @@ export function FloatingIsland({
   const resizeTo = (clientX: number, clientY: number) => {
     const r = resize.current;
     if (!r) return;
-    const next = clampSize(
-      {
-        width: r.width + clientX - r.x,
-        height: r.height + clientY - r.y,
-      },
+    const pos0 = posRef.current ?? { x: MARGIN, y: MARGIN };
+    const island = ref.current?.getBoundingClientRect();
+    const content = contentRef.current?.getBoundingClientRect();
+    const chrome = island && content ? { width: island.width - content.width, height: 0 } : {};
+    const next = constrainFloatingSize(
+      { width: r.width + clientX - r.x, height: r.height + clientY - r.y },
+      pos0,
       minSize,
       maxSize,
+      undefined,
+      chrome,
     );
     sizeRef.current = next;
     setSize(next);
@@ -408,7 +607,8 @@ export function FloatingIsland({
     if (currentSize) saveSize(id, currentSize);
     const current = posRef.current;
     if (!el || !current) return;
-    const resolved = resolveOverlap(el, current);
+    const box = el.getBoundingClientRect();
+    const resolved = clampFloatingPos(current, { width: box.width, height: box.height });
     posRef.current = resolved;
     setPos(resolved);
     userPositioned.current = true;
@@ -454,28 +654,122 @@ export function FloatingIsland({
     window.addEventListener('pointercancel', up);
   };
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: native drag handlers read mutable refs; id is stable for each mounted island.
-  useEffect(() => {
-    const handle = handleRef.current;
-    if (!handle) return;
+  const toggleCollapsed = () => {
+    if (!collapsible) return;
+    setCollapsed((cur) => {
+      const next = !cur;
+      saveCollapse(id, next);
+      requestLayoutSettle();
+      return next;
+    });
+  };
 
-    const down = (e: PointerEvent) => {
-      if (!ref.current) return;
-      e.preventDefault();
-      handle.setPointerCapture(e.pointerId);
-      beginDrag(e.clientX, e.clientY);
-    };
+  const beginBarDrag = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!draggable || isNoDragTarget(e.target)) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    beginDrag(e.clientX, e.clientY);
+  };
 
-    handle.addEventListener('pointerdown', down);
-    return () => {
-      handle.removeEventListener('pointerdown', down);
-    };
-  }, []);
+  const dragButton = (variant: 'side' | 'top') =>
+    draggable ? (
+      <button
+        ref={handleRef}
+        type="button"
+        aria-label={handleLabel}
+        title={handleLabel}
+        onPointerDownCapture={(e: ReactPointerEvent<HTMLButtonElement>) => {
+          e.preventDefault();
+          e.currentTarget.setPointerCapture(e.pointerId);
+          beginDrag(e.clientX, e.clientY);
+        }}
+        className={`flex shrink-0 cursor-grab items-center justify-center text-muted-foreground/80 hover:text-foreground active:cursor-grabbing ${
+          variant === 'side' ? 'h-7 w-full' : 'h-7 w-7 rounded-md hover:bg-accent'
+        } ${dragging ? 'text-foreground' : ''}`}
+      >
+        {variant === 'side' ? <GripVertical size={13} /> : <GripHorizontal size={14} />}
+      </button>
+    ) : null;
+
+  const collapseButton = (variant: 'side' | 'top') =>
+    collapsible ? (
+      <button
+        type="button"
+        aria-label={collapsed ? `Expand ${panelTitle}` : `Collapse ${panelTitle}`}
+        title={collapsed ? `Expand ${panelTitle}` : `Collapse ${panelTitle}`}
+        onClick={toggleCollapsed}
+        className={`flex shrink-0 items-center justify-center text-muted-foreground hover:bg-accent hover:text-accent-foreground ${
+          variant === 'side' ? 'h-7 w-full' : 'h-7 w-7 rounded-md'
+        }`}
+      >
+        {variant === 'side' ? (
+          collapsed ? (
+            <ChevronRight size={14} />
+          ) : (
+            <ChevronLeft size={14} />
+          )
+        ) : collapsed ? (
+          <ChevronDown size={14} />
+        ) : (
+          <ChevronUp size={14} />
+        )}
+      </button>
+    ) : null;
+
+  const sideRail = (
+    <div className="flex w-8 shrink-0 flex-col items-center border-border/70 border-r bg-card/75">
+      {dragButton('side')}
+      <div className="flex min-h-20 flex-1 items-center justify-center overflow-hidden">
+        <div className="flex max-w-7 flex-col items-center gap-1 text-center text-[10px] font-medium text-muted-foreground leading-tight">
+          {Icon && <Icon size={13} className="shrink-0" />}
+          <span>{panelTitle}</span>
+        </div>
+      </div>
+      {collapseButton('side')}
+    </div>
+  );
+
+  const topBar = (
+    <div
+      className={`flex min-h-9 items-center gap-1 border-border/70 border-b bg-card/75 px-1.5 ${
+        draggable ? 'cursor-grab active:cursor-grabbing' : ''
+      } ${dragging ? 'text-foreground' : ''}`}
+      onPointerDownCapture={beginBarDrag}
+    >
+      {dragButton('top')}
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        {Icon && <Icon size={13} className="shrink-0" />}
+        <span className="truncate">{panelTitle}</span>
+      </div>
+      {titleActions}
+      {collapseButton('top')}
+    </div>
+  );
+
+  const inlineBar = (
+    <div
+      className={`flex min-h-9 shrink-0 items-center gap-1 border-border/70 border-r bg-card/75 px-1.5 ${
+        draggable ? 'cursor-grab active:cursor-grabbing' : ''
+      } ${dragging ? 'text-foreground' : ''}`}
+      onPointerDownCapture={beginBarDrag}
+    >
+      {dragButton('top')}
+      <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        {Icon && <Icon size={13} className="shrink-0" />}
+        <span>{panelTitle}</span>
+      </div>
+      {titleActions}
+      {collapseButton('top')}
+    </div>
+  );
 
   return (
     <div
       ref={ref}
       data-floating-island={id}
+      data-floating-stack={stackId}
+      data-floating-order={stackId ? stackOrder : undefined}
+      data-floating-user-positioned={userPositioned.current ? 'true' : 'false'}
       className={`pointer-events-auto absolute z-30 ${className}`}
       style={{
         left: pos?.x ?? 0,
@@ -484,33 +778,25 @@ export function FloatingIsland({
         zIndex: dragging || resizing ? 60 : undefined,
       }}
     >
-      <div className="flex overflow-hidden rounded-xl border border-border/80 bg-card/75 shadow-lg backdrop-blur-md">
-        <button
-          ref={handleRef}
-          type="button"
-          aria-label={handleLabel}
-          title={handleLabel}
-          onPointerDownCapture={(e: ReactPointerEvent<HTMLButtonElement>) => {
-            e.preventDefault();
-            e.currentTarget.setPointerCapture(e.pointerId);
-            beginDrag(e.clientX, e.clientY);
-          }}
-          className={`flex w-4 shrink-0 cursor-grab items-center justify-center border-border/70 border-r bg-card/70 text-muted-foreground/80 hover:text-foreground active:cursor-grabbing ${
-            dragging ? 'text-foreground' : ''
-          }`}
-        >
-          <GripVertical size={13} />
-        </button>
+      <div
+        className={`overflow-hidden rounded-lg border border-border/80 bg-card/75 shadow-lg backdrop-blur-md ${
+          layout === 'top' ? 'flex flex-col' : 'flex'
+        }`}
+      >
+        {layout === 'top' ? topBar : layout === 'inline' ? inlineBar : sideRail}
         <div
           ref={contentRef}
-          className="relative flex min-h-0 min-w-0 p-1"
+          className={`relative flex min-h-0 min-w-0 transition-opacity duration-100 ${
+            collapsed ? 'pointer-events-none overflow-hidden p-0 opacity-0' : 'p-1 opacity-100'
+          }`}
+          aria-hidden={collapsed}
           style={{
-            height: size?.height,
-            width: size?.width,
+            height: collapsed && layout === 'top' ? 0 : size?.height,
+            width: collapsed && layout !== 'top' ? 0 : size?.width,
           }}
         >
           {children}
-          {resizable && (
+          {resizable && !collapsed && (
             <button
               type="button"
               aria-label={resizeLabel}

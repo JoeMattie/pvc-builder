@@ -4,6 +4,58 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Floating chrome: overlap allowed, measured stacks, pinned document panel (2026-07-09)
+
+- **Panel overlap is allowed by design.** `resolveOverlap`/`avoidOverlap` are deleted from
+  `FloatingIsland` — automatic dodging fought the measured layout and annoyed the user. Panels
+  clamp to the viewport and keep magnetic edge snapping while dragging; nothing else constrains them.
+- **Default layout is measured, not offset.** Stack members (`stackId` + `stackOrder`) place
+  themselves under their lower-order peers' live rects plus a shared `GAP`; user-dragged panels are
+  excluded from the measurement. Mount and reset both run a double "settle" pass (two rAF-spaced
+  `resize` dispatches) because order-N panels need order-(N-1) rects committed to the DOM first.
+  No absolute pixel offsets remain in `EditorShell`.
+- **The document panel is pinned** (`draggable={false}`, non-collapsible, top-left) and owns the
+  workspace-reset button and the autosave/warning chips (`EditorStatusChips`, split out of
+  `EditorWorkflowStatus`). Workflow/Snap/View islands are non-collapsible; the workflow island is a
+  single inline row.
+- **The tool palette is content-sized** — non-resizable, never scrolls or hides buttons; saved
+  panel sizes only apply to `resizable` islands. Labels appear ≥`lg`, hotkey badges ≥`2xl`, so the
+  horizontal bar fits one row at common desktop widths; below 640 px it goes vertical.
+- **`lengthsLocked` is an editing behaviour, not a simulation setting.** It lives in the tool bar
+  as "Drag lock" (`Pillbox`), not in the Simulate panel; `PivotPanel` still gates on it.
+- **Postprocessing is a lazy chunk.** `RendererEffectsPass` (N8AO/SSAO/SMAA, ~300 kB) is
+  code-split out of the main bundle, preloaded on idle from the project list
+  (`preloadRendererEffects`), and the toggle is masked by a brief blur overlay — the WebGL pass
+  init needs the live GL context, so it cannot move to a worker.
+- **Units menu is portal-backed Radix** like View/Snap — island `overflow-hidden` was clipping it.
+
+## Editor chrome and renderer polish (2026-07-09)
+
+- **Floating chrome is centralized in `FloatingIsland`.** Islands now support top and inline title
+  bars, persisted collapse state, live magnetic panel snapping, reset-cleared
+  position/size/collapse keys, and resize bounds constrained by the island's current screen position.
+  Bottom-center islands remain default-centered on resize until the user drags them.
+- **Single-row chrome uses inline titles.** Toolbars use a left inline drag/title segment instead of
+  rotated rails or extra title rows; top title bars are draggable from title space while action
+  buttons remain normal controls.
+- **Destructive confirms use Radix, not native dialogs.** Project delete now uses
+  `ConfirmDialog` (`radix-ui` AlertDialog), and `ViewMenu` uses a Radix portal-backed dropdown so it
+  is not clipped by floating panel overflow.
+- **Renderer effects are a default-off workspace preference.** Added exact-pinned
+  `@react-three/postprocessing@3.0.4` and `postprocessing@6.39.2`; `editorStore.rendererEffects`
+  persists outside the document and toggles a stronger Blender-style N8AO + SSAO cavity pass and
+  SMAA in `Scene`.
+- **Camera orbit split:** OrbitControls keeps middle-pan and wheel zoom; custom right-drag orbit
+  picks a cursor anchor via screen-space pipe/node snapping (ground fallback) and rotates the camera
+  plus controls target around that anchor while preserving camera-pose persistence.
+- **Right-click scene menus are pointer-up gated.** Pipe/joint menus no longer open from native
+  `contextmenu`; they open on right-button up only if the shared right-click gesture did not cross
+  the orbit drag threshold. The same helper exposes `__pvc.getPointerDebug()` /
+  `__pvc.clearPointerDebug()` for live MCP/browser diagnosis of orbit/menu/hover races.
+- **Document camera restore is masked.** `EditorShell` shows a short blurred viewport overlay while
+  a newly opened document's stored camera pose is applied, avoiding a visible default side-view flash.
+- **Wireframe pipes are thinner.** Pipe fat-lines are 5 px; junction dots stay 14 px.
+
 ## Group tooling, object tree, Extend / Wireframe / Guide tools (2026-07-09)
 
 A batch of editor features + two group bug fixes (schema → v10).

@@ -185,7 +185,10 @@ export function InstancedWrapJoints() {
     ? (ev: ThreeEvent<PointerEvent>) => {
         if (ev.instanceId == null) return;
         const id = spec[ev.instanceId]?.jointId;
-        if (id) useEditorStore.getState().setHoveredSceneItem({ kind: 'joint', id });
+        if (id) {
+          ev.stopPropagation();
+          useEditorStore.getState().setHoveredSceneItem({ kind: 'joint', id });
+        }
       }
     : undefined;
   const onHoverOut = editing

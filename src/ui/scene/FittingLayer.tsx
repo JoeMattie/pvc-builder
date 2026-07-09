@@ -172,12 +172,18 @@ export function FittingLayer() {
     if (nodeId) store.setHoveredSceneItem({ kind: 'fitting', id: nodeId });
     else if (store.hoveredSceneItem?.kind === 'fitting') store.setHoveredSceneItem(null);
   };
-  const onCylHover = (ev: ThreeEvent<PointerEvent>) =>
+  const onCylHover = (ev: ThreeEvent<PointerEvent>) => {
+    ev.stopPropagation();
     hoverNode(spec.cylNodes[ev.instanceId ?? -1]);
-  const onSphHover = (ev: ThreeEvent<PointerEvent>) =>
+  };
+  const onSphHover = (ev: ThreeEvent<PointerEvent>) => {
+    ev.stopPropagation();
     hoverNode(spec.sphNodes[ev.instanceId ?? -1]);
-  const onConflictHover = (ev: ThreeEvent<PointerEvent>) =>
+  };
+  const onConflictHover = (ev: ThreeEvent<PointerEvent>) => {
+    ev.stopPropagation();
     hoverNode(spec.conflictNodes[ev.instanceId ?? -1]);
+  };
   const onHoverOut = () => hoverNode(undefined);
 
   return (

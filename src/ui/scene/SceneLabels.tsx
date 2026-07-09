@@ -1,7 +1,7 @@
 import { Html } from '@react-three/drei';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
-import type { Group } from 'three';
+import { type Group, Vector3 } from 'three';
 import { bom, type CutItem } from '../../design/bom';
 import { memberById, memberLengthM, nodeById } from '../../design/docOps';
 import { type FittingType, resolveFittings } from '../../design/fittings';
@@ -14,6 +14,8 @@ import { useThemeStore } from '../../state/themeStore';
 import { formatLengthDisplay } from '../units';
 
 const MAX_CUT_LABELS = 220;
+const UI_OCCLUDERS =
+  '[data-floating-island], [data-viewport-occluder], [role="menu"], [data-radix-popper-content-wrapper]';
 
 type LabelTone = 'cut' | 'member' | 'joint' | 'fitting' | 'warning';
 
@@ -242,6 +244,32 @@ function initialPosition(design: Design, anchor: LabelAnchor): [number, number, 
   return [p.x, p.y, p.z];
 }
 
+function visibleUiRects(): DOMRect[] {
+  if (typeof document === 'undefined') return [];
+  return Array.from(document.querySelectorAll<HTMLElement>(UI_OCCLUDERS))
+    .filter((el) => {
+      const style = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return (
+        style.display !== 'none' &&
+        style.visibility !== 'hidden' &&
+        rect.width > 0 &&
+        rect.height > 0
+      );
+    })
+    .map((el) => el.getBoundingClientRect());
+}
+
+function isPointInRects(point: { x: number; y: number }, rects: DOMRect[]): boolean {
+  return rects.some(
+    (rect) =>
+      point.x >= rect.left &&
+      point.x <= rect.right &&
+      point.y >= rect.top &&
+      point.y <= rect.bottom,
+  );
+}
+
 function toneStyle(tone: LabelTone, night: boolean) {
   if (tone === 'cut') {
     return {
@@ -284,7 +312,7 @@ function LabelPill({ label, night }: { label: LabelSpec; night: boolean }) {
     ? "700 11px 'IBM Plex Mono', monospace"
     : "600 11px 'IBM Plex Sans', sans-serif";
   return (
-    <Html center zIndexRange={[80, 0]}>
+    <Html center zIndexRange={[18, 0]}>
       <div
         style={{
           minWidth: label.compact ? 24 : 64,
@@ -329,8 +357,11 @@ export function SceneLabels() {
   const selectedJointId = useEditorStore((s) => s.selectedJointId);
   const hovered = useEditorStore((s) => s.hoveredSceneItem);
   const night = useThemeStore((s) => s.night);
+  const camera = useThree((s) => s.camera);
+  const gl = useThree((s) => s.gl);
   const refs = useRef<Array<Group | null>>([]);
   const lastV = useRef(-1);
+  const screen = useRef(new Vector3()).current;
 
   const labels = useMemo(
     () =>
@@ -353,14 +384,28 @@ export function SceneLabels() {
   useFrame(() => {
     if (!design) return;
     const v = useAnim.getState().v;
-    if (v === lastV.current) return;
+    const hideUnderUi = sceneStatus === 'fabricate';
+    if (!hideUnderUi && v === lastV.current) return;
     lastV.current = v;
+    const canvasRect = hideUnderUi ? gl.domElement.getBoundingClientRect() : null;
+    const rects = hideUnderUi ? visibleUiRects() : [];
     for (let i = 0; i < labels.length; i++) {
       const group = refs.current[i];
       const label = labels[i];
       if (!group || !label) continue;
       const p = labelPosition(design, label.anchor);
-      group.visible = !!p;
+      let occluded = false;
+      if (p && canvasRect) {
+        screen.set(p.x, p.y, p.z).project(camera);
+        occluded = isPointInRects(
+          {
+            x: canvasRect.left + (screen.x * 0.5 + 0.5) * canvasRect.width,
+            y: canvasRect.top + (-screen.y * 0.5 + 0.5) * canvasRect.height,
+          },
+          rects,
+        );
+      }
+      group.visible = !!p && !occluded;
       if (p) group.position.set(p.x, p.y, p.z);
     }
   });

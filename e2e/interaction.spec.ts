@@ -59,6 +59,105 @@ test('draws a pipe with real pointer flow and commits a typed exact length', asy
   expect(errors).toEqual([]);
 });
 
+test('draws ground-plane pipes in both +X and -X with real pointer flow', async ({ page }) => {
+  const errors = collectErrors(page);
+  await openNewDesign(page, 'Interaction signed X draw');
+
+  await page.keyboard.press('D');
+  const start = await screenOf(page, { x: 0, y: 0, z: 0 });
+  const plus = await screenOf(page, { x: 0.35, y: 0, z: 0 });
+  const minus = await screenOf(page, { x: -0.35, y: 0, z: 0 });
+
+  await page.mouse.click(start.x, start.y);
+  await page.mouse.click(plus.x, plus.y);
+  await page.keyboard.press('Enter');
+  await page.mouse.click(start.x, start.y);
+  await page.mouse.click(minus.x, minus.y);
+  await page.keyboard.press('Enter');
+
+  await page.waitForFunction(() => (window as any).__pvc.getMembers().length === 2);
+  const spans = await page.evaluate(() => {
+    const p = (window as any).__pvc;
+    const doc = p.getDoc();
+    return doc.members.map((m: any) => {
+      const a = doc.nodes.find((n: any) => n.id === m.nodeA).position;
+      const b = doc.nodes.find((n: any) => n.id === m.nodeB).position;
+      return [a.x, b.x].sort((x, y) => x - y);
+    });
+  });
+  expect(spans.some(([a, b]: number[]) => a < -0.3 && Math.abs(b) < 0.02)).toBe(true);
+  expect(spans.some(([a, b]: number[]) => Math.abs(a) < 0.02 && b > 0.3)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('view and snap menus are portal-backed and not clipped by floating chrome', async ({ page }) => {
+  const errors = collectErrors(page);
+  await openNewDesign(page, 'Interaction view menu');
+
+  await page.getByRole('button', { name: /Views/ }).click();
+  const menu = page.getByRole('menu');
+  await expect(menu).toBeVisible();
+  const box = await menu.boundingBox();
+  const viewport = page.viewportSize();
+  expect(box).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.y).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(viewport!.width);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height);
+
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: /Snapping settings/ }).click();
+  const snapMenu = page.getByRole('menu');
+  await expect(snapMenu).toBeVisible();
+  const snapBox = await snapMenu.boundingBox();
+  expect(snapBox).not.toBeNull();
+  expect(snapBox!.x).toBeGreaterThanOrEqual(0);
+  expect(snapBox!.y).toBeGreaterThanOrEqual(0);
+  expect(snapBox!.x + snapBox!.width).toBeLessThanOrEqual(viewport!.width);
+  expect(snapBox!.y + snapBox!.height).toBeLessThanOrEqual(viewport!.height);
+  expect(errors).toEqual([]);
+});
+
+test('document name edit keeps the document toolbar width stable', async ({ page }) => {
+  const errors = collectErrors(page);
+  await openNewDesign(page, 'Interaction name width');
+
+  const documentBar = page.locator('[data-floating-island="document-controls"]');
+  const before = await documentBar.boundingBox();
+  await page.getByLabel('Edit design name').click();
+  await expect(page.getByRole('textbox', { name: 'Design name' })).toBeVisible();
+  const after = await documentBar.boundingBox();
+
+  expect(before).not.toBeNull();
+  expect(after).not.toBeNull();
+  expect(Math.abs(after!.width - before!.width)).toBeLessThan(2);
+  expect(errors).toEqual([]);
+});
+
+test('right-drag orbits around the cursor anchor', async ({ page }) => {
+  const errors = collectErrors(page);
+  await openNewDesign(page, 'Interaction cursor orbit');
+
+  await page.evaluate(() => {
+    const p = (window as any).__pvc;
+    p.setTool('draw');
+    p.draw({ x: -0.3, y: 0, z: 0 });
+    p.draw({ x: 0.3, y: 0, z: 0 });
+    p.finishPath();
+    p.setTool('select');
+  });
+  const anchor = { x: 0, y: 0, z: 0 };
+  const before = await screenOf(page, anchor);
+  await page.mouse.move(before.x, before.y);
+  await page.mouse.down({ button: 'right' });
+  await page.mouse.move(before.x + 120, before.y + 24, { steps: 12 });
+  await page.mouse.up({ button: 'right' });
+  const after = await screenOf(page, anchor);
+  expect(Math.hypot(after.x - before.x, after.y - before.y)).toBeLessThan(5);
+  expect(errors).toEqual([]);
+});
+
 test('opens the join menu with a real right-click and creates a wrapped pivot', async ({ page }) => {
   const errors = collectErrors(page);
   await openNewDesign(page, 'Interaction right-click join');

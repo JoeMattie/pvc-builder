@@ -64,8 +64,8 @@ riglab's pins unless a newer stable exists at adoption; record any bump in DECIS
   `@tailwindcss/vite`, `cva` + `clsx` + `tailwind-merge` `cn()`, `lucide-react` icons, IBM Plex fonts
   via `@fontsource` (self-hosted, no network). **Copy** `components.json`, `src/ui/components/*`,
   `src/ui/lib/utils.ts`, and the token block from `src/index.css`.
-- **3D = three.js 0.185 + `@react-three/fiber` 9 + `@react-three/drei` 10 + `@react-three/postprocessing`**
-  (add). r3f is declarative and composes with the shadcn shell; reuse riglab's
+- **3D = three.js 0.185 + `@react-three/fiber` 9 + `@react-three/drei` 10 +
+  `@react-three/postprocessing` 3 + `postprocessing` 6.** r3f is declarative and composes with the shadcn shell; reuse riglab's
   `src/ui/assembly/*` (`PipeModelLayer.tsx`, `pipeModel.ts`, `scene.ts`) as rendering references.
 - **Physics = `crashcat`** (npm, MIT, pure-JS). Used only inside the solver boundary (§5).
 - **State = `zustand` 5 + `zundo` (temporal undo/redo, limit 100) + `immer`.** Mirror riglab's
@@ -181,10 +181,12 @@ export function solve(design: Design, inputs: SolveInputs, mode: SolveMode): Sol
 ## 6. Rendering (three.js + r3f + drei)
 
 - **Camera:** `OrthographicCamera` at the iso angle by default; a toggle swaps to `PerspectiveCamera`.
-  `OrbitControls` for free orbit/pan/zoom. `GizmoHelper` axis triad.
-- **Lighting/polish:** drei `Environment` (studio IBL) + `ContactShadows`/`AccumulativeShadows`;
-  optional SSAO via `@react-three/postprocessing`. PVC PBR material (white/grey, mid roughness, faint
-  clearcoat) so pipe reads as pipe.
+  `OrbitControls` handles middle-pan and wheel zoom; right-drag orbits around the cursor-picked
+  pipe/node/ground anchor. Scene right-click menus open on button-up only if that gesture did not
+  become an orbit. `GizmoHelper` axis triad.
+- **Lighting/polish:** soft shadow lighting plus optional, default-off
+  `@react-three/postprocessing` AO/cavity + SMAA.
+  PVC PBR material (white/grey, mid roughness, faint clearcoat) so pipe reads as pipe.
 - **Pipe:** straight = `CylinderGeometry`/`TubeGeometry` at true OD; formed = `TubeGeometry` swept along
   a `CatmullRomCurve3` through the control points. Reference riglab `src/ui/assembly/pipeModel.ts`.
 - **Fittings:** a **procedural mesh generator** from `PipeSpec` — `LatheGeometry` bodies of revolution
@@ -205,7 +207,8 @@ export function solve(design: Design, inputs: SolveInputs, mode: SolveMode): Sol
 - **`window.__pvc` debug hook** — mirror riglab's `window.__riglab` install in the editor shell
   (merge, don't replace). Seams for scripted verification: `getDoc()`, `getEditor()`,
   `resolveFittings()` result, `getSolve()`/node positions, `getConflicts()`, `setTool`, `setSize`,
-  `setLengthsLocked`, `setPivotAngle`, `loadExample(id)`.
+  `setLengthsLocked`, `setPivotAngle`, `loadExample(id)`, plus viewport diagnostics such as camera
+  pose, scene stats, and pointer debug events.
 
 ## 8. BOM / cut-list (must be tested)
 

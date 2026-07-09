@@ -21,6 +21,7 @@ import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
 import { cylinderMatrix, ringMatrix, sphereMatrix } from './instancing';
 import { FREE_JOINT_GAP_M } from './pipeModel';
+import { canOpenRightClickMenu, recordPointerDebug } from './rightClickGesture';
 
 const MAX_JOINT_MEMBERS = 800; // parity with JointLayer's gate
 const CORD_COLOR = '#c9b48a';
@@ -149,13 +150,22 @@ export function InstancedFreeHubs() {
         if (jointId) useEditorStore.getState().selectJoint(jointId);
       }
     : undefined;
-  const onBallContext = editing
-    ? (ev: ThreeEvent<MouseEvent>) => {
+  const onBallMenuPointerUp = editing
+    ? (ev: ThreeEvent<PointerEvent>) => {
+        if (ev.nativeEvent.button !== 2) return;
         if (ev.instanceId == null) return;
         ev.stopPropagation();
         const hub = spec.hubs[ev.instanceId];
         if (!hub) return;
-        const ne = ev.nativeEvent as MouseEvent;
+        const ne = ev.nativeEvent;
+        if (!canOpenRightClickMenu(ne.pointerId, 'free-hub', ne.clientX, ne.clientY)) return;
+        recordPointerDebug('menu-open', {
+          pointerId: ne.pointerId,
+          x: ne.clientX,
+          y: ne.clientY,
+          target: 'free-hub',
+          id: hub.jointId,
+        });
         useEditorStore
           .getState()
           .openJoinMenu({ nodeId: hub.nodeId, moverId: hub.moverId, x: ne.clientX, y: ne.clientY });
@@ -165,7 +175,10 @@ export function InstancedFreeHubs() {
     ? (ev: ThreeEvent<PointerEvent>) => {
         if (ev.instanceId == null) return;
         const jointId = spec.hubs[ev.instanceId]?.jointId;
-        if (jointId) useEditorStore.getState().setHoveredSceneItem({ kind: 'joint', id: jointId });
+        if (jointId) {
+          ev.stopPropagation();
+          useEditorStore.getState().setHoveredSceneItem({ kind: 'joint', id: jointId });
+        }
       }
     : undefined;
   const onBallHoverOut = editing
@@ -185,7 +198,7 @@ export function InstancedFreeHubs() {
         frustumCulled={false}
         castShadow
         onClick={onBallClick}
-        onContextMenu={onBallContext}
+        onPointerUp={onBallMenuPointerUp}
         onPointerMove={onBallHover}
         onPointerOut={onBallHoverOut}
       >

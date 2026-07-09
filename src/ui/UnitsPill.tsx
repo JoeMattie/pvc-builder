@@ -1,12 +1,14 @@
 import { Ruler } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { DropdownMenu } from 'radix-ui';
+import { useState } from 'react';
 import type { LengthDisplay } from '../schema';
 import { useAppStore } from '../state/appStore';
 import { setLengthDisplay } from '../state/editorActions';
 
 /** The units pill (bottom-right): pick how lengths are DISPLAYED — millimetres,
  * centimetres, decimal inches, or fractional inches. Display-only (schema v6
- * `lengthDisplay`); storage is always SI. Default (undefined) is decimal inches. */
+ * `lengthDisplay`); storage is always SI. Default (undefined) is decimal inches.
+ * Portal-backed (Radix) so the menu is never clipped by floating-island overflow. */
 const OPTIONS: { value: LengthDisplay; label: string; hint: string }[] = [
   { value: 'in', label: 'Inches', hint: 'decimal — 10.5"' },
   { value: 'in-frac', label: 'Inches', hint: 'fractional — 10 1/2"' },
@@ -25,23 +27,30 @@ export function UnitsPill() {
   const hasDesign = useAppStore((s) => s.current !== null);
   const display = useAppStore((s) => s.current?.lengthDisplay) ?? 'in';
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: PointerEvent) => {
-      if (ref.current && !ref.current.contains(e.target as globalThis.Node)) setOpen(false);
-    };
-    window.addEventListener('pointerdown', onDown);
-    return () => window.removeEventListener('pointerdown', onDown);
-  }, [open]);
 
   if (!hasDesign) return null;
 
   return (
-    <div ref={ref} className="relative">
-      {open && (
-        <div className="absolute bottom-full left-0 mb-2 w-44 rounded-xl border border-border bg-card p-1 shadow-md">
+    <DropdownMenu.Root open={open} onOpenChange={setOpen}>
+      <DropdownMenu.Trigger asChild>
+        <button
+          type="button"
+          aria-label="Display units"
+          aria-expanded={open}
+          className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-muted-foreground shadow-md hover:text-foreground"
+        >
+          <Ruler size={14} />
+          <span className="tabular-nums">{SHORT[display]}</span>
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          side="top"
+          align="start"
+          sideOffset={8}
+          data-viewport-occluder
+          className="z-[100] w-44 rounded-xl border border-border bg-card p-1 shadow-md"
+        >
           <div className="px-2 pt-1 pb-1 text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">
             Display units
           </div>
@@ -69,17 +78,8 @@ export function UnitsPill() {
               </button>
             );
           })}
-        </div>
-      )}
-      <button
-        type="button"
-        aria-label="Display units"
-        onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-muted-foreground shadow-md hover:text-foreground"
-      >
-        <Ruler size={14} />
-        <span className="tabular-nums">{SHORT[display]}</span>
-      </button>
-    </div>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   );
 }

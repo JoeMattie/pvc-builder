@@ -3,7 +3,6 @@ import {
   ChevronDown,
   ChevronRight,
   Circle,
-  Group as GroupIcon,
   ListTree,
   Lock,
   LogIn,
@@ -12,22 +11,19 @@ import {
   Rotate3d,
   Ruler,
   Spline,
-  Ungroup,
 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
-import { groupColorOf, groupOfMember } from '../design/docOps';
+import { groupColorOf } from '../design/docOps';
 import { useAppStore } from '../state/appStore';
 import {
   enterGroup,
   exitGroup,
-  groupSelection,
   selectTreeElastic,
   selectTreeGroup,
   selectTreeJoint,
   selectTreeMeasurement,
   selectTreeMember,
   setGroupColor,
-  ungroupSelection,
 } from '../state/editorActions';
 import { useEditorStore } from '../state/editorStore';
 
@@ -42,7 +38,7 @@ const MAX_ROWS = 300;
  * Subscribes only to a STRUCTURAL signature of the doc (ids + sizes + group
  * membership + colour + non-pipe object ids), not positions — so a per-frame
  * drag doesn't re-render the whole list. */
-export function ObjectTree() {
+export function ObjectTree({ hidePanelTitle = false }: { hidePanelTitle?: boolean }) {
   // structural signature: unchanged string ⇒ zustand skips the re-render, so a
   // drag (which rewrites positions every frame) never churns the tree
   const sig = useAppStore((s) => {
@@ -104,10 +100,6 @@ export function ObjectTree() {
       return n;
     });
 
-  const canGroup = selectedIds.length >= 1;
-  const canUngroup =
-    !!enteredGroupId || selectedIds.some((id) => groupOfMember(design, id) !== undefined);
-
   const rowBtn = (active: boolean, dim: boolean): string =>
     `flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left text-xs ${
       active
@@ -147,44 +139,26 @@ export function ObjectTree() {
     return 'Anchor';
   };
 
+  const bodyOpen = hidePanelTitle || open;
+
   return (
     <div className="pointer-events-auto flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg bg-card/70">
       {/* header */}
       <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
-        <button
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-          className="flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground"
-        >
-          <ListTree size={13} />
-          Objects
-          {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        </button>
-        <div className="ml-auto flex items-center gap-0.5">
+        {!hidePanelTitle && (
           <button
             type="button"
-            disabled={!canGroup}
-            onClick={() => groupSelection()}
-            title="Group selection (G)"
-            aria-label="Group selection"
-            className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-30"
+            onClick={() => setOpen((o) => !o)}
+            className="flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground"
           >
-            <GroupIcon size={14} />
+            <ListTree size={13} />
+            Objects
+            {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
           </button>
-          <button
-            type="button"
-            disabled={!canUngroup}
-            onClick={() => ungroupSelection()}
-            title="Ungroup / explode (Shift+G)"
-            aria-label="Ungroup selection"
-            className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-30"
-          >
-            <Ungroup size={14} />
-          </button>
-        </div>
+        )}
       </div>
 
-      {open && (
+      {bodyOpen && (
         <div className="scrollbar-minimal min-h-0 flex-1 overflow-y-auto p-1">
           {!hasObjects && (
             <p className="px-2 py-3 text-center text-xs text-muted-foreground">No objects yet.</p>

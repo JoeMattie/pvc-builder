@@ -69,6 +69,7 @@ export function JoinMenu() {
         className="fixed inset-0 z-40 cursor-default"
       />
       <div
+        data-viewport-occluder
         className="fixed z-50 w-52 rounded-lg border border-border bg-card p-1 shadow-lg"
         style={{
           left: Math.min(menu.x, window.innerWidth - 220),

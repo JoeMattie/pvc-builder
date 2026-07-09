@@ -11,6 +11,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.1',
+    date: '2026-07-09',
+    changes: [
+      'Cleaner default workspace: the document panel is pinned top-left and now holds the workspace-reset button plus the autosave and warning chips; the workflow switcher is a compact one-row pill; panels stack with consistent measured spacing after a reset instead of fixed offsets.',
+      'Panels overlap freely now — the automatic dodging is gone (edge snapping while dragging stays), and the Document, Workflow, Snap, and View panels no longer collapse.',
+      'The tool bar always shows every tool — no more resizing or hidden buttons — and can flip vertical. The length lock moved out of Simulate into the tool bar as “Drag lock” (it governs editing drags, not simulation).',
+      'Push (Extend) polish: direction stubs stay visible during an active push, and you can click-drag from a stub to place the new pipe in one gesture.',
+      'Fabricate: the cut list leads with the cuts — sourcing/assumption notes are a collapsed disclosure — and pipe labels no longer draw over bars or menus. Fixed the display-units menu not opening.',
+      'Faster first load: the heavy renderer-effects pass is split out of the main bundle (~300 kB) and loads in the background; toggling effects fades through a brief blur instead of hitching.',
+      'Landing page: example cards are equal-sized with readable names and their stats moved below the description.',
+    ],
+  },
+  {
     version: '0.3.0',
     date: '2026-07-09',
     changes: [

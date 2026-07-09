@@ -16,25 +16,34 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { type ChangeEvent, type FormEvent, useRef, useState } from 'react';
+import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from 'react';
 import { APP_VERSION, CHANGELOG } from '../changelog';
 import { EXAMPLES } from '../examples';
 import type { ProjectRevisionSummary, ProjectSummary } from '../persistence/projectStore';
 import { useAppStore } from '../state/appStore';
 import { useThemeStore } from '../state/themeStore';
+import { ConfirmDialog } from './ConfirmDialog';
 import { HelpPanel } from './HelpPanel';
+import { preloadRendererEffects } from './scene/Scene';
 
 /** "What's new" — the changelog, newest release expanded, older ones collapsed. */
+export function changelogEntriesForDisplay<T>(entries: T[], olderOpen: boolean): T[] {
+  return olderOpen ? entries : entries.slice(0, 2);
+}
+
 function Changelog() {
   const [openVersion, setOpenVersion] = useState<string | null>(CHANGELOG[0]?.version ?? null);
+  const [olderOpen, setOlderOpen] = useState(false);
   if (!CHANGELOG.length) return null;
+  const older = CHANGELOG.slice(2);
+  const entries = changelogEntriesForDisplay(CHANGELOG, olderOpen);
   return (
     <section className="flex flex-col gap-2">
       <h2 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
         What's new
       </h2>
       <div className="border-border bg-card flex flex-col rounded-lg border">
-        {CHANGELOG.map((entry) => {
+        {entries.map((entry) => {
           const open = openVersion === entry.version;
           return (
             <div key={entry.version} className="border-border border-b last:border-b-0">
@@ -57,6 +66,16 @@ function Changelog() {
             </div>
           );
         })}
+        {older.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setOlderOpen((open) => !open)}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <span aria-hidden>...</span>
+            {olderOpen ? 'Hide older versions' : 'Show older versions'}
+          </button>
+        )}
       </div>
     </section>
   );
@@ -151,6 +170,89 @@ function removeProjectRevisions(
   return next;
 }
 
+const EXAMPLE_MENU: {
+  description: string;
+  ids: string[];
+  items: Record<string, { description: string; name: string; stats: string }>;
+  title: string;
+}[] = [
+  {
+    title: 'Basic',
+    description: 'Small clean starters for drawing, fitting inference, and locked-length posing.',
+    ids: ['articulated-arm', 'cube-frame'],
+    items: {
+      'articulated-arm': {
+        name: 'Arm',
+        stats: '3L · 2J',
+        description: 'Hinged pose',
+      },
+      'cube-frame': {
+        name: 'Cube',
+        stats: '8N · 12P',
+        description: 'Corner fittings',
+      },
+    },
+  },
+  {
+    title: 'Raptor',
+    description: 'Rough first pass for balance and motion sketching; not build-ready CAD.',
+    ids: ['raptor-torso', 'raptor-tail', 'raptor-legs', 'raptor-neck', 'raptor-head'],
+    items: {
+      'raptor-torso': {
+        name: 'Frame',
+        stats: '18N · 26P',
+        description: 'P1 harness',
+      },
+      'raptor-tail': {
+        name: 'Tail',
+        stats: '23N · 31P · 2J',
+        description: 'P2 counterweight',
+      },
+      'raptor-legs': {
+        name: 'Legs',
+        stats: '29N · 37P · 8J',
+        description: 'P3 appendages',
+      },
+      'raptor-neck': {
+        name: 'Neck',
+        stats: '36N · 44P · 12J',
+        description: 'P4 front mass',
+      },
+      'raptor-head': {
+        name: 'Full',
+        stats: '42N · 51P · 13J',
+        description: 'P5 head + jaw',
+      },
+    },
+  },
+  {
+    title: 'T-Rex',
+    description: 'Stress fixtures for joint dynamics and renderer performance tests only.',
+    ids: ['trex-rigid', 'trex-pivots', 'trex-wrapped'],
+    items: {
+      'trex-rigid': {
+        name: 'Rigid',
+        stats: '262N · 520P',
+        description: 'Baseline mesh',
+      },
+      'trex-pivots': {
+        name: 'Free hubs',
+        stats: '778J',
+        description: 'Joint stress',
+      },
+      'trex-wrapped': {
+        name: 'Wrap mix',
+        stats: '390J',
+        description: 'Render stress',
+      },
+    },
+  },
+];
+
+function exampleById(id: string) {
+  return EXAMPLES.find((ex) => ex.id === id);
+}
+
 /** Project list screen: create/open/import/manage projects, plus bundled examples. */
 export function ProjectList() {
   const projects = useAppStore((s) => s.projects);
@@ -174,7 +276,18 @@ export function ProjectList() {
   >({});
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<ProjectSummary | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Warm the postprocessing chunk while the user is still picking a project,
+  // so toggling renderer effects in the editor doesn't pay the module fetch.
+  useEffect(() => {
+    const idle = window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 1500));
+    const handle = idle(() => preloadRendererEffects());
+    return () => {
+      (window.cancelIdleCallback ?? window.clearTimeout)(handle as number);
+    };
+  }, []);
 
   const onCreate = async (e: FormEvent) => {
     e.preventDefault();
@@ -230,9 +343,10 @@ export function ProjectList() {
     await loadRevisions(projectId);
   };
 
-  const confirmDeleteProject = async (project: ProjectSummary) => {
-    const ok = window.confirm(`Delete "${project.name}" and its revision history?`);
-    if (!ok) return;
+  const deleteConfirmedProject = async () => {
+    const project = deleteTarget;
+    if (!project) return;
+    setDeleteTarget(null);
     await deleteProject(project.id);
     setExpandedProjectId((current) => (current === project.id ? null : current));
     setRevisionsByProject((prev) => removeProjectRevisions(prev, project.id));
@@ -300,20 +414,40 @@ export function ProjectList() {
           <h2 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
             Examples
           </h2>
-          {EXAMPLES.map((ex) => (
-            <button
-              key={ex.id}
-              type="button"
-              onClick={() => void createFromExample(ex.id)}
-              className="border-border bg-card flex items-center gap-3 rounded-lg border px-4 py-3 text-left hover:bg-accent"
-            >
-              <Sparkles size={16} className="text-muted-foreground shrink-0" />
-              <span>
-                <span className="block text-sm font-medium">{ex.name}</span>
-                <span className="text-muted-foreground block text-xs">{ex.description}</span>
-              </span>
-            </button>
-          ))}
+          <div className="flex flex-col gap-3">
+            {EXAMPLE_MENU.map((section) => (
+              <div key={section.title} className="rounded-lg border border-border bg-card p-3">
+                <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                  <h3 className="text-sm font-semibold">{section.title}</h3>
+                  <p className="text-xs text-muted-foreground">{section.description}</p>
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-[repeat(auto-fill,minmax(10.5rem,1fr))]">
+                  {section.ids.map((id) => {
+                    const ex = exampleById(id);
+                    const item = section.items[id];
+                    if (!ex || !item) return null;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => void createFromExample(id)}
+                        className="flex min-h-24 flex-col gap-1 rounded-md border border-border bg-background/55 px-3 py-2 text-left hover:bg-accent"
+                      >
+                        <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
+                          <Sparkles size={13} className="shrink-0 text-muted-foreground" />
+                          <span className="truncate">{item.name}</span>
+                        </span>
+                        <span className="text-xs text-muted-foreground">{item.description}</span>
+                        <span className="mt-auto self-start rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground tabular-nums">
+                          {item.stats}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
         </section>
 
         <section className="flex flex-col gap-2">
@@ -411,7 +545,7 @@ export function ProjectList() {
                           type="button"
                           aria-label={`Delete ${p.name}`}
                           title="Delete"
-                          onClick={() => void confirmDeleteProject(p)}
+                          onClick={() => setDeleteTarget(p)}
                           className="text-muted-foreground hover:text-destructive rounded-md p-2"
                         >
                           <Trash2 size={16} />
@@ -466,6 +600,22 @@ export function ProjectList() {
 
       <StackInfo />
       <HelpPanel open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title="Delete project?"
+        description={
+          <>
+            Delete <span className="font-medium text-foreground">{deleteTarget?.name}</span> and its
+            revision history?
+          </>
+        }
+        confirmLabel="Delete"
+        tone="danger"
+        onConfirm={() => void deleteConfirmedProject()}
+      />
     </div>
   );
 }

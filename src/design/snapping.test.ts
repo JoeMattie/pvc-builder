@@ -79,6 +79,14 @@ describe('axis inference from the path start', () => {
     expect(r.guide).toEqual({ axis: 'x', from: V(0, 0, 0), to: r.position });
   });
 
+  it('keeps the signed direction when locking onto the -X axis', () => {
+    const r = snapPoint(V(-0.32, 0, 0.01), ctx({ fromNode: V(0, 0, 0), gridStepM: 0 }));
+    expect(r.kind).toBe('axis-x');
+    expect(r.position.z).toBeCloseTo(0, 9);
+    expect(r.position.x).toBeCloseTo(-0.32, 9);
+    expect(r.guide).toEqual({ axis: 'x', from: V(0, 0, 0), to: r.position });
+  });
+
   it('quantizes length along the axis to the grid step', () => {
     const r = snapPoint(V(0.34, 0, 0.01), ctx({ fromNode: V(0, 0, 0), gridStepM: 0.1 }));
     expect(r.kind).toBe('axis-x');

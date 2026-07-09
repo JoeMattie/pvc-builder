@@ -6,6 +6,7 @@ import type { UnitsPreference } from '../schema';
 const UNITS_KEY = 'pvc-builder.units';
 const LAST_PROJECT_KEY = 'pvc-builder.lastProjectId';
 const NIGHT_KEY = 'pvc-builder.night';
+const RENDERER_EFFECTS_KEY = 'pvc-builder.rendererEffects';
 
 export function getUnitsPref(): UnitsPreference {
   const v = localStorage.getItem(UNITS_KEY);
@@ -40,6 +41,20 @@ export function setNightPref(night: boolean): void {
   const v = night ? '1' : '0'; // store both states so an explicit day choice sticks
   if (s instanceof Map) s.set(NIGHT_KEY, v);
   else s.setItem(NIGHT_KEY, v);
+}
+
+export function getRendererEffectsPref(): boolean {
+  const s = safeStorage();
+  const v =
+    s instanceof Map ? (s.get(RENDERER_EFFECTS_KEY) ?? null) : s.getItem(RENDERER_EFFECTS_KEY);
+  return v === null ? false : v === '1';
+}
+
+export function setRendererEffectsPref(on: boolean): void {
+  const s = safeStorage();
+  const v = on ? '1' : '0';
+  if (s instanceof Map) s.set(RENDERER_EFFECTS_KEY, v);
+  else s.setItem(RENDERER_EFFECTS_KEY, v);
 }
 
 // Snap settings are a workspace preference (like night), read at editor-store

@@ -1,4 +1,4 @@
-// Wireframe view: every pipe drawn as a 10px fat line and every junction as a
+// Wireframe view: every pipe drawn as a 5px fat line and every junction as a
 // 14px round dot. Replaces the solid pipe/fitting/joint layers while active (a
 // diagnostic "skeleton" view). Fat lines need Line2/LineMaterial (raw GL_LINES
 // caps at 1px), which drei's <Segments> batches into a single draw call.
@@ -13,7 +13,7 @@ import { useThemeStore } from '../../state/themeStore';
 import { formedCurve } from './FormedLayer';
 
 const SELECT_BLUE = '#2a78d6';
-const LINE_PX = 10;
+const LINE_PX = 5;
 const DOT_PX = 14;
 /** Formed pipes are sampled into this many segments for the wireframe chord. */
 const FORMED_SEGS = 20;

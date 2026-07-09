@@ -36,7 +36,7 @@ export function PivotPanel() {
   );
 
   return (
-    <div className="w-[min(92vw,18rem)] rounded-xl border border-border bg-card p-3 shadow-md">
+    <div className="w-full rounded-lg border border-border bg-card p-3 shadow-md">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">
           Pivots

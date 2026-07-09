@@ -1,7 +1,6 @@
 import {
   AlertTriangle,
   CheckCircle2,
-  ClipboardList,
   DraftingCompass,
   Hammer,
   PlayCircle,
@@ -9,7 +8,7 @@ import {
 } from 'lucide-react';
 import { useMemo } from 'react';
 import { useAppStore } from '../../state/appStore';
-import { type SceneStatus, useEditorStore } from '../../state/editorStore';
+import type { SceneStatus } from '../../state/editorStore';
 import { summarizeEditorWarnings } from './editorStatus';
 
 export type EditorWorkflow = SceneStatus;
@@ -53,15 +52,49 @@ function statusChipClass(tone: 'ok' | 'warn' | 'neutral' | 'active'): string {
   return 'bg-muted text-muted-foreground';
 }
 
+/** The Design / Fabricate / Simulate switcher — a single inline row (the
+ * workflow island keeps its title beside these). Status chips live in
+ * `EditorStatusChips` on the document panel. */
 export function EditorWorkflowStatus({
   activeWorkflow,
   onWorkflowChange,
   onOpenBom,
 }: EditorWorkflowStatusProps) {
+  return (
+    <div className="pointer-events-auto flex items-center gap-1 p-1">
+      {WORKFLOWS.map(({ id, icon: Icon, label, title }) => {
+        const active = activeWorkflow === id;
+        return (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={active}
+            title={title}
+            onClick={() => {
+              onWorkflowChange(id);
+              if (id === 'fabricate') onOpenBom();
+            }}
+            className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium ${
+              active
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+            }`}
+          >
+            <Icon size={13} />
+            <span>{label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Autosave + warnings chips (compact, for the document panel). Subscribes to
+ * the document itself, so it re-renders on doc changes without dragging the
+ * whole shell along. */
+export function EditorStatusChips() {
   const design = useAppStore((s) => s.current);
   const saveState = useAppStore((s) => s.saveState);
-  const lengthsLocked = useAppStore((s) => s.current?.lengthsLocked ?? false);
-  const simulating = useEditorStore((s) => s.simulating);
   const warnings = useMemo(() => summarizeEditorWarnings(design), [design]);
 
   const saveTone = saveState === 'saved' ? 'ok' : 'neutral';
@@ -76,81 +109,26 @@ export function EditorWorkflowStatus({
           .filter(Boolean)
           .join(', ')
       : 'No warnings';
-  const geometry = simulating
-    ? { label: 'Physics live', tone: 'active' as const }
-    : lengthsLocked
-      ? { label: 'Locked pose', tone: 'neutral' as const }
-      : { label: 'Document geometry', tone: 'ok' as const };
-
   return (
-    <div className="pointer-events-auto flex w-full flex-col gap-1.5 rounded-xl border border-border bg-card p-2 shadow-md">
-      <div className="grid grid-cols-3 gap-1">
-        {WORKFLOWS.map(({ id, icon: Icon, label, title }) => {
-          const active = activeWorkflow === id;
-          return (
-            <button
-              key={id}
-              type="button"
-              aria-pressed={active}
-              title={title}
-              onClick={() => {
-                onWorkflowChange(id);
-                if (id === 'fabricate') onOpenBom();
-              }}
-              className={`flex min-w-0 items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium ${
-                active
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-              }`}
-            >
-              <Icon size={13} />
-              <span className="truncate">{label}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="grid grid-cols-[1fr_auto] gap-1.5">
-        <span
-          title={saveState === 'saved' ? 'Autosave complete' : 'Autosave pending'}
-          className={`flex min-w-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium ${statusChipClass(
-            saveTone,
-          )}`}
-        >
-          {saveState === 'saved' ? <CheckCircle2 size={12} /> : <Save size={12} />}
-          {saveState === 'saved' ? 'Saved' : 'Saving'}
-        </span>
-        <span
-          title={warningTitle}
-          className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium tabular-nums ${statusChipClass(
-            warningTone,
-          )}`}
-        >
-          <AlertTriangle size={12} />
-          {warnings.total}
-        </span>
-      </div>
-
-      <div className="flex items-center justify-between gap-2">
-        <span
-          title={simulating ? 'Viewport is using live physics positions' : geometry.label}
-          className={`flex min-w-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium ${statusChipClass(
-            geometry.tone,
-          )}`}
-        >
-          <span className="h-1.5 w-1.5 rounded-full bg-current" />
-          <span className="truncate">{geometry.label}</span>
-        </span>
-        <button
-          type="button"
-          onClick={onOpenBom}
-          title="Open cut list / BOM"
-          className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-        >
-          <ClipboardList size={12} />
-          BOM
-        </button>
-      </div>
+    <div className="flex items-center gap-1">
+      <span
+        title={saveState === 'saved' ? 'Autosave complete' : 'Autosave pending'}
+        className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium ${statusChipClass(
+          saveTone,
+        )}`}
+      >
+        {saveState === 'saved' ? <CheckCircle2 size={12} /> : <Save size={12} />}
+        {saveState === 'saved' ? 'Saved' : 'Saving'}
+      </span>
+      <span
+        title={warningTitle}
+        className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium tabular-nums ${statusChipClass(
+          warningTone,
+        )}`}
+      >
+        <AlertTriangle size={12} />
+        {warnings.total}
+      </span>
     </div>
   );
 }

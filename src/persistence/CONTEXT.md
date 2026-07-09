@@ -12,7 +12,7 @@ re-runs `migrateToLatest`, exactly like an imported file.
 | `db.ts` (32) | Dexie schema | `PvcDb` — tables `projects` (`id, updatedAt`) + `revisions` (`++revId, projectId, savedAt`), `REVISION_LIMIT=20`, `ProjectRow`/`RevisionRow` (embed full `Design`) |
 | `autosave.ts` (59) | Pure debounced saver factory (no Dexie coupling) | `createAutosaver(save, delayMs=1000)` → `Autosaver` (`schedule`, `flush`, `cancel`, `isDirty`, `hasPending`) |
 | `exportImport.ts` (27) | JSON export/import + filename | `exportDesignJson` (validates on the way out), `importDesignJson` (parse → migrate), `suggestedFileName` → `<slug>.pvc.json` |
-| `prefs.ts` (98) | localStorage-only UI prefs | `getUnitsPref`/`setUnitsPref`, `getNightPref`, `getSnapPref`/`setSnapPref`, `get/setLastProjectId`; keys `pvc-builder.*` |
+| `prefs.ts` (98) | localStorage-only UI prefs | `getUnitsPref`/`setUnitsPref`, `getNightPref`, `getSnapPref`/`setSnapPref`, `getRendererEffectsPref`/`setRendererEffectsPref`, `get/setLastProjectId`; keys `pvc-builder.*` |
 
 ## Depends on
 `../schema` only (`Design`, `createEmptyDesign`, `migrateToLatest`, `designSchema`, `UnitsPreference`).
@@ -23,9 +23,10 @@ re-runs `migrateToLatest`, exactly like an imported file.
   unloadable file. Don't bypass this.
 - **`autosave.ts` is storage-agnostic** — reused for both autosave and manual save via the same
   `ProjectStore.saveProject`. Subtle: `isDirty()` includes in-flight, `hasPending()` only queued.
-- **`prefs.ts` split personality**: units/lastProjectId use bare `localStorage`; night/snap use a
+- **`prefs.ts` split personality**: units/lastProjectId use bare `localStorage`; night/snap/renderer effects use a
   guarded `safeStorage()` with in-memory fallback (they're read at module-load time, before tests /
-  opaque origins have working storage). `SnapPref.snapToPoints` is a legacy flag read for migration.
+  opaque origins have working storage). Renderer effects default OFF until explicitly enabled.
+  `SnapPref.snapToPoints` is a legacy flag read for migration.
 - **`saveProject` uses `as never`** casts for Dexie's auto-increment `revId` typing — intentional.
 
 ## Tests
