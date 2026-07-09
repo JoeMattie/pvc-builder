@@ -6,6 +6,15 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 
 ## Post-batch fixes (2026-07-08)
 
+- **Draw-on-plane pipe-relative cardinals** (the deferred Wave-2 2C follow-up). The wall angle
+  previously snapped only to world cardinals (±X/±Z). A new pure `planeCardinalFromCursor`
+  (`design/snapping.ts`) also offers, for each straight pipe touching the plane origin (an endpoint
+  there or a run passing through it), that pipe's horizontal direction AND its perpendicular — so a
+  wall can align to or square off an existing pipe (e.g. draw flush with a 45° run). The normal is
+  signed deterministically (dominant component positive), so an axis-aligned wall reproduces the
+  old cardinal normals exactly (no behaviour change without a pipe). `editorActions.planeNormalFromCursor`
+  gathers the incident pipe dirs and delegates; `PlaneQuad`/`faceView` already handle an arbitrary
+  (diagonal) normal.
 - **Bend tool "Lock length"** (the deferred Wave-2 2D follow-up). A second BendPill toggle: with
   it on, bending a straight pipe holds the **developed (cut) length** instead of growing — the far
   end (`nodeB`) draws IN while `nodeA` stays put. Implemented in the pure `bendMember`: it bisects

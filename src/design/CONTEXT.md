@@ -16,7 +16,7 @@ applied elsewhere via `appStore.updateCurrent` for undo/autosave.
 | `fittings.ts` (188) | **Core feature.** Classify each node's incident pipe ends → coupling/reducer/elbow45/elbow90/elbow3way/tee/cross or conflict | `resolveFittings(design): FittingResolution`, `incidentEnds`, `FittingType`, `ANGLE_TOL_DEG=3` |
 | `bom.ts` (206) | Cut-list / BOM — per-pipe cut length, fitting + joint hardware counts, totals, CSV | `bom(design): Bom`, `bomToCsv`, `fittingTakeoffM`, `EYE_BOLT_TAKEOFF_M` |
 | `formed.ts` (74) | Heat-bent pipe analysis — developed length, bend schedule, min-bend-radius | `formedPoints`, `analyzeFormed`, `MIN_BEND_RADIUS_FACTOR=3` |
-| `snapping.ts` (150) | SketchUp-style draw inference + snapping (node → on-pipe → axis → grid → free priority) | `snapPoint(raw, ctx)`, `closestPointOnSegment`, `DEFAULT_GRID_M` (¼") |
+| `snapping.ts` (150) | SketchUp-style draw inference + snapping (node → on-pipe → axis → grid → free priority) | `snapPoint(raw, ctx)`, `closestPointOnSegment`, `planeCardinalFromCursor` (draw-on-plane wall angle: world + pipe-relative cardinals), `DEFAULT_GRID_M` (¼") |
 | `dragMath.ts` (138) | Direct-manipulation drag math — axial length resize, axis-locked moves | `projectLengthOnAxis`, `lengthFromGrabDrag`, `closestAxisPointToRay`, `lockToNearestDirection` |
 | `intersections.ts` (137) | Flag overlapping pipe volumes (capsule-vs-capsule) | `intersectingMembers(design): Set<string>`, `segmentSegmentDistSq` |
 | `marquee.ts` (93) | Screen-space rubber-band hit-testing (window/crossing CAD semantics) | `marqueeFromDrag`, `memberSelectedBy`, `segmentsIntersect` |

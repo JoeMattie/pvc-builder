@@ -43,7 +43,9 @@ import {
 import { MIN_BEND_RADIUS_FACTOR } from '../design/formed';
 import {
   AXIS_BAND_M,
+  closestPointOnSegment,
   POINT_RADIUS_M,
+  planeCardinalFromCursor,
   type SnapContext,
   type SnapResult,
   snapPoint,
@@ -602,18 +604,34 @@ export function snapPlanePoint(raw: Vec3): SnapResult {
   return { ...snap, position: clampGround(snap.position) };
 }
 
+/** Horizontal directions of straight pipes touching `origin` — an endpoint AT
+ * the origin, or a run whose span passes through it — used as extra draw-plane
+ * cardinals so a wall can align to an existing pipe. */
+function incidentPipeDirsAt(origin: Vec3): Vec3[] {
+  const design = useAppStore.getState().current;
+  if (!design) return [];
+  const TOL = 1e-3;
+  const dirs: Vec3[] = [];
+  for (const m of design.members) {
+    if (m.kind !== 'straight') continue;
+    const a = nodeById(design, m.nodeA)?.position;
+    const b = nodeById(design, m.nodeB)?.position;
+    if (!a || !b) continue;
+    if (length(sub(a, origin)) < TOL) dirs.push(sub(b, a));
+    else if (length(sub(b, origin)) < TOL) dirs.push(sub(a, b));
+    else if (length(sub(closestPointOnSegment(origin, a, b), origin)) < TOL) dirs.push(sub(b, a));
+  }
+  return dirs;
+}
+
 /** The vertical draw plane's normal, from the cursor direction relative to the
- * origin snapped to the nearest cardinal (±X / ±Z). The plane contains that
- * horizontal direction and the Y (up) axis — so you draw "up a wall". */
+ * origin, snapped to the nearest cardinal — the world axes (±X / ±Z) plus the
+ * horizontal direction (and perpendicular) of any pipe touching the origin. The
+ * plane contains that horizontal direction and the Y (up) axis — you draw "up a
+ * wall", optionally aligned to an existing pipe. */
 export function planeNormalFromCursor(origin: Vec3, cursor: Vec3): Vec3 {
-  const h = { x: cursor.x - origin.x, y: 0, z: cursor.z - origin.z };
-  // snap the in-plane direction to ±X or ±Z, whichever the cursor runs most along
-  const dir =
-    Math.abs(h.x) >= Math.abs(h.z)
-      ? { x: Math.sign(h.x) || 1, y: 0, z: 0 }
-      : { x: 0, y: 0, z: Math.sign(h.z) || 1 };
-  // normal = horizontal, perpendicular to that direction
-  return dir.x !== 0 ? { x: 0, y: 0, z: 1 } : { x: 1, y: 0, z: 0 };
+  const offset = { x: cursor.x - origin.x, y: 0, z: cursor.z - origin.z };
+  return planeCardinalFromCursor(offset, incidentPipeDirsAt(origin)).normal;
 }
 
 /** Enter draw-on-plane mode: stash the camera, flip it to face the plane, and

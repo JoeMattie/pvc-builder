@@ -31,7 +31,7 @@ rationale live in the plan file: **`/home/joe/.claude/plans/read-the-todo-txt-sc
 | **Wave 2 · 2A** — Curve rename (C), snap indicators, typed-length pill | ✅ done |
 | **Wave 2 · 2B** — tape-measure tool (T) | ✅ done |
 | **Wave 2 · 2D** — new Bend tool (B) + draggable control points | ✅ done — grow **and** length-lock modes (BendPill "Lock length"; holds developed cut length, far end draws in) |
-| **Wave 2 · 2C** — draw-on-plane tool (F) | ✅ done (angle snaps to world cardinals ±X/±Z; **pipe-relative cardinals = follow-up**) |
+| **Wave 2 · 2C** — draw-on-plane tool (F) | ✅ done — angle snaps to world cardinals **and pipe-relative cardinals** (align/square a wall to a pipe touching the origin) |
 | **Wave 3 · 3A** — BOM wrap-allowance + end-cap extension + editor ghost | ✅ done (manufactured-union **cut-list splitting** = follow-up) |
 | **Wave 3 · 3B** — manufactured joints (join menu → snap to standard elbow/coupling) | ✅ done |
 | **Wave 3 · 3C** — T-rex decimation → rigid + universal-pivot examples | ✅ done |
