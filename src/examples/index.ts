@@ -2,6 +2,7 @@ import { type Design, migrateToLatest } from '../schema';
 import { articulatedArm, cubeFrame } from './generators';
 import trexPivots from './trex-pivots.json';
 import trexRigid from './trex-rigid.json';
+import trexWrapped from './trex-wrapped.json';
 
 // Bundled example designs, offered from the project list for a fast look
 // (planfile §7). Generic subjects only. Each `load()` runs the baked JSON
@@ -29,13 +30,19 @@ export const EXAMPLES: Example[] = [
   {
     id: 'trex-rigid',
     name: 'T-rex (rigid)',
-    description: '262 nodes · 541 pipes — low-poly mesh, tris→quads, all joints rigid',
+    description: '262 nodes · 520 pipes — low-poly mesh, tris→quads, all joints rigid',
     load: () => migrateToLatest(trexRigid),
   },
   {
     id: 'trex-pivots',
     name: 'T-rex (universal pivots)',
-    description: '541 pipes — a free ball hub at every one of the 262 nodes',
+    description: '520 pipes — a free ball hub at every one of the 262 nodes',
     load: () => migrateToLatest(trexPivots),
+  },
+  {
+    id: 'trex-wrapped',
+    name: 'T-rex (random wrapped)',
+    description: '520 pipes — a random mix of wrapped (swivel) pivots and rigid joints',
+    load: () => migrateToLatest(trexWrapped),
   },
 ];

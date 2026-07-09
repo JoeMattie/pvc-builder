@@ -11,6 +11,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.1.10',
+    date: '2026-07-08',
+    changes: [
+      'New “T-rex (random wrapped)” example — a random mix of wrapped swivel pivots and rigid joints',
+      'All T-rex examples pruned of substantially-overlapping pipes (541 → 520)',
+    ],
+  },
+  {
     version: '0.1.9',
     date: '2026-07-08',
     changes: [

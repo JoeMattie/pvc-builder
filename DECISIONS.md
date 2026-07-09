@@ -6,6 +6,16 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 
 ## Post-batch fixes (2026-07-08)
 
+- **T-rex: prune overlapping pipes + a random-wrapped variant** (v0.1.10). `scripts/gen-trex.mjs`
+  gained (1) a **prune pass** — after tris→quads, drop the SHORTER of any near-collinear pair whose
+  shorter member is ≥50% buried within ~one OD of the longer (removes wireframe artifacts where a
+  vertex sits on another edge / near-duplicate collinear edges): 541 → **520** members, then orphan
+  nodes dropped + ids re-indexed; (2) a third example **`trex-wrapped`** — like the pivots variant
+  but each non-receiver incident pipe is, by a **seeded** coin-flip (~50%), a `wrapped` (swivel,
+  non-pinned) joint, else left rigid → 390 wrapped joints. All three T-rex examples share the pruned
+  wireframe. KNOWN: wrapped-joint hardware isn't instanced (only free hubs + pipes are), so
+  `trex-wrapped` draws ~1.3k plain meshes and is heavy in sim — instancing the wrap loop/arrow is a
+  follow-up (its per-joint swept curve is harder to instance than a sphere).
 - **CrashCat integration pass — debug renderer, mathcat hot path, perf levers** (v0.1.9).
   Pulled three things from the CrashCat package after reviewing its README/examples:
   1. **`crashcat/three` debug renderer** (`ui/scene/PhysicsDebug.tsx`) — draws the live physics

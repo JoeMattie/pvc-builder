@@ -147,22 +147,88 @@ const nodes = positions.map((p, i) => ({
     z: round((p[2] - cz) * scale),
   },
 }));
-const members = edges.map((e, i) => {
+const rawMembers = edges.map((e, i) => {
   const [u, v] = e.split('-');
   return { id: `m${i}`, kind: 'straight', nodeA: `n${u}`, nodeB: `n${v}`, size: '1/2"' };
 });
 
-// pipe length in app space, for picking the longest incident pipe as the hub's
+// ── PRUNE substantially-overlapping pipes. The tris→quads wireframe leaves some
+// edges that lie almost on top of a longer edge (a vertex sitting on another
+// edge, near-collinear duplicates) — they render as two pipes fused into one.
+// Drop the SHORTER of any near-collinear pair whose shorter member is mostly
+// buried along the longer (within ~one OD perpendicular, ≥ OVERLAP_FRAC covered).
+const PERP_TOL = 0.012; // metres (~one 1/2" OD): lines closer than this are "the same line"
+const OVERLAP_FRAC = 0.5; // ≥50% of the shorter buried in the longer → overlap
+const dsub = (a, b) => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
+const ddot = (a, b) => a.x * b.x + a.y * b.y + a.z * b.z;
+const dlen = (a) => Math.hypot(a.x, a.y, a.z);
+const rawPosOf = (nid) => nodes[Number(nid.slice(1))].position;
+const rawLen = (m) => dlen(dsub(rawPosOf(m.nodeA), rawPosOf(m.nodeB)));
+/** does segment j (b1→b2) overlap segment i (a1→a2) substantially? (i is longer) */
+function overlapsSubstantially(a1, a2, b1, b2) {
+  const di = dsub(a2, a1);
+  const Li = dlen(di);
+  if (Li < 1e-6) return false;
+  const u = { x: di.x / Li, y: di.y / Li, z: di.z / Li };
+  const along = (p) => {
+    const w = dsub(p, a1);
+    const t = ddot(w, u);
+    const proj = { x: a1.x + u.x * t, y: a1.y + u.y * t, z: a1.z + u.z * t };
+    return { t, perp: dlen(dsub(p, proj)) };
+  };
+  const p1 = along(b1);
+  const p2 = along(b2);
+  if (p1.perp > PERP_TOL || p2.perp > PERP_TOL) return false; // not collinear + close
+  const lo = Math.max(0, Math.min(p1.t, p2.t));
+  const hi = Math.min(Li, Math.max(p1.t, p2.t));
+  const overlap = Math.max(0, hi - lo);
+  const Lj = Math.abs(p1.t - p2.t); // projected length of j
+  return Lj > 1e-6 && overlap / Lj >= OVERLAP_FRAC;
+}
+// keep longest first; a member is dropped if it overlaps one already kept
+const kept = [];
+for (const m of [...rawMembers].sort((a, b) => rawLen(b) - rawLen(a))) {
+  const a1 = rawPosOf(m.nodeA);
+  const a2 = rawPosOf(m.nodeB);
+  const overlapping = kept.some((k) =>
+    overlapsSubstantially(rawPosOf(k.nodeA), rawPosOf(k.nodeB), a1, a2),
+  );
+  if (!overlapping) kept.push(m);
+}
+const prunedCount = rawMembers.length - kept.length;
+
+// re-index nodes (drop those left orphaned by pruning) + members
+const usedNodeIds = new Set();
+for (const m of kept) {
+  usedNodeIds.add(m.nodeA);
+  usedNodeIds.add(m.nodeB);
+}
+const nodeIdMap = new Map();
+const finalNodes = [];
+for (const n of nodes) {
+  if (!usedNodeIds.has(n.id)) continue;
+  const id = `n${finalNodes.length}`;
+  nodeIdMap.set(n.id, id);
+  finalNodes.push({ id, position: n.position });
+}
+const members = kept.map((m, i) => ({
+  id: `m${i}`,
+  kind: 'straight',
+  nodeA: nodeIdMap.get(m.nodeA),
+  nodeB: nodeIdMap.get(m.nodeB),
+  size: '1/2"',
+}));
+
+// pipe length in app space, for picking the longest incident pipe as a hub's
 // common receiver
-const posOf = (nid) => nodes[Number(nid.slice(1))].position;
+const posOf = (nid) => finalNodes[Number(nid.slice(1))].position;
 const lenOf = (m) => {
   const a = posOf(m.nodeA);
   const b = posOf(m.nodeB);
   return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 };
 
-// FREE ball hub at every node: the longest incident pipe is the common receiver,
-// every OTHER incident pipe gets a free joint to it (see makeFreeHub / DECISIONS).
+// incident members per node, and each hub's common receiver (its longest pipe)
 const incident = new Map(); // nodeId → memberIds
 for (const m of members)
   for (const n of [m.nodeA, m.nodeB]) {
@@ -170,16 +236,42 @@ for (const m of members)
     if (l) l.push(m.id);
     else incident.set(n, [m.id]);
   }
-const joints = [];
+const receiverOf = (memberIds) =>
+  [...memberIds].sort((a, b) => lenOf(members[Number(b.slice(1))]) - lenOf(members[Number(a.slice(1))]))[0];
+
+// FREE ball hub at every node: every OTHER incident pipe gets a free joint to the
+// receiver (see makeFreeHub / DECISIONS).
+const freeJoints = [];
 let jc = 0;
 for (const [nodeId, memberIds] of incident) {
   if (memberIds.length < 2) continue;
-  const receiver = [...memberIds].sort(
-    (a, b) => lenOf(members[Number(b.slice(1))]) - lenOf(members[Number(a.slice(1))]),
-  )[0];
+  const receiver = receiverOf(memberIds);
+  for (const mover of memberIds)
+    if (mover !== receiver)
+      freeJoints.push({ id: `jt${jc++}`, nodeId, receiver, mover, onBody: false, mode: 'free' });
+}
+
+// RANDOM non-pinned WRAPPED connectors: a seeded coin-flip per non-receiver
+// incident pipe decides whether it's a wrapped pivot (swivels about the receiver,
+// NOT pinned) or left rigid (no joint = welded). Seeded PRNG → reproducible bake.
+const mulberry32 = (seed) => () => {
+  seed |= 0;
+  seed = (seed + 0x6d2b79f5) | 0;
+  let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+};
+const WRAP_PROB = 0.5;
+const wrappedJoints = [];
+let wc = 0;
+const rng = mulberry32(0x7be51ce5);
+for (const [nodeId, memberIds] of incident) {
+  if (memberIds.length < 2) continue;
+  const receiver = receiverOf(memberIds);
   for (const mover of memberIds) {
     if (mover === receiver) continue;
-    joints.push({ id: `jt${jc++}`, nodeId, receiver, mover, onBody: false, mode: 'free' });
+    if (rng() < WRAP_PROB)
+      wrappedJoints.push({ id: `jt${wc++}`, nodeId, receiver, mover, onBody: false, mode: 'wrapped' });
   }
 }
 
@@ -187,24 +279,28 @@ const base = {
   unitsPreference: 'metric',
   enabledSizes: ['1/2"'],
   lengthsLocked: false,
-  nodes,
+  nodes: finalNodes,
   members,
 };
 
 // rigid: schema 1 (no joints) — runs the migration chain on load
-const rigid = {
-  schemaVersion: 1,
-  id: 'trex-rigid',
-  name: 'T-rex (rigid)',
-  ...base,
-};
+const rigid = { schemaVersion: 1, id: 'trex-rigid', name: 'T-rex (rigid)', ...base };
 // pivots: schema 6 with a free hub at every node
 const pivots = {
   schemaVersion: 6,
   id: 'trex-pivots',
   name: 'T-rex (universal pivots)',
   ...base,
-  joints,
+  joints: freeJoints,
+  measurements: [],
+};
+// wrapped: schema 6 with a random subset of connections as wrapped (swivel) pivots
+const wrapped = {
+  schemaVersion: 6,
+  id: 'trex-wrapped',
+  name: 'T-rex (random wrapped)',
+  ...base,
+  joints: wrappedJoints,
   measurements: [],
 };
 
@@ -214,8 +310,10 @@ const write = (name, design) => {
 };
 write('trex-rigid', rigid);
 write('trex-pivots', pivots);
+write('trex-wrapped', wrapped);
 console.log(
-  `tris ${tris.length} → verts ${nodes.length}, members ${members.length} ` +
-    `(dropped ${dropped.size} tri diagonals), free-hub joints ${joints.length}`,
+  `tris ${tris.length} → verts ${finalNodes.length}, members ${members.length} ` +
+    `(dropped ${dropped.size} tri diagonals, pruned ${prunedCount} overlapping), ` +
+    `free joints ${freeJoints.length}, wrapped joints ${wrappedJoints.length}`,
 );
 console.log('app-space span (m):', span.map((s) => round(s * scale)));

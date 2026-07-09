@@ -12,19 +12,27 @@ describe('bundled examples', () => {
     }
   });
 
-  it('the T-rex examples share one full-detail quad wireframe', () => {
+  it('the T-rex examples share one pruned quad wireframe', () => {
     const rigid = EXAMPLES.find((e) => e.id === 'trex-rigid')!.load();
     const pivots = EXAMPLES.find((e) => e.id === 'trex-pivots')!.load();
-    // tris→quads keeps every welded vertex (262) and stays well above the old
-    // over-decimated 145-pipe cut; both variants share the same wireframe
+    const wrapped = EXAMPLES.find((e) => e.id === 'trex-wrapped')!.load();
+    // tris→quads keeps every welded vertex (262), then substantially-overlapping
+    // pipes are pruned (541 → 520); all three variants share that wireframe
     expect(rigid.nodes.length).toBe(262);
-    expect(rigid.members.length).toBe(541);
+    expect(rigid.members.length).toBe(520);
     expect(rigid.joints).toHaveLength(0); // rigid: default couplings/conflicts
-    expect(pivots.nodes.length).toBe(rigid.nodes.length);
-    expect(pivots.members.length).toBe(rigid.members.length);
+    for (const v of [pivots, wrapped]) {
+      expect(v.nodes.length).toBe(rigid.nodes.length);
+      expect(v.members.length).toBe(rigid.members.length);
+    }
     // a free ball hub at every node with ≥2 incident pipes
     expect(pivots.joints.every((j) => j.mode === 'free' && !j.onBody)).toBe(true);
     expect(pivots.joints.length).toBeGreaterThan(500);
+    // wrapped: a random subset of non-pinned (swivel) connectors — fewer than the
+    // full free set, all mode 'wrapped'
+    expect(wrapped.joints.every((j) => j.mode === 'wrapped' && !j.onBody)).toBe(true);
+    expect(wrapped.joints.length).toBeGreaterThan(0);
+    expect(wrapped.joints.length).toBeLessThan(pivots.joints.length);
   });
 
   it('the rigid T-rex produces a cut list (BOM stays pure on a large mesh)', () => {
