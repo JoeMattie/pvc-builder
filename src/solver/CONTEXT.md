@@ -12,11 +12,12 @@ There is **no `crashcat/` subdirectory** — `crashcat` is the npm package `cras
 |---|---|---|
 | `index.ts` (82) | The `solve()` façade (§5) | `solve(design, inputs: SolveInputs, mode: 'pose'): SolveResult`, `SolveMode`, `SolveInputs`, `SolveResult` |
 | `kinematics.ts` (643) | Deterministic FK + IK behind the boundary | `solvePose(design, inputs): PoseResult`, `Transform`, `PoseResult` (everything else module-private) |
-| `physics.ts` (367) | CrashCat rigid-body sim for Play mode (**outside** solve()) | `startPhysics`, `stopPhysics`, `stepPhysics(dt)`, `physicsActive`, `physicsNodePositions`, `physicsTopoHash`, `simGroundY`, `lowestExtentM` |
+| `physics.ts` | CrashCat rigid-body sim for Play mode (**outside** solve()) | `startPhysics`, `stopPhysics`, `stepPhysics(dt)`, `physicsActive`, `physicsWorld` (debug renderer), `physicsNodePositions`, `physicsTopoHash`, `simGroundY`, `lowestExtentM`, `PHYSICS_SCALE`, `setPhysicsPrecision`, `setPhysicsTuning` |
 
 ## Depends on
 `index.ts` → `../schema` (types only), `./kinematics`. `kinematics.ts` → `../geometry/math3`,
-`../schema`. `physics.ts` → `crashcat`, `../geometry/math3`, `../schema`.
+`../schema`. `physics.ts` → `crashcat`, `crashcat/three` (debug renderer, via `ui/scene/PhysicsDebug`),
+`mathcat` (allocation-free `physicsNodePositions` hot path), `../geometry/math3`, `../schema`.
 
 ## What solve() actually does
 - **Unlocked (`lengthsLocked:false`) is NOT physics** — returns node positions verbatim (identity).

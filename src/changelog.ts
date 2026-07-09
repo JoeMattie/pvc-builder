@@ -11,6 +11,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.1.9',
+    date: '2026-07-08',
+    changes: [
+      'Physics debug overlay (bug icon while simulating): see the rigid bodies and joint constraints from CrashCat',
+      'Leaner physics read path and tunable solver iterations for faster simulation',
+    ],
+  },
+  {
     version: '0.1.8',
     date: '2026-07-08',
     changes: ['Main page shows a “Built with” panel listing the technology stack'],

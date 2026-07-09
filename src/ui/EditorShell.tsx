@@ -1,5 +1,6 @@
 import {
   Box,
+  Bug,
   ChevronLeft,
   ClipboardList,
   FileDown,
@@ -22,7 +23,7 @@ import { intersectingMembers } from '../design/intersections';
 import { exportDesignJson, suggestedFileName } from '../persistence/exportImport';
 import type { Vec3 } from '../schema';
 import { solve } from '../solver';
-import { physicsNodePositions } from '../solver/physics';
+import { physicsNodePositions, setPhysicsPrecision, setPhysicsTuning } from '../solver/physics';
 import { useAppStore } from '../state/appStore';
 import { requestPose, resetPose, setView, type ViewName } from '../state/cameraStore';
 import {
@@ -135,6 +136,8 @@ export function EditorShell() {
   const drawSize = useEditorStore((s) => s.drawSize);
   const simulating = useEditorStore((s) => s.simulating);
   const setSimulating = useEditorStore((s) => s.setSimulating);
+  const physicsDebug = useEditorStore((s) => s.physicsDebug);
+  const setPhysicsDebug = useEditorStore((s) => s.setPhysicsDebug);
 
   // Restore doc-stored view + tool state on open (schema v6 `viewport`), and
   // reset transient state — so a document opens exactly as it was saved and does
@@ -436,7 +439,16 @@ export function EditorShell() {
     hook.importJson = (text: string) => useAppStore.getState().importAndOpen(text);
     // physics seams
     hook.setSimulating = (on: boolean) => useEditorStore.getState().setSimulating(on);
+    hook.setPhysicsDebug = (on: boolean) => useEditorStore.getState().setPhysicsDebug(on);
     hook.getPhysics = () => physicsNodePositions();
+    // perf-lever A/B seams (set BEFORE simulating — baked at world build)
+    hook.setPhysicsPrecision = (o: { substeps?: boolean; ccd?: boolean; vcap?: boolean }) =>
+      setPhysicsPrecision(o);
+    hook.setPhysicsTuning = (o: {
+      velocityIterations?: number;
+      positionIterations?: number;
+      allowSleeping?: boolean;
+    }) => setPhysicsTuning(o);
   }, []);
 
   if (!hasDesign) return null;
@@ -542,6 +554,22 @@ export function EditorShell() {
           {simulating ? <Square size={13} /> : <Play size={13} />}
           {simulating ? 'Stop' : 'Play'}
         </button>
+        {/* physics debug overlay — only while simulating (crashcat/three) */}
+        {simulating && (
+          <button
+            type="button"
+            onClick={() => setPhysicsDebug(!physicsDebug)}
+            aria-pressed={physicsDebug}
+            title="Toggle physics debug overlay (bodies + constraints)"
+            className={`flex items-center rounded-md px-2 py-1.5 ${
+              physicsDebug
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+            }`}
+          >
+            <Bug size={13} />
+          </button>
+        )}
         <div className="mx-0.5 h-5 w-px bg-border" />
         <button
           type="button"

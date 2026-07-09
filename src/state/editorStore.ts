@@ -85,6 +85,8 @@ export interface EditorState {
   drawDirection: Vec3 | null;
   /** running the CrashCat rigid-body simulation (Play mode) */
   simulating: boolean;
+  /** dev overlay: draw the physics world (bodies + constraints) via crashcat/three */
+  physicsDebug: boolean;
   /** the in-progress rubber-band selection rectangle (screen/client px), or null */
   marquee: { x0: number; y0: number; x1: number; y1: number } | null;
   /** an open right-click join menu: the pipe end being edited + screen anchor */
@@ -111,6 +113,7 @@ export interface EditorState {
   setDrawLength(s: string): void;
   setDrawDirection(v: Vec3 | null): void;
   setSimulating(on: boolean): void;
+  setPhysicsDebug(on: boolean): void;
   setMarquee(m: { x0: number; y0: number; x1: number; y1: number } | null): void;
   openJoinMenu(menu: { nodeId: string; moverId: string; x: number; y: number }): void;
   closeJoinMenu(): void;
@@ -138,6 +141,7 @@ const INITIAL = {
   drawLength: '',
   drawDirection: null as Vec3 | null,
   simulating: false,
+  physicsDebug: false,
   marquee: null as { x0: number; y0: number; x1: number; y1: number } | null,
   joinMenu: null as { nodeId: string; moverId: string; x: number; y: number } | null,
   sizeMenu: null as { memberIds: string[]; x: number; y: number } | null,
@@ -210,6 +214,9 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   setSimulating(on) {
     // leaving a drawing tool / selection isn't needed; just toggle the sim
     set({ simulating: on });
+  },
+  setPhysicsDebug(on) {
+    set({ physicsDebug: on });
   },
   setMarquee(m) {
     set({ marquee: m });

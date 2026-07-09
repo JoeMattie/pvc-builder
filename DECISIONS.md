@@ -6,6 +6,30 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 
 ## Post-batch fixes (2026-07-08)
 
+- **CrashCat integration pass — debug renderer, mathcat hot path, perf levers** (v0.1.9).
+  Pulled three things from the CrashCat package after reviewing its README/examples:
+  1. **`crashcat/three` debug renderer** (`ui/scene/PhysicsDebug.tsx`) — draws the live physics
+     world (bodies wireframe + pivot/weld CONSTRAINTS with limits, batched) behind a `physicsDebug`
+     toggle (Bug button, shown only while simulating; `__pvc.setPhysicsDebug`). The sim runs in a
+     ×`PHYSICS_SCALE` space, so the overlay group is scaled by `1/PHYSICS_SCALE` to line up with the
+     pipes. Needs the `World` on the main thread — see the worker note below. New exports:
+     `physicsWorld()`, `PHYSICS_SCALE`.
+  2. **`mathcat` inside the physics boundary only.** CrashCat depends on mathcat (already in the
+     tree) and returns `body.position/quaternion` as mathcat tuples. Rewrote the per-frame
+     `physicsNodePositions()` hot path to compute `pos + quat⊗local` with a reused mathcat scratch
+     (`nodeSource.local` now a tuple) — allocation-free, reads CrashCat's native tuples with no
+     wrapping. Measured read cost: ~0.05 ms/frame on the 262-node T-rex. NOT swapped app-wide: the
+     Zod domain model is `{x,y,z}` objects; mathcat is `[x,y,z]` tuples — a whole-app swap isn't
+     worth it. `build()` stays on `math3` (one-time, not hot).
+  3. **Perf levers** (`setPhysicsTuning`: `velocityIterations`/`positionIterations`/`allowSleeping`;
+     `__pvc.setPhysicsTuning` + exposed `setPhysicsPrecision`). Defaults MATCH CrashCat's (10/2,
+     sleeping on) → no behaviour change; exposed for manual A/B like the CCD flags. Measured on
+     trex-pivots: step **10.2 ms @ velIter 10 → 8.0 ms @ 6** (~22%), diminishing below 6 (7.4 ms @ 2);
+     the ~7.4 ms floor is collision/broadphase, not velocity iterations. Sleeping helps settled
+     scenes only (articulated hubs never rest). **Web Worker deferred** — the rendering fix (v0.1.7)
+     removed the primary bottleneck, physics is now ~10 ms (secondary), and a worker would DISABLE the
+     main-thread debug renderer just added + add latency/rebuild complexity; revisit if physics
+     becomes the ceiling. (Item #4, castRay physics picking, intentionally skipped.)
 - **Instanced rendering + imperative per-frame updates** (v0.1.7). Dense articulated models were
   render-bound: the T-rex universal-pivots example drew ~3,064 separate meshes (541 pipes + a ball,
   eye bolt, and cord per hub) and re-reconciled the whole React tree every animation frame (all

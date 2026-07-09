@@ -45,6 +45,7 @@ import { InstancedFreeHubs } from './InstancedFreeHubs';
 import { IntersectionLayer } from './IntersectionLayer';
 import { JointLayer } from './JointLayer';
 import { MeasureLayer } from './MeasureLayer';
+import { PhysicsDebug } from './PhysicsDebug';
 import { PipeLayer } from './PipeLayer';
 import { MoveGizmo, RotateGizmo, SelectionHandles } from './SelectionHandles';
 
@@ -167,6 +168,7 @@ export function Scene() {
       </GizmoHelper>
 
       <GeometryAnimator />
+      <PhysicsDebug />
       <VelocityZoom />
       <DebugBridge />
     </>

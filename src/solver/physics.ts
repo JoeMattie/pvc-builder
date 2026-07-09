@@ -31,6 +31,7 @@ import {
   updateWorld,
   type World,
 } from 'crashcat';
+import { vec3 } from 'mathcat';
 import { add, cross, dot, length, normalize, rotate, scale, sub } from '../geometry/math3';
 import { type Design, pipeSpec, type Quaternion, type Vec3 } from '../schema';
 
@@ -42,6 +43,9 @@ const DENSITY = 1400; // PVC ≈ 1400 kg/m³
 // (with gravity scaled to match) and divide positions back, so the geometry is
 // engine-friendly and the motion still reads at real speed.
 const SCALE = 20;
+/** The sim's coordinate scale (positions/sizes/gravity are all ×SCALE). Exposed
+ * so the crashcat/three debug renderer can be scaled back to metre space. */
+export const PHYSICS_SCALE = SCALE;
 const PIVOT_FRICTION_TORQUE = 40; // scaled N·m — light resistance, swings under load
 // Friction resisting a wrapped pivot SLIDING along the pipe it wraps (scaled N).
 // A clamped collar grips the pipe, so it mostly stays put but slides under load /
@@ -73,6 +77,25 @@ export function setPhysicsPrecision(o: {
   if (o.ccd !== undefined) useCcd = o.ccd;
   if (o.vcap !== undefined) useVcap = o.vcap;
 }
+// ── Perf levers (solver iterations + sleeping). Defaults MATCH crashcat's, so
+// nothing changes unless tuned; exposed for A/B measurement via __pvc, like the
+// precision flags. Applied at world build → set BEFORE startPhysics. Fewer solver
+// iterations = cheaper step, less accurate constraints (joints drift/sag);
+// velocityIterations must stay ≥2 for friction. Sleeping skips resting bodies
+// (helps settled scenes; articulated models that never rest gain little).
+let velocityIterations = 10;
+let positionIterations = 2;
+let allowSleeping = true;
+export function setPhysicsTuning(o: {
+  velocityIterations?: number;
+  positionIterations?: number;
+  allowSleeping?: boolean;
+}): void {
+  if (o.velocityIterations !== undefined) velocityIterations = Math.max(2, o.velocityIterations);
+  if (o.positionIterations !== undefined) positionIterations = Math.max(1, o.positionIterations);
+  if (o.allowSleeping !== undefined) allowSleeping = o.allowSleeping;
+}
+
 // The physics floor sits this far below the lowest object at sim start, so
 // nothing begins penetrating the ground (which otherwise erupts on the 1st step).
 const GROUND_CLEARANCE_M = 0.003;
@@ -100,8 +123,9 @@ const conj = (q: Quaternion): Quaternion => ({ x: -q.x, y: -q.y, z: -q.z, w: q.w
 interface Sim {
   world: World;
   bodyOfMember: Map<string, number>;
-  /** per node: an incident member body + the node's offset in that body's frame */
-  nodeSource: Map<string, { memberId: string; local: Vec3 }>;
+  /** per node: an incident member body + the node's offset in that body's frame
+   * (a mathcat tuple, so the per-frame read path stays allocation-free) */
+  nodeSource: Map<string, { memberId: string; local: [number, number, number] }>;
   topoHash: string;
 }
 
@@ -157,6 +181,10 @@ function build(design: Design): Sim {
   registerAll();
   const settings = createWorldSettings();
   settings.gravity = [0, -GRAVITY * SCALE, 0];
+  // perf levers (see setPhysicsTuning) — default to crashcat's own defaults
+  settings.solver.velocityIterations = velocityIterations;
+  settings.solver.positionIterations = positionIterations;
+  settings.sleeping.allowSleeping = allowSleeping;
   const bpMoving = addBroadphaseLayer(settings);
   const bpStatic = addBroadphaseLayer(settings);
   const olMoving = addObjectLayer(settings, bpMoving);
@@ -181,7 +209,7 @@ function build(design: Design): Sim {
   });
 
   const bodyOfMember = new Map<string, number>();
-  const nodeSource = new Map<string, { memberId: string; local: Vec3 }>();
+  const nodeSource = new Map<string, { memberId: string; local: [number, number, number] }>();
   const nodePos = new Map(design.nodes.map((n) => [n.id, n.position]));
   const memberById = new Map(design.members.map((m) => [m.id, m]));
 
@@ -309,7 +337,8 @@ function build(design: Design): Sim {
         const np = nodePos.get(nid);
         if (!np) continue;
         const worldOff = sub(scale(np, SCALE), bodyPosV);
-        nodeSource.set(nid, { memberId: s.id, local: rotate(qc, worldOff) });
+        const l = rotate(qc, worldOff);
+        nodeSource.set(nid, { memberId: s.id, local: [l.x, l.y, l.z] });
       }
     }
   }
@@ -375,6 +404,10 @@ export function stopPhysics(): void {
 export function physicsActive(): boolean {
   return sim !== null;
 }
+/** The live crashcat world (or null) — for the crashcat/three debug renderer. */
+export function physicsWorld(): World | null {
+  return sim?.world ?? null;
+}
 export function activeTopoHash(): string {
   return sim?.topoHash ?? '';
 }
@@ -396,7 +429,12 @@ export function stepPhysics(dt: number): void {
   }
 }
 
-/** Current world node positions from the simulated bodies. */
+/** Current world node positions from the simulated bodies. Hot path (runs every
+ * sim frame): crashcat returns body.position/quaternion as mathcat tuples, so we
+ * compute `body.position + body.quaternion ⊗ local` with reused mathcat scratch —
+ * no per-node object wrapping/intermediate allocation, only the emitted metre-
+ * space Vec3. */
+const _scratch = vec3.create();
 export function physicsNodePositions(): Record<string, Vec3> {
   const out: Record<string, Vec3> = {};
   if (!sim) return out;
@@ -405,14 +443,10 @@ export function physicsNodePositions(): Record<string, Vec3> {
     if (id === undefined) continue;
     const body = rigidBody.get(sim.world, id);
     if (!body) continue;
-    const p = body.position;
-    const q = body.quaternion;
-    // body + rotated local offset are in SCALED space → divide back to metres
-    const scaled = add(
-      { x: p[0], y: p[1], z: p[2] },
-      rotate({ x: q[0], y: q[1], z: q[2], w: q[3] }, src.local),
-    );
-    out[nodeId] = scale(scaled, 1 / SCALE);
+    // scaled space (÷SCALE back to metres)
+    vec3.transformQuat(_scratch, src.local, body.quaternion);
+    vec3.add(_scratch, _scratch, body.position);
+    out[nodeId] = { x: _scratch[0] / SCALE, y: _scratch[1] / SCALE, z: _scratch[2] / SCALE };
   }
   return out;
 }
