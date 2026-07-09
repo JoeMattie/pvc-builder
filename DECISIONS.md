@@ -6,6 +6,12 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 
 ## Post-batch fixes (2026-07-08)
 
+- **Length arrows resize along the pipe AXIS, not the ground** (bug: the yellow length arrows
+  worked on horizontal X/Z pipes but not vertical Y ones, and could run backwards — regardless of
+  camera). Root cause: `LengthArrow` rode a `rayToGround` (y=0) projection, which can't capture
+  motion along Y. Fix: project the picking ray onto the pipe's **axis line** via
+  `closestAxisPointToRay` (the same trick the move-gizmo arrows use) for both the grab capture and
+  the drag — works for any orientation. Verified: a vertical pipe grows/shrinks via its arrow.
 - **Snap onto pipes/nodes at ANY height — SCREEN-SPACE** (bugs: drawing on/between the Cube Frame's
   elevated top pipes snapped both ends to the ground + jittered; dragging an endpoint onto a pipe
   "usually" didn't tee). Root cause: snapping was resolved from a **ground/view-plane raycast

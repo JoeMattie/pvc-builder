@@ -290,8 +290,21 @@ function LengthArrow({
   // captured at grab: pipe length + the cursor's axis projection, so the
   // outward-offset arrow head doesn't jump the length on the first move
   const grab = useRef<{ startLenM: number; grabProj: number }>({ startLenM: 0, grabProj: 0 });
-  const { start, dragging } = useGroundDrag((g) =>
-    dragMemberEndLength(movingNodeId, fixed.current, dir.current, g, grab.current),
+  // Resize rides the pipe's AXIS LINE, not the y=0 ground — so it works for a
+  // vertical (Y) pipe and never inverts at an off-plane view (a ground raycast
+  // can't capture motion along Y). Same closest-point-on-axis trick the move
+  // gizmo's arrows use.
+  const { start, dragging } = useGroundDrag(
+    (g) => dragMemberEndLength(movingNodeId, fixed.current, dir.current, g, grab.current),
+    {
+      project: (ray) =>
+        closestAxisPointToRay(
+          fixed.current,
+          dir.current,
+          { x: ray.origin.x, y: ray.origin.y, z: ray.origin.z },
+          { x: ray.direction.x, y: ray.direction.y, z: ray.direction.z },
+        ),
+    },
   );
 
   const outward = normalize(sub(movingPos, fixedPos));
@@ -313,11 +326,15 @@ function LengthArrow({
         onPointerDown={(e) => {
           fixed.current = fixedPos;
           dir.current = outward;
-          const g = rayToGround(e.ray);
-          grab.current = {
-            startLenM: segLen,
-            grabProj: g ? dot(sub(g, fixedPos), outward) : segLen,
-          };
+          // capture the grab's axial position from the SAME axis projection the
+          // drag uses, so the first move doesn't jump
+          const g = closestAxisPointToRay(
+            fixedPos,
+            outward,
+            { x: e.ray.origin.x, y: e.ray.origin.y, z: e.ray.origin.z },
+            { x: e.ray.direction.x, y: e.ray.direction.y, z: e.ray.direction.z },
+          );
+          grab.current = { startLenM: segLen, grabProj: dot(sub(g, fixedPos), outward) };
           start(e);
         }}
       >
