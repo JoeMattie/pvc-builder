@@ -11,6 +11,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.1.19',
+    date: '2026-07-09',
+    changes: [
+      'Project Raptor templates (2 of 2): the full five-phase set — “Raptor · + legs”, “+ neck”, and the balance-tuned “Raptor · full costume” (head + jaw). Load any of them, enable the mannequin, and press Play: the costume hangs on the wearer with the tail counterbalancing the neck+head so it settles roughly level.',
+      'Each phase builds on the last (harness frame → tail → legs → neck → head), with wrapped/free flex joints and elastic suspension bands. Pose them freely by dragging in the editor; tune the settle with the Damping slider in Play.',
+    ],
+  },
+  {
     version: '0.1.18',
     date: '2026-07-09',
     changes: [

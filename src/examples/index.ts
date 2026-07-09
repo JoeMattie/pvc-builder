@@ -1,5 +1,8 @@
 import { type Design, migrateToLatest } from '../schema';
 import { articulatedArm, cubeFrame } from './generators';
+import raptorHead from './raptor-head.json';
+import raptorLegs from './raptor-legs.json';
+import raptorNeck from './raptor-neck.json';
 import raptorTail from './raptor-tail.json';
 import raptorTorso from './raptor-torso.json';
 import trexPivots from './trex-pivots.json';
@@ -42,6 +45,24 @@ export const EXAMPLES: Example[] = [
     description:
       'Phase 2 — adds a segmented counterweight tail with wrapped flex joints + elastics',
     load: () => migrateToLatest(raptorTail),
+  },
+  {
+    id: 'raptor-legs',
+    name: 'Raptor · + legs',
+    description: 'Phase 3 — adds two decorative digitigrade legs hung at the hips',
+    load: () => migrateToLatest(raptorLegs),
+  },
+  {
+    id: 'raptor-neck',
+    name: 'Raptor · + neck',
+    description: 'Phase 4 — adds a forward neck (front counterweight) with head-up elastics + arms',
+    load: () => migrateToLatest(raptorNeck),
+  },
+  {
+    id: 'raptor-head',
+    name: 'Raptor · full costume',
+    description: 'Phase 5 — the balance-tuned raptor: head + jaw; hangs ~level on the mannequin',
+    load: () => migrateToLatest(raptorHead),
   },
   {
     id: 'trex-rigid',

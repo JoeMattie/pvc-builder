@@ -256,3 +256,122 @@ export function posOf(R, id) {
   const p = R.nodes[+id.slice(1)].position;
   return [p.x, p.y, p.z];
 }
+
+/** first existing member id incident to a node (used to find a rail segment as a
+ * joint receiver) */
+function incidentMember(R, nodeId) {
+  const m = R.members.find((m) => m.nodeA === nodeId || m.nodeB === nodeId);
+  return m ? m.id : null;
+}
+
+/**
+ * PHASE 3 — two decorative digitigrade legs (thigh / shin / foot) hung at the
+ * hips beside the wearer, OUTBOARD of the mannequin's own legs (x=±0.30). Not
+ * load-bearing. `wrapped` hinges at hip / knee / ankle (about each receiver's
+ * axis) hold the drawn reverse-knee pose under gravity while staying poseable;
+ * light elastics act as the heel-lift / toe-hold returns. The legs sit near the
+ * hip line (z≈0), so their net moment about the seesaw is ~zero.
+ */
+export function buildLegs(R, mounts) {
+  const { LH, RH } = mounts;
+  const out = { ...mounts, legs: [] };
+  for (const [hip, s] of [
+    [LH, -1],
+    [RH, 1],
+  ]) {
+    const railRecv = incidentMember(R, hip); // a waist-rail segment at the hip
+    const K = R.n(s * 0.3, 0.55, -0.12); // knee (forward)
+    const Ank = R.n(s * 0.3, 0.18, 0.03); // ankle (back — digitigrade)
+    const Toe = R.n(s * 0.3, 0.06, -0.18); // paw/toe (forward)
+    const thigh = R.straight(hip, K, HALF);
+    const shin = R.straight(K, Ank, HALF);
+    const foot = R.straight(Ank, Toe, HALF);
+    // hip abducts about the waist rail; knee + ankle hinge about their own segment
+    R.joint(hip, railRecv, thigh, 'wrapped', { angleRad: 0 });
+    R.joint(K, thigh, shin, 'wrapped', { angleRad: 0 });
+    R.joint(Ank, shin, foot, 'wrapped', { angleRad: 0 });
+    // returns: heel lift (hip→paw) + toe hold (knee→paw), lightly pre-tensioned
+    R.elastic({ nodeId: hip }, { nodeId: Toe }, dist(posOf(R, hip), posOf(R, Toe)) * 0.9, 120);
+    R.elastic({ nodeId: K }, { nodeId: Toe }, dist(posOf(R, K), posOf(R, Toe)) * 0.9, 90);
+    out.legs.push({ hip, K, Ank, Toe });
+  }
+  return out;
+}
+
+/**
+ * PHASE 4 — the segmented NECK cantilevered forward (−z) from the front rail, the
+ * FRONT counterweight to the tail. A welded root (the conduit-box mount) gives a
+ * clean forward moment, with two `wrapped` flex joints beyond it (the neck holds
+ * its extended forward shape under gravity, like the tail) and elastic "head-up"
+ * bands from the front mast to the head end (the green-elastic return in the
+ * sketches). Two loose ½" mini-arms hang off the conduit box on `free` joints.
+ * ¾" neck beam. Returns the head-base node the head mounts on.
+ */
+export function buildNeck(R, mounts) {
+  const { NR, FMT } = mounts;
+  // gentle rise, then near-horizontal along −z (segments ~parallel to the wrapped
+  // hinge axis, so the joints hold the extended forward reach instead of curling)
+  const N1 = R.n(0, 1.1, -0.85); // welded root tip (conduit box)
+  const N2 = R.n(0, 1.14, -1.15); // first flex
+  const HB = R.n(0, 1.15, -1.42); // head base
+
+  R.straight(NR, N1, TQ); // welded to the frame
+  const s1 = R.straight(N1, N2, TQ);
+  const s2 = R.straight(N2, HB, TQ);
+  R.joint(N1, R.members.find((m) => m.nodeA === NR && m.nodeB === N1).id, s1, 'wrapped', {
+    angleRad: 0,
+  });
+  R.joint(N2, s1, s2, 'wrapped', { angleRad: 0 });
+
+  // head-up return: front mast → the two forward neck nodes, lightly pre-tensioned
+  const up = (node, k) => {
+    R.elastic({ nodeId: FMT }, { nodeId: node }, dist(posOf(R, FMT), posOf(R, node)) * 0.9, k);
+  };
+  up(N2, 150);
+  up(HB, 170);
+
+  // two loose mini-arms off the conduit box (free ball joints — they just dangle)
+  for (const s of [-1, 1]) {
+    const shoulder = R.n(s * 0.12, 1.06, -0.78); // on the welded neck root region
+    R.straight(N1, shoulder, HALF); // stub welding the arm mount to the neck root
+    const hand = R.n(s * 0.2, 0.72, -0.72);
+    const arm = R.straight(shoulder, hand, HALF);
+    const stub = R.members.find((m) => m.nodeA === N1 && m.nodeB === shoulder).id;
+    R.joint(shoulder, stub, arm, 'free');
+  }
+
+  return { ...mounts, N1, N2, HB };
+}
+
+/**
+ * PHASE 5 — the HEAD: a compact skull welded to the neck head-base plus a lower
+ * jaw on a `wrapped` hinge (a short x-axis cross-pin as the receiver, so the jaw
+ * swings open in the z–y plane) with a sprung-closed elastic. The head is the
+ * heaviest front element, so the full raptor's tail must counter it — see the
+ * balance tuning in the generator/DECISIONS. ½" head. Returns nothing new needed.
+ */
+export function buildHead(R, mounts) {
+  const { HB } = mounts;
+  const ST = R.n(0, 1.25, -1.56); // skull crown
+  const Nose = R.n(0, 1.12, -1.82); // snout tip
+  const JP = R.n(0, 1.08, -1.52); // jaw pivot (cross-pin midpoint)
+  const JPL = R.n(-0.05, 1.08, -1.52);
+  const JPR = R.n(0.05, 1.08, -1.52);
+  const JT = R.n(0, 1.03, -1.78); // lower-jaw tip
+
+  // skull (all welded to the neck via HB)
+  R.straight(HB, ST, HALF);
+  R.straight(ST, Nose, HALF);
+  R.straight(HB, JP, HALF); // skull down to the jaw pivot
+  R.straight(Nose, JP, HALF); // snout underside back to the pivot (closes the skull)
+  // jaw cross-pin (x-axis), welded to the skull at JP
+  R.straight(JPL, JP, HALF);
+  const pin = R.straight(JP, JPR, HALF);
+  // lower jaw: wrapped hinge about the cross-pin → opens/closes in the z–y plane
+  const jaw = R.straight(JP, JT, HALF);
+  R.joint(JP, pin, jaw, 'wrapped', { angleRad: 0 });
+  // sprung-closed return: jaw tip → snout tip (holds the mouth shut at rest)
+  R.elastic({ nodeId: JT }, { nodeId: Nose }, dist(posOf(R, JT), posOf(R, Nose)) * 0.8, 140);
+
+  return { ...mounts, ST, Nose, JT };
+}

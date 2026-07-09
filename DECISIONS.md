@@ -6,6 +6,31 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 
 ## Post-batch fixes (2026-07-08)
 
+- **Project Raptor templates, phases 3–5 — the full balance-tuned costume** (v0.1.19). Added
+  `raptor-legs` (two decorative digitigrade legs on `wrapped` hip/knee/ankle hinges + heel/toe
+  elastics — hung near the hip line so they barely move the seesaw; their paws rest at the mannequin
+  foot by design, so a low node-Y there is expected, not a fall), `raptor-neck` (a forward `wrapped`
+  cantilever neck = the FRONT counterweight, with soft front-mast→head "head-up" elastics + two loose
+  `free` mini-arms), and `raptor-head` (the FULL raptor: skull + a `wrapped` jaw hinge on an x-axis
+  cross-pin + a sprung-closed elastic). **Balance result (headless, 700 frames):** the full costume
+  settles with the head end ≈1.01 m and the tail tip ≈0.93 m (Δ≈0.08 m) — hangs ~level — the frame
+  stays seated on the mannequin (platform y≈1.55) and positions stay finite/bounded. Balance is by
+  MASS counterweight (the ¾" tail base + ½" tip moment ≈ the ¾" neck + ½" head moment about the hip
+  line) plus elastics, NOT joint friction (per v0.1.17's caveat, friction is negligible vs gravity
+  torque within the damping range). **Tuning notes:** the neck was FLATTENED (segments near-parallel
+  to −z) and its head-up elastics SOFTENED (k 150–170) after a steep, strongly-sprung first version
+  curled the head up-and-back; `jointDamping` 2.5 on the cantilever phases (1.5 on the bare torso).
+  **Known-approximate (noted for the real build):** (a) the `wrapped` flex joints hold the extended
+  shape under gravity but articulate little IN-SIM because each segment is ~parallel to its own hinge
+  axis — genuine side-to-side tail/neck swing would need short VERTICAL receiver stubs at each joint
+  (a future refinement); the user can still pose freely by DRAGGING in the editor (unlocked mode moves
+  nodes directly). (b) The head/neck retracts ~0.6 m from its drawn reach as it settles (silhouette is
+  compressed but level). (c) No cable/tendon primitive, so all rope/Bowden syncs (head↔steer, jaw,
+  tail cross-cables) are omitted — only elastic RETURNS are modelled, per the brief. Full raptor:
+  42 nodes / 51 members / 13 joints / 9 elastics. `examples.test.ts` asserts the five phases load,
+  wear the mannequin, grow monotonically, and stay under the 800-member render cap; the throwaway
+  headless balance harness was deleted before shipping.
+
 - **Project Raptor templates, phases 1–2** (v0.1.18). Loadable example templates approximating Esmée
   Kramer's "Project Raptor" costume (see `docs/RAPTOR-BRIEF.md`), authored natively as PVC Builder
   docs (schema v9, `mannequin: true`, tuned `jointDamping`). Generators live in `scripts/gen-raptor-*.mjs`

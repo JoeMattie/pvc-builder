@@ -23,7 +23,7 @@ Durable state in **`persistence`**; samples in **`examples`**.
 | `src/solver/` | `solve()` boundary, closed-form kinematics, CrashCat physics subsystem | [CONTEXT](../src/solver/CONTEXT.md) |
 | `src/state/` | zustand stores (appStore/editorStore) + the ONE action layer + `__pvc` seams | [CONTEXT](../src/state/CONTEXT.md) |
 | `src/persistence/` | Dexie project store, autosave, JSON export/import, prefs | [CONTEXT](../src/persistence/CONTEXT.md) |
-| `src/examples/` | Bundled sample designs | [CONTEXT](../src/examples/CONTEXT.md) |
+| `src/examples/` | Bundled sample designs (incl. the five cumulative Project Raptor mannequin templates) | [CONTEXT](../src/examples/CONTEXT.md) |
 | `src/ui/` | React chrome — panels, toolbars, router, `window.__pvc`, units, theme | [CONTEXT](../src/ui/CONTEXT.md) |
 | `src/ui/scene/` | three.js / R3F rendering layer + pure mesh-builder CAD-swap seams | [CONTEXT](../src/ui/scene/CONTEXT.md) |
 
