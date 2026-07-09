@@ -161,6 +161,11 @@ export function PipeLayer() {
           const gp = { x: e.point.x, y: e.point.y, z: e.point.z };
           const t = len2 > 1e-9 ? Math.max(0, Math.min(1, dot(sub(gp, a), axis) / len2)) : 0.5;
           const grab = add(a, scale(axis, t));
+          // frozen reference for length-lock (nodeB moves each frame, so the
+          // axis + material length must be captured ONCE, here at gesture start)
+          const axisLen = Math.sqrt(len2);
+          const lengthRef =
+            axisLen > 1e-6 ? { axisDir: scale(axis, 1 / axisLen), lengthM: axisLen } : undefined;
           camera.getWorldDirection(fwd);
           const normal = dominantAxisNormal({ x: fwd.x, y: fwd.y, z: fwd.z });
           if (controls) controls.enabled = false;
@@ -174,7 +179,7 @@ export function PipeLayer() {
             );
             rc.setFromCamera(ndc, camera);
             const cur = rayToPlane(rc.ray, grab, normal);
-            if (cur) bendMemberAt(memberId, t, sub(cur, grab));
+            if (cur) bendMemberAt(memberId, t, sub(cur, grab), lengthRef);
           };
           const up = () => {
             window.removeEventListener('pointermove', move);

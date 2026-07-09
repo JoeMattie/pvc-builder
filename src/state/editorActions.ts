@@ -551,15 +551,28 @@ export function updateMeasureOffset(raw: Vec3): void {
 
 /** Bend a straight pipe into a curve (the Bend tool drag): pull the point at
  * parameter `t` by `perpOffset`. Uses the pipe's min heat-form radius as the
- * bend radius and the live "lock end angles" toggle. */
-export function bendMemberAt(memberId: string, t: number, perpOffset: Vec3): void {
+ * bend radius and the live "lock end angles" toggle. When the "lock length"
+ * toggle is on, `lengthRef` (the pipe's axis + length, captured at gesture
+ * start) makes the far end draw IN instead of the pipe growing. */
+export function bendMemberAt(
+  memberId: string,
+  t: number,
+  perpOffset: Vec3,
+  lengthRef?: { axisDir: Vec3; lengthM: number },
+): void {
   const design = useAppStore.getState().current;
   if (!design) return;
   const m = design.members.find((x) => x.id === memberId);
   const size = m?.size ?? '3/4"';
   const fillet = MIN_BEND_RADIUS_FACTOR * pipeSpec(size).odM;
-  const lockEndAngles = useEditorStore.getState().bendLockEndAngles;
-  updateReconciled((d) => bendMember(d, memberId, t, perpOffset, fillet, { lockEndAngles }));
+  const ed = useEditorStore.getState();
+  const lengthLock = ed.bendLengthLock && lengthRef ? lengthRef : undefined;
+  updateReconciled((d) =>
+    bendMember(d, memberId, t, perpOffset, fillet, {
+      lockEndAngles: ed.bendLockEndAngles,
+      lengthLock,
+    }),
+  );
 }
 
 /** Move a formed member's control point (the Bend tool's tweak handles),

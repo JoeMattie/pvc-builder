@@ -30,7 +30,7 @@ rationale live in the plan file: **`/home/joe/.claude/plans/read-the-todo-txt-sc
 | **Wave 1** — 4 bugs + core UX (multi-select, units, camera presets + doc-stored view/tool, ground/ball polish, hotkey badges, ctrl-drag detach, draw-entry, joint selection + switch gizmo, Y-height readout) | ✅ complete, verified |
 | **Wave 2 · 2A** — Curve rename (C), snap indicators, typed-length pill | ✅ done |
 | **Wave 2 · 2B** — tape-measure tool (T) | ✅ done |
-| **Wave 2 · 2D** — new Bend tool (B) + draggable control points | ✅ done (length-lock toggle = follow-up; only "grow" mode) |
+| **Wave 2 · 2D** — new Bend tool (B) + draggable control points | ✅ done — grow **and** length-lock modes (BendPill "Lock length"; holds developed cut length, far end draws in) |
 | **Wave 2 · 2C** — draw-on-plane tool (F) | ✅ done (angle snaps to world cardinals ±X/±Z; **pipe-relative cardinals = follow-up**) |
 | **Wave 3 · 3A** — BOM wrap-allowance + end-cap extension + editor ghost | ✅ done (manufactured-union **cut-list splitting** = follow-up) |
 | **Wave 3 · 3B** — manufactured joints (join menu → snap to standard elbow/coupling) | ✅ done |

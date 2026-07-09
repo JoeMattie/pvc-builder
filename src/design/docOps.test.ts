@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { developedLengthM } from '../geometry/pipe';
 import { createEmptyDesign, type Design, type Vec3 } from '../schema';
 import {
   addBodyJoint,
@@ -671,6 +672,67 @@ describe('bendMember', () => {
     const twice = bendMember(once, memberIds[0]!, 0.5, V(0, 0, 99), 0.06, { lockEndAngles: false });
     const bent = twice.members.find((m) => m.id === memberIds[0])!;
     if (bent.kind === 'formed') expect(bent.controlPoints[0]!.z).toBeLessThanOrEqual(1 + 1e-9);
+  });
+
+  // developed (filleted, cut) length of a formed member A → controls → B
+  const pathLen = (d: Design, memberId: string) => {
+    const m = d.members.find((x) => x.id === memberId)!;
+    if (m.kind !== 'formed') return 0;
+    const pts = [
+      nodeById(d, m.nodeA)!.position,
+      ...m.controlPoints,
+      nodeById(d, m.nodeB)!.position,
+    ];
+    return developedLengthM(pts, m.filletRadiiM ?? []);
+  };
+
+  it('length-lock: conserves material length, drawing the far end IN', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0)]); // 1 m along X
+    const out = bendMember(design, memberIds[0]!, 0.5, V(0, 0, 0.3), 0.06, {
+      lengthLock: { axisDir: V(1, 0, 0), lengthM: 1 },
+    });
+    const bent = out.members.find((m) => m.id === memberIds[0])!;
+    expect(bent.kind).toBe('formed');
+    // nodeA is the fixed anchor; nodeB slides in along +X, back onto the axis
+    expect(nodeById(out, bent.nodeA)!.position).toEqual(V(0, 0, 0));
+    const b = nodeById(out, bent.nodeB)!.position;
+    expect(b.x).toBeLessThan(1); // chord shrank (didn't grow the pipe)
+    expect(Math.abs(b.z)).toBeLessThan(1e-6);
+    // the developed (cut) length is held at 1 m
+    expect(pathLen(out, memberIds[0]!)).toBeCloseTo(1, 3);
+  });
+
+  it('length-lock + lockEndAngles: still 3 control points and conserves length', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0)]);
+    const out = bendMember(design, memberIds[0]!, 0.5, V(0, 0, 0.3), 0.06, {
+      lockEndAngles: true,
+      lengthLock: { axisDir: V(1, 0, 0), lengthM: 1 },
+    });
+    const bent = out.members.find((m) => m.id === memberIds[0])!;
+    if (bent.kind === 'formed') expect(bent.controlPoints).toHaveLength(3);
+    expect(pathLen(out, memberIds[0]!)).toBeCloseTo(1, 3);
+  });
+
+  it('length-lock with no perpendicular pull straightens back to length', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(0.6, 0, 0)]);
+    // pull the far end out first (grow), then a length-lock with no pull resets it
+    const grown = bendMember(design, memberIds[0]!, 0.5, V(0, 0, 0.3), 0.06);
+    const out = bendMember(grown, memberIds[0]!, 0.5, V(0, 0, 0), 0.06, {
+      lengthLock: { axisDir: V(1, 0, 0), lengthM: 0.6 },
+    });
+    const m = out.members.find((x) => x.id === memberIds[0])!;
+    expect(m.kind).toBe('straight');
+    expect(nodeById(out, m.nodeB)!.position.x).toBeCloseTo(0.6, 6);
+  });
+
+  it('length-lock caps an oversized pull (no NaN, still conserves length)', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0)]);
+    const out = bendMember(design, memberIds[0]!, 0.5, V(0, 0, 99), 0.06, {
+      lengthLock: { axisDir: V(1, 0, 0), lengthM: 1 },
+    });
+    const bent = out.members.find((m) => m.id === memberIds[0])!;
+    if (bent.kind === 'formed') expect(Number.isFinite(bent.controlPoints[0]!.z)).toBe(true);
+    expect(pathLen(out, memberIds[0]!)).toBeCloseTo(1, 3);
   });
 });
 

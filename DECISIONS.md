@@ -6,6 +6,15 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 
 ## Post-batch fixes (2026-07-08)
 
+- **Bend tool "Lock length"** (the deferred Wave-2 2D follow-up). A second BendPill toggle: with
+  it on, bending a straight pipe holds the **developed (cut) length** instead of growing — the far
+  end (`nodeB`) draws IN while `nodeA` stays put. Implemented in the pure `bendMember`: it bisects
+  the chord so `developedLengthM` equals the material length captured at gesture start (also
+  handles the lock-end-angle lead-ins; falls back to fixed ends when a gentle pull can't reach the
+  target). The reference (axis + length) is frozen at pointer-down in `PipeLayer.onBend` and
+  threaded through `bendMemberAt` each frame so it doesn't drift as `nodeB` moves. New
+  `editorStore.bendLengthLock` + `__pvc.setBendLengthLock`; `__pvc.bendMember` gained an optional
+  length-ref arg. Verified in-app: grow → cut 1.20 m; lock → cut held at 1.00 m, end drawn in.
 - **T-rex re-baked as QUADS, not decimated.** The earlier examples were over-decimated (welded to
   57 nodes / 145 pipes). `scripts/gen-trex.mjs` now keeps every vertex (262, only de-duplicating
   coincident coordinates) and runs a **tris→quads** pass — greedy coplanarity-first triangle

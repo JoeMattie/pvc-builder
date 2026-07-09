@@ -347,8 +347,13 @@ export function EditorShell() {
     hook.measure = (raw: Vec3) => placeMeasurePoint(raw);
     hook.getMeasurements = () => useAppStore.getState().current?.measurements ?? [];
     hook.deleteMeasurement = (id: string) => deleteMeasurement(id);
-    hook.bendMember = (memberId: string, t: number, perpOffset: Vec3) =>
-      bendMemberAt(memberId, t, perpOffset);
+    hook.bendMember = (
+      memberId: string,
+      t: number,
+      perpOffset: Vec3,
+      lengthRef?: { axisDir: Vec3; lengthM: number },
+    ) => bendMemberAt(memberId, t, perpOffset, lengthRef);
+    hook.setBendLengthLock = (on: boolean) => useEditorStore.getState().setBendLengthLock(on);
     hook.moveControlPoint = (memberId: string, index: number, raw: Vec3) =>
       moveFormedControlPoint(memberId, index, raw);
     hook.plane = (raw: Vec3) => placePlanePoint(raw);

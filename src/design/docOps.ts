@@ -3,6 +3,7 @@
 // through appStore.updateCurrent so undo/autosave stay centralized. No
 // three.js / UI types here.
 import { add, cross, dot, length, normalize, scale, sub } from '../geometry/math3';
+import { developedLengthM } from '../geometry/pipe';
 import type {
   Design,
   Joint,
@@ -150,18 +151,28 @@ export function setNodePosition(design: Design, nodeId: string, position: Vec3):
 
 /** Bend a straight member into a heat-formed curve: pull the point at parameter
  * `t` (0..1 along the pipe) by `perpOffset` (its component perpendicular to the
- * pipe axis is used). Endpoints stay fixed (the developed length grows). With
- * `lockEndAngles`, the bend starts a short distance in from each end so the end
- * tangents stay axial (a smooth transition). `filletRadiusM` is the heat-form
- * bend radius to record (the caller derives it from the pipe size + min-radius).
- * The perpendicular pull is clamped to the pipe length to keep the bend sane. */
+ * pipe axis is used). With `lockEndAngles`, the bend starts a short distance in
+ * from each end so the end tangents stay axial (a smooth transition).
+ * `filletRadiusM` is the heat-form bend radius to record (the caller derives it
+ * from the pipe size + min-radius).
+ *
+ * TWO modes:
+ *  - default (GROW): endpoints stay fixed, so the developed length grows as you
+ *    pull; the perpendicular pull is clamped to the pipe length.
+ *  - LENGTH-LOCK (`opts.lengthLock`): the developed (cut) length is held to
+ *    `lengthM`, so bending draws the far end IN instead of adding pipe. nodeA
+ *    stays put; nodeB slides along the frozen `axisDir` to whatever chord makes
+ *    the developed centre-line equal `lengthM` (found by bisection, which also
+ *    handles the lock-end-angle lead-ins). The reference (`axisDir`,`lengthM`)
+ *    must be captured at gesture start by the caller so it doesn't drift as
+ *    nodeB moves each frame. */
 export function bendMember(
   design: Design,
   memberId: string,
   t: number,
   perpOffset: Vec3,
   filletRadiusM: number,
-  opts?: { lockEndAngles?: boolean },
+  opts?: { lockEndAngles?: boolean; lengthLock?: { axisDir: Vec3; lengthM: number } },
 ): Design {
   const m = memberById(design, memberId);
   // works on a straight member OR an already-bent one (a live drag re-bends each
@@ -170,39 +181,101 @@ export function bendMember(
   const a = nodeById(design, m.nodeA)?.position;
   const b = nodeById(design, m.nodeB)?.position;
   if (!a || !b) return design;
-  const axis = sub(b, a);
-  const len = length(axis);
-  if (len < 1e-6) return design;
-  const u = scale(axis, 1 / len);
   const tc = Math.max(0, Math.min(1, t));
-  // perpendicular component of the pull, clamped in magnitude
-  let perp = sub(perpOffset, scale(u, dot(perpOffset, u)));
-  const pmag = length(perp);
-  if (pmag > len) perp = scale(perp, len / pmag);
-  const grab = add(a, scale(u, tc * len));
-  const control = add(grab, perp);
 
-  let controlPoints: Vec3[];
-  let filletRadiiM: number[];
-  if (opts?.lockEndAngles) {
-    // straight lead-ins near each end keep the end tangents axial
-    const d = Math.min(len * 0.2, len * tc, len * (1 - tc));
-    controlPoints = [add(a, scale(u, d)), control, sub(b, scale(u, d))];
-    filletRadiiM = [filletRadiusM, filletRadiusM, filletRadiusM];
-  } else {
-    controlPoints = [control];
-    filletRadiiM = [filletRadiusM];
-  }
-  const formed: Member = {
+  const asFormed = (controlPoints: Vec3[]): Member => ({
     id: m.id,
     kind: 'formed',
     nodeA: m.nodeA,
     nodeB: m.nodeB,
     controlPoints,
     size: m.size,
-    filletRadiiM,
-  };
-  return { ...design, members: design.members.map((mm) => (mm.id === memberId ? formed : mm)) };
+    filletRadiiM: controlPoints.map(() => filletRadiusM),
+  });
+  const replace = (d: Design, member: Member): Design => ({
+    ...d,
+    members: d.members.map((mm) => (mm.id === memberId ? member : mm)),
+  });
+
+  if (opts?.lengthLock) {
+    const L = opts.lengthLock.lengthM;
+    if (L < 1e-6) return design;
+    const u = normalize(opts.lengthLock.axisDir);
+    // perpendicular component of the pull, capped so a length-conserving chord
+    // always exists (going out and back can't exceed the material length)
+    let perpV = sub(perpOffset, scale(u, dot(perpOffset, u)));
+    let pm = length(perpV);
+    const cap = L * 0.49;
+    if (pm > cap) {
+      perpV = scale(perpV, cap / pm);
+      pm = cap;
+    }
+    // no perpendicular pull → straighten the member back to length L along u
+    if (pm < 1e-9) {
+      const straight = setNodePosition(design, m.nodeB, add(a, scale(u, L)));
+      return replace(straight, {
+        id: m.id,
+        kind: 'straight',
+        nodeA: m.nodeA,
+        nodeB: m.nodeB,
+        size: m.size,
+      });
+    }
+    const phat = scale(perpV, 1 / pm);
+    // build the bend for a given chord length (nodeB at a + u·cLen); `len` is the
+    // DEVELOPED (filleted) centre-line — the actual cut length — so locking holds
+    // what the BOM reports, not just the sharp polyline
+    const build = (cLen: number) => {
+      const nb = add(a, scale(u, cLen));
+      const control = add(add(a, scale(u, tc * cLen)), scale(phat, pm));
+      const cps = opts.lockEndAngles
+        ? [
+            add(a, scale(u, Math.min(cLen * 0.2, cLen * tc, cLen * (1 - tc)))),
+            control,
+            sub(nb, scale(u, Math.min(cLen * 0.2, cLen * tc, cLen * (1 - tc)))),
+          ]
+        : [control];
+      const len = developedLengthM(
+        [a, ...cps, nb],
+        cps.map(() => filletRadiusM),
+      );
+      return { nb, cps, len };
+    };
+    // developed length is largest at the full chord (cLen = L) and shrinks as the
+    // chord closes. If even the full chord can't reach L (a gentle pull whose
+    // fillet rounding alone drops it below L), keep the ends put — don't grow.
+    let hi = L;
+    if (build(L).len <= L) {
+      const { nb, cps } = build(L);
+      return replace(setNodePosition(design, m.nodeB, nb), asFormed(cps));
+    }
+    let lo = 1e-4;
+    for (let i = 0; i < 40; i++) {
+      const mid = (lo + hi) / 2;
+      if (build(mid).len > L) hi = mid;
+      else lo = mid;
+    }
+    const { nb, cps } = build((lo + hi) / 2);
+    return replace(setNodePosition(design, m.nodeB, nb), asFormed(cps));
+  }
+
+  // GROW: endpoints fixed, developed length grows
+  const axis = sub(b, a);
+  const len = length(axis);
+  if (len < 1e-6) return design;
+  const u = scale(axis, 1 / len);
+  let perp = sub(perpOffset, scale(u, dot(perpOffset, u)));
+  const pmag = length(perp);
+  if (pmag > len) perp = scale(perp, len / pmag);
+  const control = add(add(a, scale(u, tc * len)), perp);
+  const controlPoints = opts?.lockEndAngles
+    ? [
+        add(a, scale(u, Math.min(len * 0.2, len * tc, len * (1 - tc)))),
+        control,
+        sub(b, scale(u, Math.min(len * 0.2, len * tc, len * (1 - tc)))),
+      ]
+    : [control];
+  return replace(design, asFormed(controlPoints));
 }
 
 /** Move one control point of a formed (curve) member — the Bend tool's tweak
