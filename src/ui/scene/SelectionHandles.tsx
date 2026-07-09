@@ -35,9 +35,9 @@ import { pickSnapPoint, SNAP_PX, snapDebug } from './pipePick';
  * the drag alive anywhere and guarantees the pointerup runs. OrbitControls is
  * suspended for the duration (no setPointerCapture, so nothing fights it).
  */
-/** Live modifier state during a drag. Toggleable: seeded from the pointer-down,
- * then each PRESS of Shift/Ctrl mid-drag flips it (releases are ignored) — so a
- * press-and-release switches modes without holding the key down. */
+/** Live modifier state during a drag: reflects whether Shift/Ctrl is HELD right
+ * now (seeded from the pointer-down, then updated on key down/up mid-drag), so
+ * the mode follows the held key even while the cursor is stationary. */
 export type DragMods = { shift: boolean; ctrl: boolean };
 
 function useGroundDrag(
@@ -81,9 +81,9 @@ function useGroundDrag(
       plane = { point: origin, normal: dominantAxisNormal({ x: fwd.x, y: fwd.y, z: fwd.z }) };
     }
 
-    // toggleable modifier state (see DragMods): seeded from the pointer-down,
-    // flipped by a mid-drag key PRESS, re-applied to the last point so the mode
-    // switches even without moving the mouse
+    // held-modifier state (see DragMods): seeded from the pointer-down, updated
+    // on key down/up, and re-applied to the last point so the mode tracks the
+    // held key even without moving the mouse
     const mods: DragMods = { shift: e.nativeEvent.shiftKey, ctrl: e.nativeEvent.ctrlKey };
     let lastG: Vec3 | null = null;
     let lastEv: PointerEvent | null = null;
@@ -106,26 +106,30 @@ function useGroundDrag(
         onMove(g, mods, ev);
       }
     };
-    const onKeyDown = (ev: KeyboardEvent) => {
-      if (ev.repeat) return; // auto-repeat while held must not re-toggle
+    // track the HELD state (down = true, up = false), re-applying so the mode
+    // follows the key even while stationary
+    const setMod = (ev: KeyboardEvent, held: boolean) => {
       let changed = false;
-      if (ev.key === 'Shift') {
-        mods.shift = !mods.shift;
+      if (ev.key === 'Shift' && mods.shift !== held) {
+        mods.shift = held;
         changed = true;
-      } else if (ev.key === 'Control' || ev.key === 'Meta') {
-        mods.ctrl = !mods.ctrl;
+      } else if ((ev.key === 'Control' || ev.key === 'Meta') && mods.ctrl !== held) {
+        mods.ctrl = held;
         changed = true;
       }
       if (changed) {
         ev.preventDefault();
-        if (lastG && lastEv) onMove(lastG, mods, lastEv); // switch modes in place
+        if (lastG && lastEv) onMove(lastG, mods, lastEv);
       }
     };
+    const onKeyDown = (ev: KeyboardEvent) => setMod(ev, true);
+    const onKeyUp = (ev: KeyboardEvent) => setMod(ev, false);
     const up = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
       window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
       if (controls) controls.enabled = true;
       opts?.onEnd?.(); // still inside the gesture, so the weld is one undo step
       useAppStore.getState().endGesture();
@@ -135,6 +139,7 @@ function useGroundDrag(
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', up);
     window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
   };
 
   return { start, dragging };

@@ -17,8 +17,9 @@ const SCENE = {
     viewport: '#f6f7f9',
     // a mid-gray ground, distinct from the sky and darker than the pipes
     ground: '#c6cad3',
-    gridCell: '#d9dbe2',
-    gridSection: '#b9bcc7',
+    // grid lines are DARKER than the ground; the major (section) lines darkest
+    gridCell: '#a9aebb',
+    gridSection: '#878d9c',
     pvc: '#e7e9ee',
     fitting: '#c6cad3',
     conflict: '#d64545',
@@ -28,8 +29,9 @@ const SCENE = {
     viewport: '#101218',
     // dark gray: lighter than the near-black sky, but darker than the light pipes
     ground: '#2b2f38',
-    gridCell: '#2a2d38',
-    gridSection: '#3a3f4b',
+    // grid lines are DARKER than the ground (still above the near-black sky)
+    gridCell: '#23262e',
+    gridSection: '#181b21',
     pvc: '#c6cbd7',
     fitting: '#9aa0ad',
     conflict: '#e0554a',

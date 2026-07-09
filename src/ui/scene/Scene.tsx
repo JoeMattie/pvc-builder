@@ -59,12 +59,13 @@ function GroundGrid({ pal }: { pal: ReturnType<typeof scenePalette> }) {
   return (
     <group position={[0, groundY, 0]}>
       <Grid
-        // finite ground (40 ft), not an infinite grid
+        // finite ground (20 ft), not an infinite grid; lines on integer inches:
+        // minor every 4", major every 12" (1 ft), aligned to the origin
         args={[GROUND_SIZE_M, GROUND_SIZE_M]}
-        cellSize={0.1}
+        cellSize={4 * 0.0254}
         cellThickness={0.6}
         cellColor={pal.gridCell}
-        sectionSize={0.5}
+        sectionSize={12 * 0.0254}
         sectionThickness={1}
         sectionColor={pal.gridSection}
         fadeDistance={30}

@@ -11,6 +11,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.1.1',
+    date: '2026-07-08',
+    changes: [
+      'Ground gridlines are darker than the ground in both themes, aligned to integer inches (4" minor / 1 ft major)',
+      'Endpoint-drag modifiers follow the HELD key — hold Shift to axis-lock, hold Ctrl to detach (release reverts)',
+    ],
+  },
+  {
     version: '0.1.0',
     date: '2026-07-08',
     changes: [
