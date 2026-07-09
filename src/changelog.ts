@@ -1,0 +1,33 @@
+// User-facing changelog, shown on the project-list (main) page. Newest first.
+// EVERY commit-to-main-and-push bumps the version: add/extend the top entry here,
+// bump package.json, and tag the commit `v<version>` (see DECISIONS.md → versioning).
+
+export interface ChangelogEntry {
+  version: string;
+  /** ISO date (YYYY-MM-DD) */
+  date: string;
+  changes: string[];
+}
+
+export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.1.0',
+    date: '2026-07-08',
+    changes: [
+      '3D drawing: hold Shift to lock to the Y axis as well as X and Z',
+      'Draw and endpoint-drag snap onto pipes/nodes at any height (screen-space)',
+      'Length arrows resize along the pipe axis — now works on vertical pipes',
+      'Bend tool: “lock length” mode, and click a bent pipe to add a control point',
+      'Bent pipes are editable (endpoint handles) and selectable like straight ones',
+      'Wrapped pivots slide along the pipe they wrap, with friction (Play mode)',
+      'Bent pipes behave as static rigid bodies while simulating',
+      'Arrow keys / numpad nudge the selection; Ctrl+Up/Down (or Home/End) move in Y',
+      'Ctrl/Shift are toggleable mid-drag (press to switch modes without holding)',
+      'New 3-way (corner) elbow fitting; free ball-joint hubs for any number of pipes',
+      'T-rex examples rebuilt as detailed quad wireframes',
+    ],
+  },
+];
+
+/** The current app version (matches the newest changelog entry + the git tag). */
+export const APP_VERSION = CHANGELOG[0]?.version ?? '0.0.0';

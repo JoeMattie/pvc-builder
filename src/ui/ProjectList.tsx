@@ -1,7 +1,46 @@
-import { Plus, Sparkles, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
+import { APP_VERSION, CHANGELOG } from '../changelog';
 import { EXAMPLES } from '../examples';
 import { useAppStore } from '../state/appStore';
+
+/** "What's new" — the changelog, newest release expanded, older ones collapsed. */
+function Changelog() {
+  const [openVersion, setOpenVersion] = useState<string | null>(CHANGELOG[0]?.version ?? null);
+  if (!CHANGELOG.length) return null;
+  return (
+    <section className="flex flex-col gap-2">
+      <h2 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+        What's new
+      </h2>
+      <div className="border-border bg-card flex flex-col rounded-lg border">
+        {CHANGELOG.map((entry) => {
+          const open = openVersion === entry.version;
+          return (
+            <div key={entry.version} className="border-border border-b last:border-b-0">
+              <button
+                type="button"
+                onClick={() => setOpenVersion(open ? null : entry.version)}
+                className="flex w-full items-center gap-2 px-4 py-2.5 text-left hover:bg-accent"
+              >
+                {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                <span className="text-sm font-medium">v{entry.version}</span>
+                <span className="text-muted-foreground text-xs">{entry.date}</span>
+              </button>
+              {open && (
+                <ul className="text-muted-foreground flex list-disc flex-col gap-1 px-10 pb-3 text-xs">
+                  {entry.changes.map((c) => (
+                    <li key={c}>{c}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
 
 /** Project list screen (planfile §7): fast create / open / delete, plus
  * bundled examples. The full inspect + import/export lands in Phase 5. */
@@ -23,9 +62,10 @@ export function ProjectList() {
 
   return (
     <div className="mx-auto flex min-h-full max-w-2xl flex-col gap-6 px-6 py-12">
-      <header>
+      <header className="flex items-baseline gap-2">
         <h1 className="font-sans text-2xl font-semibold">PVC Builder</h1>
-        <p className="text-muted-foreground text-sm">A 3D-first PVC design studio.</p>
+        <span className="text-muted-foreground text-xs font-medium">v{APP_VERSION}</span>
+        <p className="text-muted-foreground ml-auto text-sm">A 3D-first PVC design studio.</p>
       </header>
 
       <form onSubmit={onCreate} className="flex gap-2">
@@ -98,6 +138,8 @@ export function ProjectList() {
           ))
         )}
       </section>
+
+      <Changelog />
     </div>
   );
 }

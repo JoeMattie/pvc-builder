@@ -6,6 +6,12 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 
 ## Post-batch fixes (2026-07-08)
 
+- **Versioned releases + in-app changelog.** EVERY commit-to-main-and-push bumps the semver version
+  (patch by default, minor for a notable feature batch). The source of truth is `src/changelog.ts`
+  (`CHANGELOG` newest-first + `APP_VERSION`); a "What's new" panel on the project-list page renders
+  it and the header shows `v<version>`. Process on each push to main: bump `package.json` version +
+  add/extend the top `CHANGELOG` entry, commit, `git tag v<version>`, then `git push origin main
+  --tags`. Started at **v0.1.0**.
 - **Bent pipes are editable like straight ones.** `SelectionHandles` no longer bails on formed
   members — a bent pipe now gets endpoint move handles + length arrows (drag its ends to extend /
   reposition; the curve reshapes). It's also click-selectable in select/move/rotate. And in the
