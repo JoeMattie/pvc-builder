@@ -36,11 +36,13 @@ glide on snaps — never raw doc positions.
 | `JointLayer.tsx` (mod) | The FEW remaining declarative joints — rigid off-90° wraps (`WrapJoint` pin), anchor tees (`AnchorTee`), on-body free (`FreeJoint`) — + the swap gizmo | end-to-end free → `InstancedFreeHubs`, swivel wrapped → `InstancedWrapJoints` (both skipped here) |
 | `WrapStrip.tsx` (mod) | Renderer for a `WrapMesh` (slip-saddle body + screws) | **name is legacy** — no longer a swept strip |
 | `IntersectionLayer.tsx` | Red overlap shells | `intersectingMembers`; cap 200 |
+| `interactions.ts` | Shared scene pointer-drag lifecycle + ground/view-plane drag hook | used by DrawController, Bend tool, endpoint/transform handles |
 | `DrawController.tsx` | Draw/formed preview + pointer target + marquee | window-listener drag; screen-space pipe/node snap (`pipePick`); Shift locks to a world axis line (incl. Y) |
 | `SelectionHandles.tsx` | Endpoint drag handles + `MoveGizmo` + `RotateGizmo` | `useGroundDrag` window-listener hook wraps `beginGesture`/`endGesture`; endpoint handles are **single-select only** (a group/multi selection shows none — Move/Rotate the group as a unit or enter it) |
 | `WireframeLayer.tsx` | Wireframe view (`W`) — pipes as 10px fat lines (drei `<Segments>`=Line2, one draw call) + junctions as 14px round `Points` dots | replaces the solid pipe/fitting/joint layers while `editorStore.wireframe` |
 | `ExtendLayer.tsx` | Extend tool (`P`) push-cylinder gizmos on pipe ends (from `design/extend.extendDirections`); click → `startExtend` (axis-locked draw) | shown only in the `extend` tool; caps to selected-member ends on big models |
 | `GuideLayer.tsx` | Placed guide lines (`Q`) — long dashed axis-coloured lines, always visible as snap aids | reads `editorStore.guides`; the in-progress draft preview lives in `DrawController` |
+| `SceneLabels.tsx` | Viewport semantic labels | BOM `P#` cut IDs when `editorStore.sceneStatus === 'fabricate'`; selected/hover labels for pipes, joints, fittings/conflicts; positions are updated imperatively from eased node positions |
 
 ## Git state of this dir
 NEW: `InstancedFreeHubs.tsx`, `InstancedWrapJoints.tsx`, `PhysicsDebug.tsx`, `instancing.ts`.
@@ -69,11 +71,11 @@ tubes (`FormedLayer`, unique curves), rigid-pin wraps + on-body free + anchor te
   = per-instance colour (material `color` is white; `instanceColor` carries theme/select). Pointer
   events resolve the member/joint from `ev.instanceId`; set `frustumCulled={false}` (dynamic
   matrices). Verify draw-call collapse with `window.__pvc.sceneStats()` → `{meshes, instanced, instances}`.
-- **Two independent window-listener drag systems** (DrawController inline + SelectionHandles
-  `useGroundDrag`) exist for the same r3f reason (mesh drops pointerup when the ray leaves the mesh).
-  If you change one, mirror the other. `useGroundDrag` passes a live **`DragMods`** (toggleable
-  Shift/Ctrl — seeded at pointer-down, flipped by each mid-drag key press) to its `onMove`, not the
-  raw event; the MoveHandle uses it for axis-lock (Shift) + detach/re-weld (Ctrl).
+- **Window-listener drags share `interactions.ts`** for the same r3f reason (mesh drops pointerup
+  when the ray leaves the mesh). `useGroundDrag` passes a live **`DragMods`** (toggleable Shift/Ctrl
+  — seeded at pointer-down, flipped by each mid-drag key press) to its `onMove`, not the raw event;
+  the MoveHandle uses it for axis-lock (Shift) + detach/re-weld (Ctrl). Draw/marquee and Bend-tool
+  drags use `startWindowPointerDrag` directly.
 - **`MAX_*_MEMBERS=800` (JointLayer/FittingLayer/IntersectionLayer) / `MAX_ANIMATED_NODES=160`**
   are perf guards for huge designs; layers early-return above the cap. The 541-pipe quad T-rex
   fits the 800 member cap (renders all layers) but exceeds the 160-node animation cap on purpose

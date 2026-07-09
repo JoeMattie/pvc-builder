@@ -36,16 +36,17 @@ interaction is fast and direct; fittings are inferred, never hand-placed. Painfu
   min-bend-radius check + bend schedule.
 - **Freely adjustable dimensions** (select pipe → edit length; drag endpoints with snapping).
 - **Intersection highlighting** (overlapping members outlined).
-- **Physics (painfully simple):** a global **"lock lengths"** toggle. When locked, all pipe lengths
-  and non-pivot joints freeze and only **heat-formed wrapping pivots** (revolute joints) can move —
-  driven **both** by drag-to-rotate in the viewport **and** per-pivot **angle sliders**.
+- **Physics / simulation (qualitative):** a global **"lock lengths"** toggle. When locked, all pipe
+  lengths and non-pivot joints freeze and wrapped/free joints articulate through deterministic
+  kinematics; Play mode also runs a CrashCat rigid-body preview with elastics, mannequin collision,
+  damping, and a debug overlay. This is motion preview, not load/stress analysis.
 - Fast project lifecycle: list, create, open, inspect, autosave, JSON export/import; a few bundled
   example constructions.
 - **BOM/cut-list** (socket take-off, fitting counts, developed lengths + bend schedule).
 
 ### Non-goals (v1)
 - Sizes beyond 1/2" and 3/4" SCH 40; materials other than PVC.
-- Real dynamics (gravity, collision response), force/stress analysis, load rating.
+- Validated real-world dynamics, force/stress analysis, or load rating.
 - Real McMaster/Home Depot CAD models — fittings are **procedurally generated** from ASTM dimensions
   (a clean seam is left to swap in CAD later, but not built).
 - Non-standard fittings other than the heat-formed wrapping pivot.

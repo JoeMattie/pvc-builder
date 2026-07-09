@@ -46,12 +46,16 @@ function AnchorTee({
   selected,
   fitting,
   onContext,
+  onHover,
+  onHoverOut,
 }: {
   joint: Joint;
   selectable: boolean;
   selected: boolean;
   fitting: string;
   onContext?: (e: ThreeEvent<MouseEvent>) => void;
+  onHover?: (e: ThreeEvent<PointerEvent>) => void;
+  onHoverOut?: () => void;
 }) {
   const design = useAppStore.getState().current;
   const eased = (id: string): Vec3 =>
@@ -87,7 +91,12 @@ function AnchorTee({
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: r3f group is a scene node
-    <group onContextMenu={onContext} onClick={onSelect}>
+    <group
+      onContextMenu={onContext}
+      onClick={onSelect}
+      onPointerMove={onHover}
+      onPointerOut={onHoverOut}
+    >
       {mesh.prims.map((p, i) =>
         p.kind === 'cylinder' ? (
           <TeeCyl
@@ -129,11 +138,15 @@ function WrapJoint({
   selectable,
   selected,
   onContext,
+  onHover,
+  onHoverOut,
 }: {
   joint: Joint;
   selectable: boolean;
   selected: boolean;
   onContext?: (e: ThreeEvent<MouseEvent>) => void;
+  onHover?: (e: ThreeEvent<PointerEvent>) => void;
+  onHoverOut?: () => void;
 }) {
   const design = useAppStore.getState().current;
   const eased = (id: string): Vec3 =>
@@ -179,7 +192,12 @@ function WrapJoint({
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: r3f group is a scene node
-    <group onContextMenu={onContext} onClick={onSelect}>
+    <group
+      onContextMenu={onContext}
+      onClick={onSelect}
+      onPointerMove={onHover}
+      onPointerOut={onHoverOut}
+    >
       {/* the loop body swept once around the run */}
       <mesh castShadow>
         <tubeGeometry args={[curve, 72, arrow.tubeR, 8, false]} />
@@ -214,11 +232,15 @@ function FreeJoint({
   selectable,
   ball,
   onContext,
+  onHover,
+  onHoverOut,
 }: {
   joint: Joint;
   selectable: boolean;
   ball: string;
   onContext?: (e: ThreeEvent<MouseEvent>) => void;
+  onHover?: (e: ThreeEvent<PointerEvent>) => void;
+  onHoverOut?: () => void;
 }) {
   const design = useAppStore.getState().current;
   if (!design) return null;
@@ -255,7 +277,12 @@ function FreeJoint({
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: r3f group is a scene node
-    <group onClick={onSelect} onContextMenu={onContext}>
+    <group
+      onClick={onSelect}
+      onContextMenu={onContext}
+      onPointerMove={onHover}
+      onPointerOut={onHoverOut}
+    >
       {eyeEnds.map((e, i) => {
         const cord = placeAxis(e.end, node);
         return (
@@ -325,6 +352,16 @@ export function JointLayer() {
             .openJoinMenu({ nodeId: j.nodeId, moverId: j.mover, x: ne.clientX, y: ne.clientY });
         }
       : undefined;
+  const onHover = (j: Joint) =>
+    editing
+      ? () => {
+          useEditorStore.getState().setHoveredSceneItem({ kind: 'joint', id: j.id });
+        }
+      : undefined;
+  const onHoverOut = () => {
+    const store = useEditorStore.getState();
+    if (store.hoveredSceneItem?.kind === 'joint') store.setHoveredSceneItem(null);
+  };
 
   return (
     <>
@@ -340,6 +377,8 @@ export function JointLayer() {
               selectable={selectable}
               ball={pal.accent}
               onContext={onContext(j)}
+              onHover={onHover(j)}
+              onHoverOut={onHoverOut}
             />
           );
         // rigid 90° union → a standard socket tee; other angles → the wrap arrow
@@ -352,6 +391,8 @@ export function JointLayer() {
               selected={isSelected(j)}
               fitting={pal.fitting}
               onContext={onContext(j)}
+              onHover={onHover(j)}
+              onHoverOut={onHoverOut}
             />
           );
         return (
@@ -361,6 +402,8 @@ export function JointLayer() {
             selectable={selectable}
             selected={isSelected(j)}
             onContext={onContext(j)}
+            onHover={onHover(j)}
+            onHoverOut={onHoverOut}
           />
         );
       })}

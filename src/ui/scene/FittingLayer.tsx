@@ -5,7 +5,7 @@
 // in another, every conflict marker in a third — so a junction-dense model (e.g.
 // the rigid T-rex, ~260 fittings) is a handful of draw calls, not ~340 meshes.
 // The per-frame rebuild is gated on the anim tick so an idle scene costs nothing.
-import { useFrame } from '@react-three/fiber';
+import { type ThreeEvent, useFrame } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import { type InstancedMesh, Matrix4 } from 'three';
 import { memberById, nodeById } from '../../design/docOps';
@@ -14,6 +14,7 @@ import { normalize, sub } from '../../geometry/math3';
 import type { Vec3 } from '../../schema';
 import { easedPos, useAnim } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
+import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
 import { buildFittingMesh } from './fittingMesh';
@@ -32,11 +33,13 @@ interface FitSpec {
 function buildSpec(design: ReturnType<typeof useAppStore.getState>['current']): {
   fits: FitSpec[];
   conflictNodes: string[];
+  cylNodes: string[];
+  sphNodes: string[];
   cylCount: number;
   sphCount: number;
 } {
   if (!design || design.members.length > MAX_FITTING_MEMBERS)
-    return { fits: [], conflictNodes: [], cylCount: 0, sphCount: 0 };
+    return { fits: [], conflictNodes: [], cylNodes: [], sphNodes: [], cylCount: 0, sphCount: 0 };
   const { fittings, conflicts } = resolveFittings(design);
   const fits: FitSpec[] = fittings.map((f) => ({
     nodeId: f.nodeId,
@@ -56,11 +59,28 @@ function buildSpec(design: ReturnType<typeof useAppStore.getState>['current']): 
   const at = (id: string): Vec3 => nodeById(design, id)?.position ?? { x: 0, y: 0, z: 0 };
   let cylCount = 0;
   let sphCount = 0;
+  const cylNodes: string[] = [];
+  const sphNodes: string[] = [];
   for (const f of fits) {
     const mesh = fittingMeshOf(f, at);
-    for (const p of mesh.prims) p.kind === 'cylinder' ? cylCount++ : sphCount++;
+    for (const p of mesh.prims) {
+      if (p.kind === 'cylinder') {
+        cylCount++;
+        cylNodes.push(f.nodeId);
+      } else {
+        sphCount++;
+        sphNodes.push(f.nodeId);
+      }
+    }
   }
-  return { fits, conflictNodes: conflicts.map((c) => c.nodeId), cylCount, sphCount };
+  return {
+    fits,
+    conflictNodes: conflicts.map((c) => c.nodeId),
+    cylNodes,
+    sphNodes,
+    cylCount,
+    sphCount,
+  };
 }
 
 function fittingMeshOf(f: FitSpec, at: (id: string) => Vec3) {
@@ -145,8 +165,20 @@ export function FittingLayer() {
     fill();
   });
 
-  if (!design || !spec.fits.length) return null;
+  if (!design || (!spec.fits.length && !spec.conflictNodes.length)) return null;
   const pal = scenePalette(night);
+  const hoverNode = (nodeId: string | undefined) => {
+    const store = useEditorStore.getState();
+    if (nodeId) store.setHoveredSceneItem({ kind: 'fitting', id: nodeId });
+    else if (store.hoveredSceneItem?.kind === 'fitting') store.setHoveredSceneItem(null);
+  };
+  const onCylHover = (ev: ThreeEvent<PointerEvent>) =>
+    hoverNode(spec.cylNodes[ev.instanceId ?? -1]);
+  const onSphHover = (ev: ThreeEvent<PointerEvent>) =>
+    hoverNode(spec.sphNodes[ev.instanceId ?? -1]);
+  const onConflictHover = (ev: ThreeEvent<PointerEvent>) =>
+    hoverNode(spec.conflictNodes[ev.instanceId ?? -1]);
+  const onHoverOut = () => hoverNode(undefined);
 
   return (
     <>
@@ -157,6 +189,8 @@ export function FittingLayer() {
           args={[undefined, undefined, spec.cylCount]}
           frustumCulled={false}
           castShadow
+          onPointerMove={onCylHover}
+          onPointerOut={onHoverOut}
         >
           <cylinderGeometry args={[1, 1, 1, 18]} />
           <meshPhysicalMaterial color={pal.fitting} roughness={0.5} metalness={0} clearcoat={0.4} />
@@ -169,6 +203,8 @@ export function FittingLayer() {
           args={[undefined, undefined, spec.sphCount]}
           frustumCulled={false}
           castShadow
+          onPointerMove={onSphHover}
+          onPointerOut={onHoverOut}
         >
           <sphereGeometry args={[1, 18, 14]} />
           <meshPhysicalMaterial color={pal.fitting} roughness={0.5} metalness={0} clearcoat={0.4} />
@@ -180,6 +216,8 @@ export function FittingLayer() {
           ref={conflictRef}
           args={[undefined, undefined, spec.conflictNodes.length]}
           frustumCulled={false}
+          onPointerMove={onConflictHover}
+          onPointerOut={onHoverOut}
         >
           <sphereGeometry args={[1, 16, 12]} />
           <meshBasicMaterial color={pal.conflict} transparent opacity={0.55} />

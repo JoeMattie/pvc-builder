@@ -27,6 +27,7 @@ import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
 import { dominantAxisNormal, rayToPlane } from './ground';
 import { cylinderMatrix, hideMatrix, ringMatrix } from './instancing';
+import { startWindowPointerDrag } from './interactions';
 import { buildPipeModel } from './pipeModel';
 
 const RADIAL_SEGMENTS = 20;
@@ -108,6 +109,7 @@ function InstancedPipes() {
   if (!design || !structural || count === 0) return null;
 
   const editing = tool === 'select' || tool === 'move' || tool === 'rotate' || tool === 'extend';
+  const semanticHover = tool === 'select' || tool === 'move' || tool === 'rotate';
   const memberOf = (ev: ThreeEvent<MouseEvent>): string | undefined =>
     ev.instanceId == null ? undefined : structural.cylinders[ev.instanceId]?.memberId;
 
@@ -215,17 +217,31 @@ function InstancedPipes() {
             if (cur) bendMemberAt(memberId, t, sub(cur, grab), lengthRef);
           };
           const up = () => {
-            window.removeEventListener('pointermove', move);
-            window.removeEventListener('pointerup', up);
-            window.removeEventListener('pointercancel', up);
             if (controls) controls.enabled = true;
             useAppStore.getState().endGesture();
           };
-          window.addEventListener('pointermove', move);
-          window.addEventListener('pointerup', up);
-          window.addEventListener('pointercancel', up);
+          startWindowPointerDrag({ onMove: move, onUp: up, onCancel: up });
         }
       : undefined;
+
+  const onPointerMove = semanticHover
+    ? (ev: ThreeEvent<PointerEvent>) => {
+        const id =
+          ev.instanceId == null ? undefined : structural.cylinders[ev.instanceId]?.memberId;
+        const store = useEditorStore.getState();
+        if (!id || inactive(id)) {
+          if (store.hoveredSceneItem?.kind === 'member') store.setHoveredSceneItem(null);
+          return;
+        }
+        store.setHoveredSceneItem({ kind: 'member', id });
+      }
+    : undefined;
+  const onPointerOut = semanticHover
+    ? () => {
+        const store = useEditorStore.getState();
+        if (store.hoveredSceneItem?.kind === 'member') store.setHoveredSceneItem(null);
+      }
+    : undefined;
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: r3f mesh is a three.js scene node, not a DOM element
@@ -241,6 +257,8 @@ function InstancedPipes() {
       onContextMenu={onContextMenu}
       onDoubleClick={onDoubleClick}
       onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerOut={onPointerOut}
     >
       <cylinderGeometry args={[1, 1, 1, RADIAL_SEGMENTS]} />
       <meshPhysicalMaterial

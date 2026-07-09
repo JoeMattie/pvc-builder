@@ -1,17 +1,25 @@
 import {
+  Check,
   ChevronDown,
   ChevronRight,
+  Copy,
+  FileUp,
   HelpCircle,
+  History,
   Layers,
   Moon,
+  Pencil,
   Plus,
+  RotateCcw,
   Sparkles,
   Sun,
   Trash2,
+  X,
 } from 'lucide-react';
-import { type FormEvent, useState } from 'react';
+import { type ChangeEvent, type FormEvent, useRef, useState } from 'react';
 import { APP_VERSION, CHANGELOG } from '../changelog';
 import { EXAMPLES } from '../examples';
+import type { ProjectRevisionSummary, ProjectSummary } from '../persistence/projectStore';
 import { useAppStore } from '../state/appStore';
 import { useThemeStore } from '../state/themeStore';
 import { HelpPanel } from './HelpPanel';
@@ -130,18 +138,43 @@ function StackInfo() {
   );
 }
 
-/** Project list screen (planfile §7): fast create / open / delete, plus
- * bundled examples. The full inspect + import/export lands in Phase 5. */
+function formatSavedAt(value: number) {
+  return new Date(value).toLocaleString();
+}
+
+function removeProjectRevisions(
+  revisionsByProject: Record<string, ProjectRevisionSummary[]>,
+  projectId: string,
+) {
+  const next = { ...revisionsByProject };
+  delete next[projectId];
+  return next;
+}
+
+/** Project list screen: create/open/import/manage projects, plus bundled examples. */
 export function ProjectList() {
   const projects = useAppStore((s) => s.projects);
   const createProject = useAppStore((s) => s.createProject);
   const createFromExample = useAppStore((s) => s.createFromExample);
   const openProject = useAppStore((s) => s.openProject);
+  const importProject = useAppStore((s) => s.importProject);
+  const renameProject = useAppStore((s) => s.renameProject);
+  const duplicateProject = useAppStore((s) => s.duplicateProject);
+  const listProjectRevisions = useAppStore((s) => s.listProjectRevisions);
+  const restoreRevision = useAppStore((s) => s.restoreRevision);
   const deleteProject = useAppStore((s) => s.deleteProject);
   const night = useThemeStore((s) => s.night);
   const toggleNight = useThemeStore((s) => s.toggleNight);
   const [name, setName] = useState('');
   const [helpOpen, setHelpOpen] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
+  const [revisionsByProject, setRevisionsByProject] = useState<
+    Record<string, ProjectRevisionSummary[]>
+  >({});
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const onCreate = async (e: FormEvent) => {
     e.preventDefault();
@@ -149,6 +182,60 @@ export function ProjectList() {
     if (!trimmed) return;
     setName('');
     await createProject(trimmed);
+  };
+
+  const onImportFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setImportError(null);
+    try {
+      await importProject(await file.text());
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Import failed');
+    }
+  };
+
+  const loadRevisions = async (projectId: string) => {
+    const revisions = await listProjectRevisions(projectId);
+    setRevisionsByProject((prev) => ({ ...prev, [projectId]: revisions }));
+  };
+
+  const toggleRevisions = async (projectId: string) => {
+    if (expandedProjectId === projectId) {
+      setExpandedProjectId(null);
+      return;
+    }
+    setExpandedProjectId(projectId);
+    await loadRevisions(projectId);
+  };
+
+  const startRename = (project: ProjectSummary) => {
+    setRenamingId(project.id);
+    setRenameDraft(project.name);
+  };
+
+  const saveRename = async (projectId: string) => {
+    const trimmed = renameDraft.trim();
+    if (!trimmed) return;
+    await renameProject(projectId, trimmed);
+    setRenamingId(null);
+    setRenameDraft('');
+    if (expandedProjectId === projectId) await loadRevisions(projectId);
+    else setRevisionsByProject((prev) => removeProjectRevisions(prev, projectId));
+  };
+
+  const restoreProjectRevision = async (projectId: string, revId: number) => {
+    await restoreRevision(projectId, revId);
+    await loadRevisions(projectId);
+  };
+
+  const confirmDeleteProject = async (project: ProjectSummary) => {
+    const ok = window.confirm(`Delete "${project.name}" and its revision history?`);
+    if (!ok) return;
+    await deleteProject(project.id);
+    setExpandedProjectId((current) => (current === project.id ? null : current));
+    setRevisionsByProject((prev) => removeProjectRevisions(prev, project.id));
   };
 
   return (
@@ -177,13 +264,13 @@ export function ProjectList() {
           </button>
         </header>
 
-        <form onSubmit={onCreate} className="flex gap-2">
+        <form onSubmit={onCreate} className="flex flex-wrap gap-2">
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="New design name…"
             aria-label="New design name"
-            className="border-input bg-background flex-1 rounded-md border px-3 py-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            className="border-input bg-background min-w-44 flex-1 rounded-md border px-3 py-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
           />
           <button
             type="submit"
@@ -192,7 +279,22 @@ export function ProjectList() {
           >
             <Plus size={16} /> Create
           </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={(e) => void onImportFile(e)}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="border-border bg-card hover:bg-accent inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium"
+          >
+            <FileUp size={16} /> Import
+          </button>
         </form>
+        {importError && <p className="text-destructive -mt-4 text-xs">{importError}</p>}
 
         <section className="flex flex-col gap-2">
           <h2 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
@@ -215,36 +317,147 @@ export function ProjectList() {
         </section>
 
         <section className="flex flex-col gap-2">
+          <h2 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+            Projects
+          </h2>
           {projects.length === 0 ? (
             <p className="text-muted-foreground py-8 text-center text-sm">
               No designs yet. Create one to start building.
             </p>
           ) : (
-            projects.map((p) => (
-              <div
-                key={p.id}
-                className="border-border bg-card flex items-center gap-3 rounded-lg border px-4 py-3"
-              >
-                <button
-                  type="button"
-                  onClick={() => void openProject(p.id)}
-                  className="flex-1 text-left"
-                >
-                  <div className="text-sm font-medium">{p.name}</div>
-                  <div className="text-muted-foreground text-xs">
-                    {new Date(p.updatedAt).toLocaleString()}
+            projects.map((p) => {
+              const revisions = revisionsByProject[p.id] ?? [];
+              const historyOpen = expandedProjectId === p.id;
+              const renaming = renamingId === p.id;
+              return (
+                <div key={p.id} className="border-border bg-card rounded-lg border">
+                  <div className="flex items-center gap-2 px-4 py-3">
+                    {renaming ? (
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          void saveRename(p.id);
+                        }}
+                        className="flex min-w-0 flex-1 items-center gap-2"
+                      >
+                        <input
+                          value={renameDraft}
+                          onChange={(e) => setRenameDraft(e.target.value)}
+                          aria-label={`Rename ${p.name}`}
+                          className="border-input bg-background min-w-0 flex-1 rounded-md border px-2 py-1.5 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                        />
+                        <button
+                          type="submit"
+                          disabled={!renameDraft.trim()}
+                          aria-label={`Save rename for ${p.name}`}
+                          className="text-muted-foreground hover:text-foreground rounded-md p-2 disabled:opacity-50"
+                        >
+                          <Check size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Cancel rename for ${p.name}`}
+                          onClick={() => {
+                            setRenamingId(null);
+                            setRenameDraft('');
+                          }}
+                          className="text-muted-foreground hover:text-foreground rounded-md p-2"
+                        >
+                          <X size={16} />
+                        </button>
+                      </form>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void openProject(p.id)}
+                        className="min-w-0 flex-1 text-left"
+                      >
+                        <div className="truncate text-sm font-medium">{p.name}</div>
+                        <div className="text-muted-foreground text-xs">
+                          {formatSavedAt(p.updatedAt)}
+                        </div>
+                      </button>
+                    )}
+                    {!renaming && (
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          type="button"
+                          aria-label={`${historyOpen ? 'Hide' : 'Show'} revisions for ${p.name}`}
+                          title="Revisions"
+                          onClick={() => void toggleRevisions(p.id)}
+                          className="text-muted-foreground hover:text-foreground rounded-md p-2"
+                        >
+                          <History size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Rename ${p.name}`}
+                          title="Rename"
+                          onClick={() => startRename(p)}
+                          className="text-muted-foreground hover:text-foreground rounded-md p-2"
+                        >
+                          <Pencil size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Duplicate ${p.name}`}
+                          title="Duplicate"
+                          onClick={() => void duplicateProject(p.id)}
+                          className="text-muted-foreground hover:text-foreground rounded-md p-2"
+                        >
+                          <Copy size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Delete ${p.name}`}
+                          title="Delete"
+                          onClick={() => void confirmDeleteProject(p)}
+                          className="text-muted-foreground hover:text-destructive rounded-md p-2"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    )}
                   </div>
-                </button>
-                <button
-                  type="button"
-                  aria-label={`Delete ${p.name}`}
-                  onClick={() => void deleteProject(p.id)}
-                  className="text-muted-foreground hover:text-destructive rounded-md p-2"
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            ))
+                  {historyOpen && (
+                    <div className="border-border border-t px-4 py-3">
+                      <div className="text-muted-foreground mb-2 text-[11px] font-medium uppercase tracking-wide">
+                        Rolling revisions
+                      </div>
+                      {revisions.length === 0 ? (
+                        <p className="text-muted-foreground text-xs">No saved revisions yet.</p>
+                      ) : (
+                        <div className="flex flex-col gap-2">
+                          {revisions.map((revision, index) => (
+                            <div key={revision.revId} className="flex items-center gap-3 text-xs">
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate font-medium">{revision.name}</div>
+                                <div className="text-muted-foreground">
+                                  {formatSavedAt(revision.savedAt)}
+                                </div>
+                              </div>
+                              {index === 0 ? (
+                                <span className="text-muted-foreground rounded-md px-2 py-1 text-[11px]">
+                                  Current
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => void restoreProjectRevision(p.id, revision.revId)}
+                                  className="border-border hover:bg-accent inline-flex items-center gap-1 rounded-md border px-2 py-1 font-medium"
+                                >
+                                  <RotateCcw size={13} /> Restore
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })
           )}
         </section>
 

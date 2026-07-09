@@ -1,8 +1,8 @@
 import { Html } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
 import { useThree } from '@react-three/fiber';
-import { useMemo, useRef, useState } from 'react';
-import { type Ray, Raycaster, Vector2, Vector3 } from 'three';
+import { useRef } from 'react';
+import type { Ray } from 'three';
 import { memberById, nodeById } from '../../design/docOps';
 import { closestAxisPointToRay } from '../../design/dragMath';
 import { cross, dot, length, normalize, scale, sub } from '../../geometry/math3';
@@ -23,127 +23,9 @@ import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { formatLengthDisplay } from '../units';
 import { orientY, orientZ } from './axis';
-import { dominantAxisNormal, rayToGround, rayToPlane } from './ground';
+import { rayToPlane } from './ground';
+import { useGroundDrag } from './interactions';
 import { pickSnapPoint, SNAP_PX, snapDebug } from './pipePick';
-
-/**
- * A ground-plane drag driven by WINDOW pointer listeners, not the handle
- * mesh's own events. This is deliberate: r3f only sends a mesh pointermove/up
- * while the ray intersects it, so a mesh-driven drag would stop — and its
- * "re-enable OrbitControls" pointerup would never fire — the moment the cursor
- * left the small handle, leaving the camera stuck. Listening on window keeps
- * the drag alive anywhere and guarantees the pointerup runs. OrbitControls is
- * suspended for the duration (no setPointerCapture, so nothing fights it).
- */
-/** Live modifier state during a drag: reflects whether Shift/Ctrl is HELD right
- * now (seeded from the pointer-down, then updated on key down/up mid-drag), so
- * the mode follows the held key even while the cursor is stationary. */
-export type DragMods = { shift: boolean; ctrl: boolean };
-
-function useGroundDrag(
-  onMove: (point: Vec3, mods: DragMods, ev: PointerEvent) => void,
-  opts?: {
-    // when it returns a point, the drag rides a view-facing plane through that
-    // point (Blender-style) instead of the y = 0 ground — so a floating node
-    // isn't dragged down to the floor
-    viewPlaneOrigin?: () => Vec3 | null;
-    // a fully custom projection of the picking ray to a world point, captured
-    // at grab time (used by the move-tool axis arrows: closest point on the axis
-    // to the ray, which the vertical axis needs — a ground raycast can't give
-    // it). Takes precedence over viewPlaneOrigin / ground.
-    project?: (ray: Ray) => Vec3 | null;
-    // called once when the drag settles (pointerup), INSIDE the gesture, before
-    // it is committed — e.g. to weld a dropped endpoint onto a coincident node
-    onEnd?: () => void;
-  },
-) {
-  const gl = useThree((s) => s.gl);
-  const camera = useThree((s) => s.camera);
-  const controls = useThree((s) => s.controls) as { enabled: boolean } | null;
-  const [dragging, setDragging] = useState(false);
-  const rc = useMemo(() => new Raycaster(), []);
-  const ndc = useMemo(() => new Vector2(), []);
-  const fwd = useMemo(() => new Vector3(), []);
-
-  const start = (e: ThreeEvent<PointerEvent>) => {
-    e.stopPropagation(); // keep the ground plane from also handling this pointer
-    if (controls) controls.enabled = false;
-    useAppStore.getState().beginGesture();
-    setDragging(true);
-    const el = gl.domElement;
-
-    // fix the projection at grab time
-    const project = opts?.project ?? null;
-    const origin = project ? null : (opts?.viewPlaneOrigin?.() ?? null);
-    let plane: { point: Vec3; normal: Vec3 } | null = null;
-    if (origin) {
-      camera.getWorldDirection(fwd);
-      plane = { point: origin, normal: dominantAxisNormal({ x: fwd.x, y: fwd.y, z: fwd.z }) };
-    }
-
-    // held-modifier state (see DragMods): seeded from the pointer-down, updated
-    // on key down/up, and re-applied to the last point so the mode tracks the
-    // held key even without moving the mouse
-    const mods: DragMods = { shift: e.nativeEvent.shiftKey, ctrl: e.nativeEvent.ctrlKey };
-    let lastG: Vec3 | null = null;
-    let lastEv: PointerEvent | null = null;
-
-    const move = (ev: PointerEvent) => {
-      const rect = el.getBoundingClientRect();
-      ndc.set(
-        ((ev.clientX - rect.left) / rect.width) * 2 - 1,
-        -((ev.clientY - rect.top) / rect.height) * 2 + 1,
-      );
-      rc.setFromCamera(ndc, camera);
-      const g = project
-        ? project(rc.ray)
-        : plane
-          ? rayToPlane(rc.ray, plane.point, plane.normal)
-          : rayToGround(rc.ray);
-      if (g) {
-        lastG = g;
-        lastEv = ev;
-        onMove(g, mods, ev);
-      }
-    };
-    // track the HELD state (down = true, up = false), re-applying so the mode
-    // follows the key even while stationary
-    const setMod = (ev: KeyboardEvent, held: boolean) => {
-      let changed = false;
-      if (ev.key === 'Shift' && mods.shift !== held) {
-        mods.shift = held;
-        changed = true;
-      } else if ((ev.key === 'Control' || ev.key === 'Meta') && mods.ctrl !== held) {
-        mods.ctrl = held;
-        changed = true;
-      }
-      if (changed) {
-        ev.preventDefault();
-        if (lastG && lastEv) onMove(lastG, mods, lastEv);
-      }
-    };
-    const onKeyDown = (ev: KeyboardEvent) => setMod(ev, true);
-    const onKeyUp = (ev: KeyboardEvent) => setMod(ev, false);
-    const up = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-      window.removeEventListener('pointercancel', up);
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
-      if (controls) controls.enabled = true;
-      opts?.onEnd?.(); // still inside the gesture, so the weld is one undo step
-      useAppStore.getState().endGesture();
-      setDragging(false);
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-    window.addEventListener('pointercancel', up);
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-  };
-
-  return { start, dragging };
-}
 
 /** A small floating "↥ height above ground" pill, shown while a point is being
  * moved vertically (planfile: show distance from ground on a Y move). */

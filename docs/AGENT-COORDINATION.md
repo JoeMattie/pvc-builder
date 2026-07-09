@@ -26,8 +26,9 @@ worktree step — but still glance at the active-claims table so you don't colli
 - **`src/schema/design.ts` + `src/schema/migrations.ts`** — any schema change bumps `SCHEMA_VERSION`
   and adds a migration. Two agents bumping the version at once WILL conflict. Serialize schema work:
   only one active claim may touch schema at a time.
-- **`src/ui/EditorShell.tsx`** — defines `window.__pvc` and binds global keyboard/pointer; large,
-  central, frequently edited. Adding a `__pvc` seam here is a common collision.
+- **`src/ui/EditorShell.tsx` + `src/ui/editor/*`** — shell composition, workflow chrome, global
+  keyboard/pointer bindings, and the `PvcAutomationBridge` `window.__pvc` contract are central,
+  frequently edited surfaces. Adding a `__pvc` seam here is a common collision.
 - **`src/state/editorActions.ts`** — the single action layer everything routes through.
 - **`src/ui/scene/Scene.tsx`** — composes all layers; adding/removing a layer touches it.
 - **`src/design/docOps.ts`** — the docOps hub imported by bom/fittings/formed/intersections.

@@ -60,9 +60,24 @@ export type Tool =
  * perspective (planfile §1). */
 export type Projection = 'ortho' | 'perspective';
 
+/** Temporary workflow/status seam for scene-only visual semantics. The editor
+ * shell can drive this once workflow chrome lands; until then the legacy
+ * all-in-one workspace exposes fabrication labels by default. */
+export type SceneStatus = 'design' | 'fabricate' | 'simulate';
+
+/** Sparse hover target for scene semantic labels. Keep this structural and
+ * transient; it should never hold three.js objects or document data copies. */
+export type HoveredSceneItem =
+  | { kind: 'member'; id: string }
+  | { kind: 'joint'; id: string }
+  | { kind: 'fitting'; id: string }
+  | null;
+
 export interface EditorState {
   tool: Tool;
   projection: Projection;
+  sceneStatus: SceneStatus;
+  hoveredSceneItem: HoveredSceneItem;
   selectedIds: string[];
   /** a first-class selected joint (its hardware is highlighted, not a pipe) —
    * mutually exclusive with `selectedIds` */
@@ -134,6 +149,8 @@ export interface EditorState {
   setTool(tool: Tool): void;
   setProjection(projection: Projection): void;
   toggleProjection(): void;
+  setSceneStatus(status: SceneStatus): void;
+  setHoveredSceneItem(item: HoveredSceneItem): void;
   setSelection(ids: string[]): void;
   selectJoint(jointId: string | null): void;
   setDrawSize(size: NominalSize): void;
@@ -174,6 +191,8 @@ export interface EditorState {
 const INITIAL = {
   tool: 'select' as Tool,
   projection: 'ortho' as Projection,
+  sceneStatus: 'fabricate' as SceneStatus,
+  hoveredSceneItem: null as HoveredSceneItem,
   selectedIds: [] as string[],
   selectedJointId: null as string | null,
   drawSize: '3/4"' as NominalSize,
@@ -230,6 +249,14 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   },
   toggleProjection() {
     set({ projection: get().projection === 'ortho' ? 'perspective' : 'ortho' });
+  },
+  setSceneStatus(status) {
+    set({ sceneStatus: status });
+  },
+  setHoveredSceneItem(item) {
+    const cur = get().hoveredSceneItem;
+    if (cur?.kind === item?.kind && cur?.id === item?.id) return;
+    set({ hoveredSceneItem: item });
   },
   setSelection(ids) {
     set({

@@ -18,71 +18,18 @@ import {
   Waypoints,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { bom } from '../design/bom';
-import { memberById, memberLengthM } from '../design/docOps';
-import { resolveFittings } from '../design/fittings';
-import { analyzeFormed } from '../design/formed';
-import { intersectingMembers } from '../design/intersections';
 import { exportDesignJson, suggestedFileName } from '../persistence/exportImport';
-import type { Vec3 } from '../schema';
-import { solve } from '../solver';
-import { physicsNodePositions, setPhysicsPrecision, setPhysicsTuning } from '../solver/physics';
 import { useAppStore } from '../state/appStore';
-import { requestPose, resetPose, setView, type ViewName } from '../state/cameraStore';
-import {
-  bendMemberAt,
-  cancelGuideDraft,
-  clearGuides,
-  clearSelection,
-  copySelection,
-  cutSelection,
-  deleteElastic,
-  deleteMeasurement,
-  deleteMembers,
-  detachMemberEnd,
-  dragNodeTo,
-  enterGroup,
-  exitGroup,
-  finishFormed,
-  finishPath,
-  groupSelection,
-  hasClipboard,
-  jointOrientationsOf,
-  makeFreeHub,
-  makeManufacturedJoint,
-  moveFormedControlPoint,
-  pasteClipboard,
-  pivotAnglesOf,
-  placeDrawAtDistance,
-  placeDrawPoint,
-  placeElasticPoint,
-  placeFormedPoint,
-  placeGuide,
-  placeGuideAtOffset,
-  placeMeasurePoint,
-  rotateMemberBy,
-  selectMember,
-  setElasticTension,
-  setJoinMode,
-  setJointDamping,
-  setLengthDisplay,
-  setMannequin,
-  setMemberLength,
-  setMemberSize,
-  setMembersSize,
-  setPivotAngle,
-  snapDrawPoint,
-  swapJointReceiver,
-  translateMemberBy,
-  translateMembersBy,
-  ungroupSelection,
-  weldDroppedNode,
-} from '../state/editorActions';
+import { requestPose, resetPose } from '../state/cameraStore';
+import { setJointDamping, setMannequin } from '../state/editorActions';
 import { useEditorStore } from '../state/editorStore';
 import { useThemeStore } from '../state/themeStore';
 import { BendPill } from './BendPill';
 import { BomPanel } from './BomPanel';
 import { ElasticPanel } from './ElasticPanel';
+import { EditorWorkflowStatus } from './editor/EditorWorkflowStatus';
+import { PvcAutomationBridge } from './editor/PvcAutomationBridge';
+import { useEditorHotkeys } from './editor/useEditorHotkeys';
 import { HelpPanel } from './HelpPanel';
 import { JoinMenu } from './JoinMenu';
 import { downloadFile } from './lib/download';
@@ -94,7 +41,6 @@ import { SizeMenu } from './SizeMenu';
 import { SnapPill } from './SnapPill';
 import { Viewport } from './scene/Viewport';
 import { UnitsPill } from './UnitsPill';
-import { parseLength } from './units';
 import { ViewMenu } from './ViewMenu';
 
 /** The rubber-band selection rectangle (screen overlay). Blue solid when
@@ -159,6 +105,8 @@ export function EditorShell() {
   const drawSize = useEditorStore((s) => s.drawSize);
   const simulating = useEditorStore((s) => s.simulating);
   const setSimulating = useEditorStore((s) => s.setSimulating);
+  const workflow = useEditorStore((s) => s.sceneStatus);
+  const setWorkflow = useEditorStore((s) => s.setSceneStatus);
   const physicsDebug = useEditorStore((s) => s.physicsDebug);
   const setPhysicsDebug = useEditorStore((s) => s.setPhysicsDebug);
   const wireframe = useEditorStore((s) => s.wireframe);
@@ -176,6 +124,7 @@ export function EditorShell() {
     if (!doc) return;
     const ed = useEditorStore.getState();
     ed.resetTransient();
+    ed.setSceneStatus('design');
     const vp = doc.viewport;
     if (vp?.projection === 'perspective' || vp?.projection === 'ortho')
       ed.setProjection(vp.projection);
@@ -205,386 +154,17 @@ export function EditorShell() {
   const setLengthsLocked = (locked: boolean) =>
     updateCurrent((doc) => ({ ...doc, lengthsLocked: locked }));
 
-  // keyboard: tool switches, finish/cancel a path, delete, undo/redo
+  useEditorHotkeys({ undo, redo });
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const editor = useEditorStore.getState();
-      const typing =
-        e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
-      const mod = e.metaKey || e.ctrlKey;
-
-      if (mod && e.key.toLowerCase() === 'z') {
-        e.preventDefault();
-        if (e.shiftKey) redo();
-        else undo();
-        return;
-      }
-      if (mod && e.key.toLowerCase() === 'y') {
-        e.preventDefault();
-        redo();
-        return;
-      }
-      // Ctrl/Cmd+Space → start/stop playback (physics simulation)
-      if (mod && (e.key === ' ' || e.code === 'Space')) {
-        e.preventDefault();
-        editor.setSimulating(!editor.simulating);
-        return;
-      }
-      if (typing) return;
-
-      // copy / cut / paste the selection (mod-gated, so it also beats the plain
-      // 'c'/'v' tool hotkeys below)
-      if (mod && e.key.toLowerCase() === 'c') {
-        if (copySelection()) e.preventDefault();
-        return;
-      }
-      if (mod && e.key.toLowerCase() === 'x') {
-        if (cutSelection()) e.preventDefault();
-        return;
-      }
-      if (mod && e.key.toLowerCase() === 'v') {
-        if (pasteClipboard()) e.preventDefault();
-        return;
-      }
-
-      // arrow / numpad nudge of the selected pipe(s) by one grid step. Arrows +
-      // numpad-arrows move in the X/Z ground plane; Ctrl+Up/Down (or the numpad
-      // Home/PgUp = up, End/PgDn = down) move vertically in Y.
-      if (editor.selectedIds.length && !editor.drawingFromNodeId) {
-        const s = editor.snap.gridStepM;
-        const K = e.key;
-        const C = e.code;
-        let d: Vec3 | null = null;
-        if (mod && K === 'ArrowUp') d = { x: 0, y: s, z: 0 };
-        else if (mod && K === 'ArrowDown') d = { x: 0, y: -s, z: 0 };
-        else if (K === 'Home' || K === 'PageUp' || C === 'Numpad7' || C === 'Numpad9')
-          d = { x: 0, y: s, z: 0 };
-        else if (K === 'End' || K === 'PageDown' || C === 'Numpad1' || C === 'Numpad3')
-          d = { x: 0, y: -s, z: 0 };
-        else if (K === 'ArrowLeft' || C === 'Numpad4') d = { x: -s, y: 0, z: 0 };
-        else if (K === 'ArrowRight' || C === 'Numpad6') d = { x: s, y: 0, z: 0 };
-        else if (K === 'ArrowUp' || C === 'Numpad8') d = { x: 0, y: 0, z: -s };
-        else if (K === 'ArrowDown' || C === 'Numpad2') d = { x: 0, y: 0, z: s };
-        if (d) {
-          e.preventDefault();
-          translateMembersBy(editor.selectedIds, d);
-          return;
-        }
-      }
-
-      // typed-length entry: while a draw path is open, digits/units type into the
-      // length pill; Enter commits the segment at that distance (must run BEFORE
-      // the tool hotkeys so e.g. "10cm" doesn't trigger the Curve tool on 'c')
-      if (editor.tool === 'draw' && editor.drawingFromNodeId) {
-        if (e.key === 'Enter' && editor.drawLength) {
-          const doc = useAppStore.getState().current;
-          const m = doc ? parseLength(editor.drawLength, doc.lengthDisplay) : null;
-          if (m && m > 0 && placeDrawAtDistance(m)) {
-            e.preventDefault();
-            return;
-          }
-        } else if (e.key === 'Backspace' && editor.drawLength) {
-          editor.setDrawLength(editor.drawLength.slice(0, -1));
-          e.preventDefault();
-          return;
-        } else if (e.key === 'Escape' && editor.drawLength) {
-          editor.setDrawLength('');
-          e.preventDefault();
-          return;
-        } else if (e.key.length === 1 && /[0-9./'" a-z]/i.test(e.key)) {
-          editor.setDrawLength(editor.drawLength + e.key);
-          e.preventDefault();
-          return;
-        }
-      }
-
-      // Shift+Q clears every placed guide line (works in any tool / mid-draft)
-      if (e.key === 'Q' && e.shiftKey) {
-        clearGuides();
-        e.preventDefault();
-        return;
-      }
-      // guide tool typed-offset entry: digits/units type into the guide length
-      // pill; Enter commits the guide at that perpendicular offset (must run
-      // BEFORE the tool hotkeys so 'q'/units don't switch tools mid-entry)
-      if (editor.tool === 'guide' && editor.guideDraft) {
-        const cursor = editor.guideCursor;
-        if (e.key === 'Enter' && cursor) {
-          if (editor.guideLength) {
-            const doc = useAppStore.getState().current;
-            const m = doc ? parseLength(editor.guideLength, doc.lengthDisplay) : null;
-            if (m && m > 0 && placeGuideAtOffset(cursor, m)) {
-              e.preventDefault();
-              return;
-            }
-          } else {
-            placeGuide(cursor);
-            e.preventDefault();
-            return;
-          }
-        } else if (e.key === 'Backspace' && editor.guideLength) {
-          editor.setGuideLength(editor.guideLength.slice(0, -1));
-          e.preventDefault();
-          return;
-        } else if (e.key === 'Escape') {
-          cancelGuideDraft();
-          e.preventDefault();
-          return;
-        } else if (e.key.length === 1 && /[0-9./'" a-z]/i.test(e.key)) {
-          editor.setGuideLength(editor.guideLength + e.key);
-          e.preventDefault();
-          return;
-        }
-      }
-
-      if (e.key === 'Escape' || e.key === 'Enter') {
-        if (editor.drawingFromNodeId) finishPath();
-        else if (editor.formedPoints.length) finishFormed();
-        else if (editor.measureFrom || editor.measureAdjustId) {
-          editor.setMeasureFrom(null);
-          editor.setMeasureAdjustId(null);
-        } else if (editor.elasticFrom) editor.setElasticFrom(null);
-        else if (e.key === 'Escape' && editor.enteredGroupId) exitGroup();
-        else clearSelection();
-      } else if (e.key === 'g' || e.key === 'G') {
-        // G groups the selection; Shift+G ungroups it (auto-solves boundary unions)
-        if (e.shiftKey) ungroupSelection();
-        else groupSelection();
-      } else if (e.key === ' ') {
-        // spacebar → back to the select tool
-        e.preventDefault();
-        editor.setTool('select');
-      } else if (e.key === 'v' || e.key === 'V') {
-        editor.setTool('select');
-      } else if (e.key === 'd' || e.key === 'D') {
-        editor.setTool('draw');
-      } else if (e.key === 'm' || e.key === 'M') {
-        editor.setTool('move');
-      } else if (e.key === 'c' || e.key === 'C') {
-        // the heat-formed spline tool, now labelled "Curve"
-        editor.setTool('formed');
-      } else if (e.key === 'b' || e.key === 'B') {
-        editor.setTool('bend');
-      } else if (e.key === 't' || e.key === 'T') {
-        editor.setTool('measure');
-      } else if (e.key === 'e' || e.key === 'E') {
-        editor.setTool('elastic');
-      } else if (e.key === 'r' || e.key === 'R') {
-        editor.setTool('rotate');
-      } else if (e.key === 'p' || e.key === 'P') {
-        editor.setTool('extend');
-      } else if (e.key === 'q' || e.key === 'Q') {
-        editor.setTool('guide');
-      } else if (e.key === 'w' || e.key === 'W') {
-        editor.toggleWireframe();
-      } else if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (editor.selectedMeasurementId) deleteMeasurement(editor.selectedMeasurementId);
-        else if (editor.selectedElasticId) deleteElastic(editor.selectedElasticId);
-        else if (editor.selectedIds.length) {
-          deleteMembers(editor.selectedIds);
-          clearSelection();
-        }
-      }
-    };
-    // right button ends any path in progress (and never opens a context menu);
-    // right-drag still rotates via OrbitControls
-    const onPointerDown = (e: PointerEvent) => {
-      if (e.button !== 2) return;
-      const s = useEditorStore.getState();
-      if (s.drawingFromNodeId) finishPath();
-      else if (s.formedPoints.length) finishFormed();
-    };
-    const onContextMenu = (e: MouseEvent) => e.preventDefault();
-    window.addEventListener('keydown', onKey);
-    window.addEventListener('pointerdown', onPointerDown);
-    window.addEventListener('contextmenu', onContextMenu);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('pointerdown', onPointerDown);
-      window.removeEventListener('contextmenu', onContextMenu);
-    };
-  }, [undo, redo]);
-
-  // test/debug hook (planfile §7): drives exactly what the tools drive, so a
-  // scripted check can draw a path and assert the resulting geometry. Merged,
-  // not replaced.
-  useEffect(() => {
-    const w = window as unknown as { __pvc?: Record<string, unknown> };
-    if (!w.__pvc) w.__pvc = {};
-    const hook = w.__pvc;
-    hook.getDoc = () => useAppStore.getState().current;
-    hook.getEditor = () => {
-      const s = useEditorStore.getState();
-      return {
-        tool: s.tool,
-        projection: s.projection,
-        selectedIds: s.selectedIds,
-        selectedJointId: s.selectedJointId,
-        drawSize: s.drawSize,
-        drawingFromNodeId: s.drawingFromNodeId,
-        snap: s.snap,
-        night: useThemeStore.getState().night,
-      };
-    };
-    hook.setSnap = (patch: Record<string, unknown>) =>
-      useEditorStore.getState().setSnap(patch as never);
-    hook.getFittings = () => {
-      const d = useAppStore.getState().current;
-      return d ? resolveFittings(d) : { fittings: [], conflicts: [] };
-    };
-    hook.getMembers = () => {
-      const d = useAppStore.getState().current;
-      if (!d) return [];
-      return d.members.map((m) => ({
-        id: m.id,
-        size: m.size,
-        nodeA: m.nodeA,
-        nodeB: m.nodeB,
-        lengthM: memberLengthM(d, m),
-      }));
-    };
-    hook.setTool = (
-      tool:
-        | 'select'
-        | 'draw'
-        | 'formed'
-        | 'move'
-        | 'rotate'
-        | 'measure'
-        | 'bend'
-        | 'elastic'
-        | 'extend'
-        | 'guide',
-    ) => useEditorStore.getState().setTool(tool);
-    hook.setProjection = (p: 'ortho' | 'perspective') => useEditorStore.getState().setProjection(p);
-    hook.setView = (name: ViewName) => setView(name);
-    hook.setDrawSize = (size: '1/2"' | '3/4"') => useEditorStore.getState().setDrawSize(size);
-    hook.setLengthsLocked = (locked: boolean) =>
-      useAppStore.getState().updateCurrent((doc) => ({ ...doc, lengthsLocked: locked }));
-    hook.setNight = (on: boolean) => useThemeStore.getState().setNight(on);
-    // drawing / editing seams (world ground points)
-    hook.snap = (raw: Vec3, lockAxis?: boolean) => snapDrawPoint(raw, !!lockAxis);
-    hook.draw = (raw: Vec3, lockAxis?: boolean) => placeDrawPoint(raw, !!lockAxis);
-    hook.finishPath = () => finishPath();
-    hook.drawFormed = (raw: Vec3) => placeFormedPoint(raw);
-    hook.finishFormed = () => finishFormed();
-    hook.measure = (raw: Vec3) => placeMeasurePoint(raw);
-    hook.getMeasurements = () => useAppStore.getState().current?.measurements ?? [];
-    hook.deleteMeasurement = (id: string) => deleteMeasurement(id);
-    // elastic-band seams (place two attachment points → a spring band)
-    hook.placeElastic = (raw: Vec3) => placeElasticPoint(raw);
-    hook.getElastics = () => useAppStore.getState().current?.elastics ?? [];
-    hook.setElasticTension = (id: string, stiffnessNPerM: number) =>
-      setElasticTension(id, stiffnessNPerM);
-    hook.selectElastic = (id: string | null) => useEditorStore.getState().selectElastic(id);
-    hook.deleteElastic = (id: string) => deleteElastic(id);
-    hook.bendMember = (
-      memberId: string,
-      t: number,
-      perpOffset: Vec3,
-      lengthRef?: { axisDir: Vec3; lengthM: number },
-    ) => bendMemberAt(memberId, t, perpOffset, lengthRef);
-    hook.setBendLengthLock = (on: boolean) => useEditorStore.getState().setBendLengthLock(on);
-    hook.moveControlPoint = (memberId: string, index: number, raw: Vec3) =>
-      moveFormedControlPoint(memberId, index, raw);
-    hook.selectMember = (id: string) => selectMember(id);
-    hook.setSelection = (ids: string[]) => useEditorStore.getState().setSelection(ids);
-    hook.openJoinMenu = (menu: { nodeId: string; moverId: string; x: number; y: number }) =>
-      useEditorStore.getState().openJoinMenu(menu);
-    hook.copySelection = () => copySelection();
-    hook.cutSelection = () => cutSelection();
-    hook.pasteClipboard = () => pasteClipboard();
-    hook.hasClipboard = () => hasClipboard();
-    hook.groupSelection = () => groupSelection();
-    hook.ungroupSelection = () => ungroupSelection();
-    hook.enterGroup = (id: string) => enterGroup(id);
-    hook.exitGroup = () => exitGroup();
-    hook.getEnteredGroup = () => useEditorStore.getState().enteredGroupId;
-    hook.selectJoint = (id: string | null) => useEditorStore.getState().selectJoint(id);
-    hook.clearSelection = () => clearSelection();
-    hook.deleteMembers = (ids: string[]) => deleteMembers(ids);
-    hook.setMemberLength = (id: string, lengthM: number) => setMemberLength(id, lengthM);
-    hook.setMemberSize = (id: string, size: '1/2"' | '3/4"') => setMemberSize(id, size);
-    hook.setMembersSize = (ids: string[], size: '1/2"' | '3/4"') => setMembersSize(ids, size);
-    hook.setLengthDisplay = (d: 'mm' | 'cm' | 'in' | 'in-frac') => setLengthDisplay(d);
-    hook.detachMemberEnd = (memberId: string, nodeId: string) => detachMemberEnd(memberId, nodeId);
-    hook.weldDroppedNode = (nodeId: string) => weldDroppedNode(nodeId);
-    hook.dragNode = (id: string, raw: Vec3) => dragNodeTo(id, raw);
-    hook.moveMember = (id: string, delta: Vec3) => translateMemberBy(id, delta);
-    hook.rotateMember = (id: string, axis: Vec3, angleRad: number, pivot: Vec3) =>
-      rotateMemberBy(id, axis, angleRad, pivot);
-    hook.getIntersections = () => {
-      const d = useAppStore.getState().current;
-      return d ? [...intersectingMembers(d)] : [];
-    };
-    hook.getFormed = (id: string) => {
-      const d = useAppStore.getState().current;
-      const m = d ? memberById(d, id) : undefined;
-      return d && m && m.kind === 'formed' ? analyzeFormed(d, m) : null;
-    };
-    // joint seams (right-click a join → anchor / wrapped / free)
-    hook.getJoints = () => useAppStore.getState().current?.joints ?? [];
-    hook.setJoinMode = (
-      nodeId: string,
-      moverId: string,
-      mode: 'anchor' | 'wrapped' | 'free',
-      receiverId?: string,
-    ) => setJoinMode(nodeId, moverId, mode, receiverId);
-    hook.swapJointReceiver = (jointId: string) => swapJointReceiver(jointId);
-    hook.makeManufacturedJoint = (nodeId: string, moverId: string) =>
-      makeManufacturedJoint(nodeId, moverId);
-    hook.makeFreeHub = (nodeId: string) => makeFreeHub(nodeId);
-    // opt-in: logs what the draw cursor / a dragged endpoint snaps to
-    hook.setSnapDebug = (on: boolean) => {
-      hook.snapDebug = on;
-    };
-    // pivots / solver seams
-    hook.setPivotAngle = (jointId: string, angleRad: number) => setPivotAngle(jointId, angleRad);
-    hook.getSolve = () => {
-      const d = useAppStore.getState().current;
-      if (!d) return null;
-      return solve(
-        d,
-        {
-          lengthsLocked: d.lengthsLocked,
-          pivotAngles: pivotAnglesOf(d),
-          jointOrientations: jointOrientationsOf(d),
-        },
-        'pose',
-      );
-    };
-    // BOM + export/import seams
-    hook.getBom = () => {
-      const d = useAppStore.getState().current;
-      return d ? bom(d) : null;
-    };
-    hook.exportJson = () => {
-      const d = useAppStore.getState().current;
-      return d ? exportDesignJson(d) : null;
-    };
-    hook.importJson = (text: string) => useAppStore.getState().importAndOpen(text);
-    // physics seams
-    hook.setSimulating = (on: boolean) => useEditorStore.getState().setSimulating(on);
-    hook.setPhysicsDebug = (on: boolean) => useEditorStore.getState().setPhysicsDebug(on);
-    hook.setWireframe = (on: boolean) => useEditorStore.getState().setWireframe(on);
-    hook.getPhysics = () => physicsNodePositions();
-    // mannequin (static human collision body) + global damping (friction/drag)
-    hook.setMannequin = (on: boolean) => setMannequin(on);
-    hook.setJointDamping = (mult: number) => setJointDamping(mult);
-    // perf-lever A/B seams (set BEFORE simulating — baked at world build)
-    hook.setPhysicsPrecision = (o: { substeps?: boolean; ccd?: boolean; vcap?: boolean }) =>
-      setPhysicsPrecision(o);
-    hook.setPhysicsTuning = (o: {
-      velocityIterations?: number;
-      positionIterations?: number;
-      allowSleeping?: boolean;
-    }) => setPhysicsTuning(o);
-  }, []);
+    if (simulating) setWorkflow('simulate');
+  }, [simulating, setWorkflow]);
 
   if (!hasDesign) return null;
 
   return (
     <div className="relative h-full w-full overflow-hidden">
+      <PvcAutomationBridge />
       <Viewport />
       <MarqueeOverlay />
 
@@ -605,7 +185,13 @@ export function EditorShell() {
         <div className="border-border bg-card flex items-center gap-0.5 rounded-lg border px-1.5 py-1.5 shadow-sm">
           <button
             type="button"
-            onClick={() => setBomOpen((o) => !o)}
+            onClick={() =>
+              setBomOpen((open) => {
+                const next = !open;
+                if (next) setWorkflow('fabricate');
+                return next;
+              })
+            }
             aria-pressed={bomOpen}
             title="Cut list / BOM"
             className={`rounded-md p-1.5 ${bomOpen ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}`}
@@ -642,8 +228,19 @@ export function EditorShell() {
 
       {bomOpen && <BomPanel onClose={() => setBomOpen(false)} />}
 
-      {/* object / group tree (left, below the title bar) */}
-      <div className="pointer-events-none absolute top-16 left-4">
+      <div className="absolute top-16 left-4">
+        <EditorWorkflowStatus
+          activeWorkflow={workflow}
+          onWorkflowChange={setWorkflow}
+          onOpenBom={() => {
+            setWorkflow('fabricate');
+            setBomOpen(true);
+          }}
+        />
+      </div>
+
+      {/* object / group tree (left, below workflow status) */}
+      <div className="pointer-events-none absolute top-44 left-4">
         <ObjectTree />
       </div>
 

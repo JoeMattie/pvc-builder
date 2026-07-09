@@ -7,6 +7,13 @@ export interface ProjectSummary {
   updatedAt: number;
 }
 
+export interface ProjectRevisionSummary {
+  revId: number;
+  projectId: string;
+  savedAt: number;
+  name: string;
+}
+
 /** All persistence goes through this store. Documents are validated (and
  * migrated, if written by an older app version) on every load — the DB is not
  * trusted more than an imported file. */
@@ -35,6 +42,23 @@ export class ProjectStore {
     return migrateToLatest(row.doc);
   }
 
+  async listRevisions(projectId: string): Promise<ProjectRevisionSummary[]> {
+    const rows = await this.db.revisions.where('projectId').equals(projectId).toArray();
+    rows.sort((a, b) => (b.revId ?? 0) - (a.revId ?? 0));
+    return rows.flatMap((row) =>
+      typeof row.revId === 'number'
+        ? [
+            {
+              revId: row.revId,
+              projectId: row.projectId,
+              savedAt: row.savedAt,
+              name: migrateToLatest(row.doc).name,
+            },
+          ]
+        : [],
+    );
+  }
+
   /** Persist the document and append a revision, trimming history to
    * REVISION_LIMIT. Used by both explicit saves and autosave. */
   async saveProject(doc: Design): Promise<void> {
@@ -54,6 +78,22 @@ export class ProjectStore {
     const doc = await this.loadProject(id);
     if (!doc) throw new Error(`no project ${id}`);
     await this.saveProject({ ...doc, name });
+  }
+
+  async duplicateProject(id: string, name?: string): Promise<Design> {
+    const doc = await this.loadProject(id);
+    if (!doc) throw new Error(`no project ${id}`);
+    const copy: Design = { ...doc, id: crypto.randomUUID(), name: name ?? `${doc.name} copy` };
+    await this.saveProject(copy);
+    return copy;
+  }
+
+  async restoreRevision(projectId: string, revId: number): Promise<Design> {
+    const row = await this.db.revisions.get(revId);
+    if (!row || row.projectId !== projectId) throw new Error(`no revision ${revId}`);
+    const doc = { ...migrateToLatest(row.doc), id: projectId };
+    await this.saveProject(doc);
+    return doc;
   }
 
   async deleteProject(id: string): Promise<void> {

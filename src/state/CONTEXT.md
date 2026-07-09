@@ -9,7 +9,7 @@ transient UI. `editorActions.ts` is the **single bridge** both the pointer tools
 | File | Responsibility | Key exports |
 |---|---|---|
 | `appStore.ts` (189) | Persisted/undoable document; the only write path | `useAppStore`, `createAppStore(store?)`, `updateCurrent(fn)`, `setViewport(patch)` (non-undoable doc-stored UI state), `undo`/`redo`, `beginGesture`/`endGesture`, project lifecycle (`createProject`, `openProject`, `importAndOpen`, …) |
-| `editorStore.ts` (161) | Transient viewport/editing state (never persisted/undone) | `useEditorStore`, `Tool` (`select`\|`draw`\|`formed`\|`move`\|`rotate`\|`measure`\|`bend`\|`elastic`\|**`extend`**\|**`guide`**), `Projection`, `selectedJointId`/`selectedMeasurementId`/`selectedElasticId`, `sizeMenu`, `measureFrom`/`measureAdjustId`, `elasticFrom`, `drawLength`/`drawDirection`/**`drawAxisLock`** (extend first-segment lock), **`wireframe`**, **`guides`/`guideDraft`/`guideLength`/`guideCursor`** (transient Q-tool guide lines), `enteredGroupId`, tool/selection/marquee/joinMenu/snap actions |
+| `editorStore.ts` (161) | Transient viewport/editing state (never persisted/undone) | `useEditorStore`, `Tool` (`select`\|`draw`\|`formed`\|`move`\|`rotate`\|`measure`\|`bend`\|`elastic`\|**`extend`**\|**`guide`**), `Projection`, `SceneStatus` (`design`\|`fabricate`\|`simulate`, temporary scene semantic seam), `hoveredSceneItem`, `selectedJointId`/`selectedMeasurementId`/`selectedElasticId`, `sizeMenu`, `measureFrom`/`measureAdjustId`, `elasticFrom`, `drawLength`/`drawDirection`/**`drawAxisLock`** (extend first-segment lock), **`wireframe`**, **`guides`/`guideDraft`/`guideLength`/`guideCursor`** (transient Q-tool guide lines), `enteredGroupId`, tool/selection/marquee/joinMenu/snap actions |
 | `editorActions.ts` (397) | **The one action layer** — composes pure snapping + docOps, commits via `updateCurrent` | `placeDrawPoint`, `snapDrawPoint` (honours `drawAxisLock` + injects guide∩pipe `guidePoints`), `finishPath`, `dragNodeTo`, `translateMembersBy`/`rotateMembersBy` (rigid-body group transforms), `setMemberLength`, `setJoinMode`, `setPivotAngle`, `dragLocked`, group ops (`groupSelection`/`ungroupSelection`/`enterGroup`/`exitGroup`/`selectTreeMember`/`selectTreeGroup`/`setGroupColor`), `startExtend` (extend tool → axis-locked draw), guide ops (`pickGuideRef`/`placeGuide`/`placeGuideAtOffset`/`clearGuides`/`cancelGuideDraft`), `placeElasticPoint`/`setElasticTension`, `setMannequin`/`setJointDamping` |
 | `animStore.ts` (64) | Eased render positions so grid snaps glide (module-global map, outside React) | `useAnim`, `easedPos(id)`, `stepEasing`, `bumpAnim` |
 | `cameraStore.ts` (99) | Camera pose across ortho⇄perspective toggle + view presets + imperative pose requests (module singleton) | `getCameraPose`, `recordPose`, `orthoInit`, `perspInit`, `PERSP_FOV`, `requestPose`/`getPoseVersion`/`resetPose`, `setView`/`VIEW_PRESETS`/`ViewName` |
@@ -25,7 +25,8 @@ transient UI. `editorActions.ts` is the **single bridge** both the pointer tools
   **Gesture batching**: `beginGesture`/`endGesture` produce exactly ONE undo entry per drag.
   `temporal.clear()` on create/open/close so history never leaks across projects.
 - **editorStore = transient UI.** Only the `snap` field is persisted (localStorage workspace pref,
-  excluded from `resetTransient`). `setTool` clears in-progress draw/formed state on tool change.
+  excluded from `resetTransient`). `sceneStatus` and `hoveredSceneItem` are session-only scene
+  semantic state. `setTool` clears in-progress draw/formed state on tool change.
 
 ## Doc-stored viewport state (schema v6)
 Opening a document restores its own camera pose + tool + projection + drawSize
@@ -37,15 +38,15 @@ churn the doc; `Scene.ViewController` applies `cameraStore.requestPose`/`setView
 to the live camera. `setViewport` is **non-undoable** (temporal paused).
 
 ## `window.__pvc` — the scripted automation contract
-The hook is **defined in `../ui/EditorShell.tsx`** and merged (not replaced) onto `window`;
-`../ui/scene/Scene.tsx` adds camera seams. It calls THESE actions, giving pointer/script parity.
+The hook is **registered in `../ui/editor/PvcAutomationBridge.tsx`** and merged (not replaced) onto
+`window`; `../ui/scene/Scene.tsx` adds camera seams. It calls THESE actions, giving pointer/script parity.
 Read seams: `getDoc`, `getEditor`, `getFittings` (`{fittings, conflicts}`), `getMembers`,
 `getJoints`, `getSolve`, `getBom`, `getPhysics`, `exportJson`. Command seams: `setTool`,
 `setDrawSize`, `setProjection`, `setLengthsLocked`, `draw`/`finishPath`, `drawFormed`, `dragNode`,
 `moveMember`, `rotateMember`, `setJoinMode`, `makeManufacturedJoint`, `makeFreeHub`,
 `bendMember` (optional length-ref arg), `setBendLengthLock`, `setPivotAngle`, `importJson`,
 `setSimulating`, `placeElastic`/`getElastics`/`setElasticTension`/`selectElastic`/`deleteElastic`,
-`setMannequin`/`setJointDamping` (schema v9), `setWireframe`, `setSelection`/`openJoinMenu`,
+`setMannequin`/`setJointDamping` (v9-introduced fields in current schema v10), `setWireframe`, `setSelection`/`openJoinMenu`,
 group seams (`groupSelection`/`ungroupSelection`/`enterGroup`/`exitGroup`/`getEnteredGroup`) (scripted-screenshot/test helpers).
 (Examples load via `appStore.createFromExample`, not a `__pvc` seam.)
 

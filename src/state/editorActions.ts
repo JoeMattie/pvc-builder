@@ -592,6 +592,28 @@ export function selectTreeGroup(groupId: string): void {
   ed.setSelection(groupMemberIds(design, groupId));
 }
 
+/** Object-tree click on a joint row: leave any group focus and inspect that
+ * joint hardware as a first-class object. */
+export function selectTreeJoint(jointId: string): void {
+  const ed = useEditorStore.getState();
+  if (ed.enteredGroupId) ed.setEnteredGroup(null);
+  ed.selectJoint(jointId);
+}
+
+/** Object-tree click on a tape-measure row. */
+export function selectTreeMeasurement(measurementId: string): void {
+  const ed = useEditorStore.getState();
+  if (ed.enteredGroupId) ed.setEnteredGroup(null);
+  ed.selectMeasurement(measurementId);
+}
+
+/** Object-tree click on an elastic-band row. */
+export function selectTreeElastic(elasticId: string): void {
+  const ed = useEditorStore.getState();
+  if (ed.enteredGroupId) ed.setEnteredGroup(null);
+  ed.selectElastic(elasticId);
+}
+
 /** Add newly-drawn members to the entered group (so intra-group draws union). */
 function withDrawnInGroup(d: Design, memberIds: string[]): Design {
   const entered = useEditorStore.getState().enteredGroupId;

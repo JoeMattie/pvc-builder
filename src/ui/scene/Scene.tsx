@@ -56,6 +56,7 @@ import { MannequinLayer } from './MannequinLayer';
 import { MeasureLayer } from './MeasureLayer';
 import { PhysicsDebug } from './PhysicsDebug';
 import { PipeLayer } from './PipeLayer';
+import { SceneLabels } from './SceneLabels';
 import { MoveGizmo, RotateGizmo, SelectionHandles } from './SelectionHandles';
 import { WireframeLayer } from './WireframeLayer';
 
@@ -161,6 +162,7 @@ export function Scene() {
       <ElasticLayer />
       <MannequinLayer />
       <GuideLayer />
+      <SceneLabels />
 
       {/* ground-plane pointer target + shadow catcher + draw preview */}
       <DrawController />

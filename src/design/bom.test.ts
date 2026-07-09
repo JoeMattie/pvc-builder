@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { createEmptyDesign, type Design, type Vec3 } from '../schema';
+import { createEmptyDesign, type Design, pipeSpec, type Vec3 } from '../schema';
 import {
   bom,
   bomToCsv,
+  cutSourceSummary,
   EYE_BOLT_TAKEOFF_M,
   endCapAllowanceM,
+  fittingTakeoffDetail,
   fittingTakeoffM,
   wrapAllowanceM,
 } from './bom';
@@ -26,6 +28,7 @@ function path(points: Vec3[], size: '1/2"' | '3/4"' = '3/4"'): Design {
 }
 
 const cut = (b: ReturnType<typeof bom>, i: number) => b.cuts[i]!;
+const IN = 0.0254;
 
 describe('bom cut list', () => {
   it('a single open-ended pipe cuts to its full span (no take-off)', () => {
@@ -50,6 +53,17 @@ describe('bom cut list', () => {
     // each pipe: 1 m span, open at the far end, elbow at the corner
     expect(cut(b, 0).cutLengthM).toBeCloseTo(1 - t, 9);
     expect(cut(b, 1).cutLengthM).toBeCloseTo(1 - t, 9);
+  });
+
+  it('uses sourced pipeSpec take-off metadata where available', () => {
+    const detail = fittingTakeoffDetail('elbow90', '3/4"');
+    expect(detail.valueM).toBeCloseTo((9 / 16) * IN, 9);
+    expect(detail.source.basis).toBe('sourced');
+    expect(detail.source.label).toMatch(/Spears/);
+    expect(pipeSpec('3/4"').fittingTakeoffs?.teeRun?.source.basis).toBe('sourced');
+
+    const b = bom(path([V(0, 0, 0), V(1, 0, 0), V(1, 0, 1)]));
+    expect(cutSourceSummary(cut(b, 0)).join(' ')).toContain('sourced: Spears');
   });
 
   it('sums total pipe by size', () => {
@@ -116,6 +130,8 @@ describe('bom formed pipe', () => {
     expect(cut(b, 0).spanM).toBeLessThan(2);
     expect(cut(b, 0).spanM).toBeGreaterThan(0);
     expect(cut(b, 0).bendsRad).toHaveLength(1);
+    expect(cut(b, 0).bendSchedule?.[0]).toMatchObject({ bend: 1, belowMin: true });
+    expect(b.warnings.some((w) => w.severity === 'fabrication')).toBe(true);
   });
 });
 
@@ -132,10 +148,13 @@ describe('wrapped-union fabrication allowances', () => {
     const receiver = b.cuts.find((c) => c.memberId === j.receiver)!;
     // mover carries the wrap allowance
     expect(mover.wrapAllowanceM).toBeCloseTo(wrapAllowanceM('3/4"'), 9);
+    expect(mover.wrapAllowanceSource.basis).toBe('estimate');
     // the joint is at the receiver's own endpoint → it gets an end cap
     expect(receiver.endCapM).toBeCloseTo(endCapAllowanceM('3/4"'), 9);
+    expect(receiver.endCapSource.basis).toBe('estimate');
     // cut length includes the allowance (base + extra)
     expect(mover.cutLengthM).toBeGreaterThan(mover.spanM - mover.takeoffAM - mover.takeoffBM);
+    expect(b.warnings.some((w) => w.message.includes('wrap allowance'))).toBe(true);
   });
 
   it('allowances are zero without a wrapped joint', () => {
@@ -204,6 +223,30 @@ describe('bomToCsv', () => {
     expect(csv).toMatch(/Fittings/);
     expect(csv).toMatch(/Total pipe by size/);
     expect(csv).toMatch(/elbow90/);
+    expect(csv).toMatch(/Sources \/ assumptions/);
+    expect(csv).toMatch(/sourced: Spears PVC White Schedule 40 fitting catalog/);
     expect(csv.trim().split('\n').length).toBeGreaterThan(5);
+  });
+
+  it('emits assumption warnings and formed bend schedules', () => {
+    const formed = addFormedMember(
+      createEmptyDesign('d', 'f'),
+      V(0, 0, 0),
+      V(1, 1, 0),
+      [V(1, 0, 0)],
+      '3/4"',
+      [0.05],
+    ).design;
+    const formedCsv = bomToCsv(formed);
+    expect(formedCsv).toContain('Bend schedule');
+    expect(formedCsv).toContain('B1: bend');
+    expect(formedCsv).toContain('Warnings');
+    expect(formedCsv).toContain('below the recommended heat-forming minimum');
+
+    const d = path([V(0, 0, 0), V(1, 0, 0), V(1, 0, 1)]);
+    const withFree = setJoinMode(d, d.nodes[1]!.id, d.members[0]!.id, 'free');
+    const freeCsv = bomToCsv(withFree);
+    expect(freeCsv).toContain('estimate: PVC Builder estimate');
+    expect(freeCsv).toContain('free-pivot eye bolt');
   });
 });

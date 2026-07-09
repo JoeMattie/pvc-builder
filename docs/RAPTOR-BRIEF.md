@@ -195,9 +195,10 @@ Our primitives: **straight** ½"/¾" pipe; **formed** (heat‑bent) spline pipe;
 
 ## 5. Proposed phased build (five loadable templates)
 
-Each template is a `Design` (schemaVersion 7) that **extends the previous** — same node ids reused so
-they stack cleanly, in the spirit of the bundled examples (`src/examples/*.json`,
-`src/examples/index.ts`). Sizes: harness/frame/neck **¾"**, legs/tail/arms **½"** unless noted.
+Each template is a `Design` stored at schemaVersion 9 and migrated to the current schema on load. It
+**extends the previous** — same node ids reused so they stack cleanly, in the spirit of the bundled
+examples (`src/examples/*.json`, `src/examples/index.ts`). Sizes: harness/frame/neck **¾"**,
+legs/tail/arms **½"** unless noted.
 Coordinates: **+x** = wearer's right, **+y** = up, **+z** = forward (nose direction). Hip‑pivot line
 at **y ≈ 1.0 m, z ≈ 0**. All numbers are **estimates to tune in‑tool**.
 

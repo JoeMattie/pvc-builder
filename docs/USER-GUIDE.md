@@ -64,7 +64,7 @@ the project list. Work autosaves continuously.
 
 ## The viewport
 
-The 3D viewport fills the screen; all controls float over it.
+The 3D viewport fills the screen; controls sit over it as compact CAD chrome.
 
 - **Projection** — the **Isometric / Perspective** button (top-right) toggles between an
   orthographic isometric camera (the default) and a perspective camera.
@@ -80,6 +80,20 @@ The 3D viewport fills the screen; all controls float over it.
 Each design **remembers its own camera pose, tool, projection, and draw size**, so it
 opens exactly as you left it — it does not inherit the previous design's view.
 
+### Workflow and status
+
+The editor is organized around three workflows, whether they appear as explicit tabs/status
+chrome or as the current floating controls:
+
+- **Design** — draw, select, resize, bend, group, snap, measure, and add guides.
+- **Fabricate** — inspect fittings, warnings, BOM/cut lengths, bend schedules, and export CSV/JSON.
+- **Simulate** — lock lengths, inspect pivots/free joints, tune bands/mannequin/damping, and run Play.
+
+When a top/status bar is present it summarizes the active workflow, document/save state, warning
+count, and whether you are looking at document geometry or live simulation positions. In the compact
+chrome, the same state is split across the document controls, conflict markers, BOM panel, Lengths
+lock, and Play/debug controls.
+
 ---
 
 ## Tools
@@ -91,11 +105,13 @@ badge. Press a hotkey or click a tool to switch. **Space** always returns to Sel
 |---|---|---|
 | **Select** | `V` | Pick pipes, endpoints, joints, bands, and measurements; drag handles; marquee-select. |
 | **Draw** | `D` | Draw straight SCH 40 pipe runs. |
+| **Extend** | `P` | Push a new pipe out of an existing pipe end along a shown direction. |
 | **Move** | `M` | Translate the selection with a 3-axis gizmo. |
-| **Rotate** | — | Spin the selection with a 3-axis gizmo. |
+| **Rotate** | `R` | Spin the selection with a 3-axis gizmo. |
 | **Curve** | `C` | Draw heat-formed (bent) pipe as a smooth spline. |
 | **Bend** | `B` | Drag a bend into an existing straight pipe. |
 | **Measure** | `T` | Drop a persistent tape-measure dimension. |
+| **Guide** | `Q` | Place construction guide lines; Shift+Q clears them. |
 | **Band** | `E` | Add an elastic band (a spring) between two attachment points. |
 
 To the right of the tools is the **pipe size** switch (`1/2"` / `3/4"`) — the size the
@@ -113,6 +129,10 @@ Lays straight pipe. See [Drawing pipe](#drawing-pipe).
 ### Move (M) / Rotate
 Show a 3-axis gizmo on the selection. Drag a gizmo axis to translate (Move) or rotate
 (Rotate) the whole selection along/about that axis. Works on multi-selections.
+
+### Extend (P)
+Shows push-cylinder handles on pipe ends. Click one to start a Draw path locked to that
+direction for the first segment.
 
 ### Curve (C)
 Draws **heat-formed** pipe: click a series of points and the tool sweeps a smooth
@@ -136,6 +156,10 @@ A plain click on a bent pipe adds another control point.
 Two-click tape measure: click a start point and an end point (both snap to pipe ends /
 along pipes) to drop a persistent dimension line with a label. Measurements are
 selectable and deletable (Delete). Press Esc to cancel a measurement in progress.
+
+### Guide (Q)
+Click a pipe, then place a parallel construction guide line. Type a distance before
+pressing Enter for an exact offset. Guides act as snap aids; **Shift+Q** clears them.
 
 ### Band (E)
 Adds elastic bands — see [Elastic bands](#elastic-bands).
@@ -318,7 +342,7 @@ Scope is **1/2" and 3/4" SCH 40 PVC** only; fittings are drawn at true outside d
 - **Pose controls** — in locked mode, the **Pivots panel** (top-right) shows a mobility
   readout (degrees of freedom, or "over-locked"), an **angle slider per wrapped pivot**,
   and a reset button. **Free ball joints have no slider** — pose them by dragging them
-  directly. Press **R** to reset all pivots.
+  directly. Use the panel's reset button to reset pivots.
 - **Play** — the **Play** button, or **Ctrl+Space**, starts/stops the rigid-body physics
   simulation. Members become rigid bodies, pivots become hinge constraints, other joints
   become fixed constraints, and elastic bands pull. Press again (or Ctrl+Space) to stop.
@@ -370,15 +394,19 @@ There is no network — all files are handled client-side.
 |---|---|
 | `V` | Select tool |
 | `D` | Draw straight pipe |
+| `P` | Extend / push a pipe out of an end |
 | `C` | Curve (heat-formed spline) tool |
 | `M` | Move tool |
+| `R` | Rotate tool |
 | `B` | Bend tool |
 | `T` | Measure / tape tool |
+| `Q` | Guide line tool |
+| `Shift`+`Q` | Clear all guide lines |
 | `E` | Elastic band tool |
+| `W` | Wireframe view |
 | `Space` | Back to the Select tool |
 | `G` | Group the selection |
 | `Shift`+`G` | Ungroup the selection |
-| `R` | Reset all pivots (locked mode) |
 | `Delete` / `Backspace` | Delete selected pipe / band / measurement |
 | `Ctrl`+`C` | Copy the selection |
 | `Ctrl`+`X` | Cut the selection |

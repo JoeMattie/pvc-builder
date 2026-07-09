@@ -32,11 +32,8 @@ import { GROUND_SIZE_M, scenePalette } from '../theme';
 import { formatLengthDisplay } from '../units';
 import { placeAxis } from './axis';
 import { dominantAxisNormal, rayToGround, rayToPlane } from './ground';
+import { CLICK_SLOP_PX, startWindowPointerDrag } from './interactions';
 import { pickSnapPoint, SNAP_PX, snapDebug } from './pipePick';
-
-// A click and an orbit-drag both start with a pointerdown on the ground; only
-// treat a pointerup as a "click" if the pointer barely moved.
-const CLICK_SLOP_PX = 6;
 
 const AXIS_COLOR = { x: '#d64545', y: '#3d9950', z: '#2a78d6' } as const;
 const SNAP_GREEN = '#12b886'; // snap indicator (dot / pill / pipe outline)
@@ -375,9 +372,6 @@ export function DrawController() {
       } else if (liveTool === 'elastic') setPreview(snapMeasurePoint(g));
     };
     const up = (ev: PointerEvent) => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-      window.removeEventListener('pointercancel', up);
       if (ev.button !== 0) return;
       const moved = Math.hypot(ev.clientX - startX, ev.clientY - startY);
       if (liveTool === 'guide') {
@@ -425,9 +419,7 @@ export function DrawController() {
         if (moved > CLICK_SLOP_PX || !startedElastic) placeElasticPoint(g);
       }
     };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-    window.addEventListener('pointercancel', up);
+    startWindowPointerDrag({ onMove: move, onUp: up, onCancel: up });
   };
 
   const showPreview = tool === 'draw' && preview;
