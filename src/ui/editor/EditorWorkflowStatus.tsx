@@ -83,7 +83,7 @@ export function EditorWorkflowStatus({
       : { label: 'Document geometry', tone: 'ok' as const };
 
   return (
-    <div className="pointer-events-auto flex w-[19rem] flex-col gap-1.5 rounded-xl border border-border bg-card p-2 shadow-md">
+    <div className="pointer-events-auto flex w-full flex-col gap-1.5 rounded-xl border border-border bg-card p-2 shadow-md">
       <div className="grid grid-cols-3 gap-1">
         {WORKFLOWS.map(({ id, icon: Icon, label, title }) => {
           const active = activeWorkflow === id;

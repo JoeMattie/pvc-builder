@@ -1,18 +1,12 @@
 import {
   Box,
-  Bug,
   ChevronLeft,
   ClipboardList,
   FileDown,
   FileUp,
   HelpCircle,
-  Lock,
-  LockOpen,
   Moon,
-  PersonStanding,
-  Play,
   Redo2,
-  Square,
   Sun,
   Undo2,
   Waypoints,
@@ -21,14 +15,15 @@ import { useEffect, useRef, useState } from 'react';
 import { exportDesignJson, suggestedFileName } from '../persistence/exportImport';
 import { useAppStore } from '../state/appStore';
 import { requestPose, resetPose } from '../state/cameraStore';
-import { setJointDamping, setMannequin } from '../state/editorActions';
 import { useEditorStore } from '../state/editorStore';
 import { useThemeStore } from '../state/themeStore';
 import { BendPill } from './BendPill';
 import { BomPanel } from './BomPanel';
+import { FloatingIsland } from './chrome/FloatingIsland';
 import { ElasticPanel } from './ElasticPanel';
 import { EditorWorkflowStatus } from './editor/EditorWorkflowStatus';
 import { PvcAutomationBridge } from './editor/PvcAutomationBridge';
+import { SimulationPanel } from './editor/SimulationPanel';
 import { useEditorHotkeys } from './editor/useEditorHotkeys';
 import { HelpPanel } from './HelpPanel';
 import { JoinMenu } from './JoinMenu';
@@ -77,12 +72,14 @@ export function EditorShell() {
   // mutates the doc every frame — doesn't re-render the chrome.
   const hasDesign = useAppStore((s) => s.current !== null);
   const designName = useAppStore((s) => s.current?.name ?? '');
-  const lengthsLocked = useAppStore((s) => s.current?.lengthsLocked ?? false);
   const closeProject = useAppStore((s) => s.closeProject);
-  const updateCurrent = useAppStore((s) => s.updateCurrent);
   const importAndOpen = useAppStore((s) => s.importAndOpen);
   const undo = useAppStore((s) => s.undo);
   const redo = useAppStore((s) => s.redo);
+  const hasPivotPanel = useAppStore((s) => {
+    const d = s.current;
+    return !!d?.lengthsLocked && d.joints.some((j) => j.mode === 'wrapped' || j.mode === 'free');
+  });
 
   const [bomOpen, setBomOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -104,15 +101,13 @@ export function EditorShell() {
   const tool = useEditorStore((s) => s.tool);
   const drawSize = useEditorStore((s) => s.drawSize);
   const simulating = useEditorStore((s) => s.simulating);
-  const setSimulating = useEditorStore((s) => s.setSimulating);
   const workflow = useEditorStore((s) => s.sceneStatus);
   const setWorkflow = useEditorStore((s) => s.setSceneStatus);
-  const physicsDebug = useEditorStore((s) => s.physicsDebug);
-  const setPhysicsDebug = useEditorStore((s) => s.setPhysicsDebug);
   const wireframe = useEditorStore((s) => s.wireframe);
   const toggleWireframe = useEditorStore((s) => s.toggleWireframe);
-  const mannequin = useAppStore((s) => s.current?.mannequin ?? false);
-  const jointDamping = useAppStore((s) => s.current?.jointDamping ?? 1);
+  const selectedCount = useEditorStore((s) => s.selectedIds.length);
+  const selectedJointId = useEditorStore((s) => s.selectedJointId);
+  const selectedElasticId = useEditorStore((s) => s.selectedElasticId);
 
   // Restore doc-stored view + tool state on open (schema v6 `viewport`), and
   // reset transient state — so a document opens exactly as it was saved and does
@@ -151,9 +146,6 @@ export function EditorShell() {
   const night = useThemeStore((s) => s.night);
   const toggleNight = useThemeStore((s) => s.toggleNight);
 
-  const setLengthsLocked = (locked: boolean) =>
-    updateCurrent((doc) => ({ ...doc, lengthsLocked: locked }));
-
   useEditorHotkeys({ undo, redo });
 
   useEffect(() => {
@@ -162,6 +154,10 @@ export function EditorShell() {
 
   if (!hasDesign) return null;
 
+  const showInspector =
+    selectedCount > 0 || !!selectedJointId || !!selectedElasticId || tool === 'bend';
+  const showRightDock = bomOpen || workflow === 'simulate' || hasPivotPanel;
+
   return (
     <div className="relative h-full w-full overflow-hidden">
       <PvcAutomationBridge />
@@ -169,123 +165,127 @@ export function EditorShell() {
       <MarqueeOverlay />
 
       {/* top-left: back + design name */}
-      <div className="absolute top-4 left-4 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => void closeProject()}
-          aria-label="Back to projects"
-          className="border-border bg-card text-foreground flex items-center gap-1 rounded-lg border px-2.5 py-2 text-sm shadow-sm"
+      <FloatingIsland
+        id="document-controls"
+        placement="top-left"
+        handleLabel="Move document controls"
+      >
+        <div className="flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void closeProject()}
+            aria-label="Back to projects"
+            className="flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-2 text-sm text-foreground shadow-sm"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <div className="flex max-w-[16rem] items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-sm">
+            <Box size={16} className="shrink-0 text-muted-foreground" />
+            <span className="truncate text-sm font-medium">{designName}</span>
+          </div>
+          <div className="flex items-center gap-0.5 rounded-lg border border-border bg-card px-1.5 py-1.5 shadow-sm">
+            <button
+              type="button"
+              onClick={() =>
+                setBomOpen((open) => {
+                  const next = !open;
+                  if (next) setWorkflow('fabricate');
+                  return next;
+                })
+              }
+              aria-pressed={bomOpen}
+              title="Cut list / BOM"
+              className={`rounded-md p-1.5 ${bomOpen ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}`}
+            >
+              <ClipboardList size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={exportJson}
+              aria-label="Export JSON"
+              title="Export .pvc.json"
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            >
+              <FileDown size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Import JSON"
+              title="Import .pvc.json"
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            >
+              <FileUp size={16} />
+            </button>
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={onImportFile}
+          />
+        </div>
+      </FloatingIsland>
+
+      <FloatingIsland id="workflow-stack" placement="left-stack" handleLabel="Move workflow panels">
+        <div className="flex w-[min(92vw,19rem)] flex-col gap-2">
+          <EditorWorkflowStatus
+            activeWorkflow={workflow}
+            onWorkflowChange={setWorkflow}
+            onOpenBom={() => {
+              setWorkflow('fabricate');
+              setBomOpen(true);
+            }}
+          />
+          <ObjectTree />
+        </div>
+      </FloatingIsland>
+
+      {showInspector && (
+        <FloatingIsland
+          id="inspector-stack"
+          placement="top-center"
+          handleLabel="Move inspector panels"
         >
-          <ChevronLeft size={16} />
-        </button>
-        <div className="border-border bg-card flex items-center gap-2 rounded-lg border px-3 py-2 shadow-sm">
-          <Box size={16} className="text-muted-foreground" />
-          <span className="text-sm font-medium">{designName}</span>
-        </div>
-        <div className="border-border bg-card flex items-center gap-0.5 rounded-lg border px-1.5 py-1.5 shadow-sm">
-          <button
-            type="button"
-            onClick={() =>
-              setBomOpen((open) => {
-                const next = !open;
-                if (next) setWorkflow('fabricate');
-                return next;
-              })
-            }
-            aria-pressed={bomOpen}
-            title="Cut list / BOM"
-            className={`rounded-md p-1.5 ${bomOpen ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}`}
-          >
-            <ClipboardList size={16} />
-          </button>
-          <button
-            type="button"
-            onClick={exportJson}
-            aria-label="Export JSON"
-            title="Export .pvc.json"
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-          >
-            <FileDown size={16} />
-          </button>
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            aria-label="Import JSON"
-            title="Import .pvc.json"
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-          >
-            <FileUp size={16} />
-          </button>
-        </div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".json,application/json"
-          className="hidden"
-          onChange={onImportFile}
-        />
-      </div>
-
-      {bomOpen && <BomPanel onClose={() => setBomOpen(false)} />}
-
-      <div className="absolute top-16 left-4">
-        <EditorWorkflowStatus
-          activeWorkflow={workflow}
-          onWorkflowChange={setWorkflow}
-          onOpenBom={() => {
-            setWorkflow('fabricate');
-            setBomOpen(true);
-          }}
-        />
-      </div>
-
-      {/* object / group tree (left, below workflow status) */}
-      <div className="pointer-events-none absolute top-44 left-4">
-        <ObjectTree />
-      </div>
-
-      {/* selected-member inspector (top-center) */}
-      <SelectionPanel />
-
-      {/* Bend-tool options (top-center) */}
-      <BendPill />
-
-      {/* selected elastic-band tension slider (top-center) */}
-      <ElasticPanel />
+          <div className="flex max-w-[calc(100vw-2rem)] flex-col items-center gap-2">
+            <SelectionPanel />
+            <BendPill />
+            <ElasticPanel />
+          </div>
+        </FloatingIsland>
+      )}
 
       {/* tool pillbox (bottom-center) */}
-      <Pillbox />
+      <FloatingIsland id="tool-pillbox" placement="bottom-center" handleLabel="Move tool palette">
+        <Pillbox />
+      </FloatingIsland>
 
       {/* snapping settings + display-units (bottom-left, side by side) */}
-      <div className="absolute bottom-5 left-4 flex items-end gap-2">
-        <SnapPill />
-        <UnitsPill />
-      </div>
-
-      {/* pivot angle sliders + mobility (locked mode, top-right) */}
-      <PivotPanel />
-
-      {/* global damping (friction/drag) slider — shown while simulating so the
-          model can be made to settle correctly (Play mode, bottom-center) */}
-      {simulating && (
-        <div className="-translate-x-1/2 absolute bottom-24 left-1/2 flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-2 shadow-md">
-          <span className="text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">
-            Damping
-          </span>
-          <input
-            type="range"
-            min={0.2}
-            max={5}
-            step={0.1}
-            value={jointDamping}
-            aria-label="Joint damping"
-            onChange={(e) => setJointDamping(Number(e.target.value))}
-            className="w-40 accent-primary"
-          />
-          <span className="w-10 tabular-nums text-xs text-foreground">
-            {jointDamping.toFixed(1)}×
-          </span>
+      <FloatingIsland
+        id="snap-units"
+        placement="bottom-left"
+        className="hidden sm:block"
+        handleLabel="Move snap and units controls"
+      >
+        <div className="flex max-w-[calc(100vw-2rem)] flex-wrap items-end gap-2">
+          <SnapPill />
+          <UnitsPill />
         </div>
+      </FloatingIsland>
+
+      {showRightDock && (
+        <FloatingIsland
+          id="right-stack"
+          placement="right-stack"
+          handleLabel="Move simulation and fabrication panels"
+        >
+          <div className="scrollbar-minimal flex max-h-[calc(100vh-7rem)] flex-col items-end gap-2 overflow-y-auto pr-1">
+            {workflow === 'simulate' && <SimulationPanel />}
+            {bomOpen && <BomPanel onClose={() => setBomOpen(false)} />}
+            <PivotPanel />
+          </div>
+        </FloatingIsland>
       )}
 
       {/* right-click join menu (anchor / wrapped / free) */}
@@ -294,130 +294,72 @@ export function EditorShell() {
       {/* right-click size switcher (1/2" ↔ 3/4") */}
       <SizeMenu />
 
-      {/* top-right: play + undo/redo + view + physics + theme toggles */}
-      <div className="absolute top-4 right-4 flex items-center gap-1 rounded-lg border border-border bg-card px-1.5 py-1.5 shadow-sm">
-        <button
-          type="button"
-          onClick={() => setSimulating(!simulating)}
-          aria-pressed={simulating}
-          title={
-            simulating ? 'Stop simulation (Ctrl+Space)' : 'Play — rigid-body physics (Ctrl+Space)'
-          }
-          className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium ${
-            simulating
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-          }`}
-        >
-          {simulating ? <Square size={13} /> : <Play size={13} />}
-          {simulating ? 'Stop' : 'Play'}
-        </button>
-        {/* physics debug overlay — only while simulating (crashcat/three) */}
-        {simulating && (
+      {/* top-right: undo/redo + view + theme toggles */}
+      <FloatingIsland
+        id="view-toolbar"
+        placement="top-right"
+        className="hidden sm:block"
+        handleLabel="Move view toolbar"
+      >
+        <div className="flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-1 rounded-lg border border-border bg-card px-1.5 py-1.5 shadow-sm">
           <button
             type="button"
-            onClick={() => setPhysicsDebug(!physicsDebug)}
-            aria-pressed={physicsDebug}
-            title="Toggle physics debug overlay (bodies + constraints)"
+            onClick={undo}
+            aria-label="Undo"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          >
+            <Undo2 size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={redo}
+            aria-label="Redo"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          >
+            <Redo2 size={16} />
+          </button>
+          <div className="mx-0.5 h-5 w-px bg-border" />
+          <ViewMenu />
+          <button
+            type="button"
+            onClick={toggleProjection}
+            className="rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          >
+            {projection === 'ortho' ? 'Isometric' : 'Perspective'}
+          </button>
+          <button
+            type="button"
+            onClick={toggleWireframe}
+            aria-pressed={wireframe}
+            title="Wireframe view (W)"
             className={`flex items-center rounded-md px-2 py-1.5 ${
-              physicsDebug
-                ? 'bg-primary text-primary-foreground'
+              wireframe
+                ? 'bg-accent text-accent-foreground'
                 : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
             }`}
           >
-            <Bug size={13} />
+            <Waypoints size={15} />
           </button>
-        )}
-        <button
-          type="button"
-          onClick={() => setMannequin(!mannequin)}
-          aria-pressed={mannequin}
-          title={
-            mannequin
-              ? 'Hide the mannequin (static human to mount/rest on)'
-              : 'Show a mannequin — a static human body the design rests / hangs on in Play'
-          }
-          className={`flex items-center rounded-md px-2 py-1.5 ${
-            mannequin
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-          }`}
-        >
-          <PersonStanding size={14} />
-        </button>
-        <div className="mx-0.5 h-5 w-px bg-border" />
-        <button
-          type="button"
-          onClick={undo}
-          aria-label="Undo"
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-        >
-          <Undo2 size={16} />
-        </button>
-        <button
-          type="button"
-          onClick={redo}
-          aria-label="Redo"
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-        >
-          <Redo2 size={16} />
-        </button>
-        <div className="mx-0.5 h-5 w-px bg-border" />
-        <ViewMenu />
-        <button
-          type="button"
-          onClick={toggleProjection}
-          className="rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-        >
-          {projection === 'ortho' ? 'Isometric' : 'Perspective'}
-        </button>
-        <button
-          type="button"
-          onClick={toggleWireframe}
-          aria-pressed={wireframe}
-          title="Wireframe view (W)"
-          className={`flex items-center rounded-md px-2 py-1.5 ${
-            wireframe
-              ? 'bg-accent text-accent-foreground'
-              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-          }`}
-        >
-          <Waypoints size={15} />
-        </button>
-        <div className="mx-0.5 h-5 w-px bg-border" />
-        <button
-          type="button"
-          onClick={() => setLengthsLocked(!lengthsLocked)}
-          aria-pressed={lengthsLocked}
-          title={lengthsLocked ? 'Lengths locked' : 'Lengths free'}
-          className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium ${
-            lengthsLocked
-              ? 'bg-accent text-accent-foreground'
-              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-          }`}
-        >
-          {lengthsLocked ? <Lock size={14} /> : <LockOpen size={14} />}
-          Lengths
-        </button>
-        <div className="mx-0.5 h-5 w-px bg-border" />
-        <button
-          type="button"
-          onClick={() => setHelpOpen(true)}
-          aria-label="Help & shortcuts"
-          title="Help & keyboard shortcuts"
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-        >
-          <HelpCircle size={16} />
-        </button>
-        <button
-          type="button"
-          onClick={toggleNight}
-          aria-label="Toggle day/night"
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-        >
-          {night ? <Sun size={16} /> : <Moon size={16} />}
-        </button>
-      </div>
+          <div className="mx-0.5 h-5 w-px bg-border" />
+          <button
+            type="button"
+            onClick={() => setHelpOpen(true)}
+            aria-label="Help & shortcuts"
+            title="Help & keyboard shortcuts"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          >
+            <HelpCircle size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={toggleNight}
+            aria-label="Toggle day/night"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          >
+            {night ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+        </div>
+      </FloatingIsland>
 
       <HelpPanel open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>

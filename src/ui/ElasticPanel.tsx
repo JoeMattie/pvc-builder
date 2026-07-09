@@ -24,7 +24,7 @@ export function ElasticPanel() {
   const units = design.lengthDisplay;
 
   return (
-    <div className="-translate-x-1/2 absolute top-16 left-1/2 flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-2 shadow-md">
+    <div className="flex max-w-[calc(100vw-2rem)] flex-wrap items-center justify-center gap-3 rounded-xl border border-border bg-card px-3 py-2 shadow-md">
       <span className="text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">
         Band
       </span>

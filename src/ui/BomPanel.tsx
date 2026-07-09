@@ -19,7 +19,7 @@ export function BomPanel({ onClose }: { onClose: () => void }) {
   const angle = (rad: number) => `${trim(rad * RAD2DEG, 1)} deg`;
 
   return (
-    <div className="absolute top-16 right-4 flex max-h-[70vh] w-96 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-lg">
+    <div className="flex max-h-[min(70vh,34rem)] w-[min(92vw,24rem)] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-lg">
       <div className="flex items-center justify-between border-border border-b px-3 py-2">
         <span className="text-sm font-medium">Cut list</span>
         <div className="flex items-center gap-1">
@@ -47,7 +47,7 @@ export function BomPanel({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      <div className="overflow-y-auto px-3 py-2 text-xs">
+      <div className="scrollbar-minimal overflow-y-auto px-3 py-2 text-xs">
         {b.cuts.length === 0 ? (
           <p className="py-4 text-center text-muted-foreground">
             Draw some pipe to see a cut list.

@@ -7,16 +7,17 @@ The 3D rendering layer is the separate `scene/` subdirectory (see `scene/CONTEXT
 
 ## Component hierarchy
 `App` (root, from `main.tsx`) → `ProjectList` when no `current`, else `EditorShell`. `EditorShell`
-renders `scene/Viewport` as the base layer, mounts `editor/PvcAutomationBridge`, then floats all
-chrome as absolutely-positioned siblings.
+renders `scene/Viewport` as the base layer, mounts `editor/PvcAutomationBridge`, then docks viewport
+chrome in draggable `chrome/FloatingIsland` wrappers.
 
 ## Files
 
 | File | Responsibility | Notes |
 |---|---|---|
 | `App.tsx` (15) | Top-level router (projects vs editor) | runs `refreshProjects()` on mount |
-| `EditorShell.tsx` | Editor screen — hosts viewport + all chrome, restores/persists doc viewport state | **narrow field subscriptions on purpose**; toolbar has a person-icon **mannequin** toggle (`setMannequin`) + a Play-mode **Damping** slider (0.2–5×, `setJointDamping`) — both write v9-introduced doc flags in the current v10 schema |
-| `editor/` | Extracted editor-shell helpers | workflow/status chrome, global hotkeys, and `PvcAutomationBridge` for `window.__pvc`; read `editor/CONTEXT.md` before editing |
+| `EditorShell.tsx` | Editor screen — hosts viewport + all draggable chrome, restores/persists doc viewport state | **narrow field subscriptions on purpose**; Simulate-specific controls live in `editor/SimulationPanel.tsx` |
+| `chrome/` | Shared editor chrome wrappers | `FloatingIsland` provides drag handles, viewport clamping, saved positions, and lightweight overlap avoidance |
+| `editor/` | Extracted editor-shell helpers | workflow/status chrome, simulation panel, global hotkeys, and `PvcAutomationBridge` for `window.__pvc`; read `editor/CONTEXT.md` before editing |
 | `BomPanel.tsx` (129) | Cut-list / BOM panel + CSV download | lengths via `formatLength(m, units)` |
 | `SelectionPanel.tsx` (221) | Selected-member inspector — editable length, bend warnings, joint-mode controls | controlled draft string synced from geometry |
 | `PivotPanel.tsx` (101) | Locked-mode pivot controls — mobility readout + per-wrapped-joint angle slider | free joints get no slider (posed by dragging) |

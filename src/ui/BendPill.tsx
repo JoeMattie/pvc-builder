@@ -27,7 +27,7 @@ export function BendPill() {
     </button>
   );
   return (
-    <div className="-translate-x-1/2 absolute top-4 left-1/2 flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-sm">
+    <div className="flex max-w-[calc(100vw-2rem)] flex-wrap items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-sm">
       <span className="text-[11px] text-muted-foreground">
         Drag a pipe to bend it · drag the orange points to tweak
       </span>

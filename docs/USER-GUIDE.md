@@ -131,8 +131,8 @@ Show a 3-axis gizmo on the selection. Drag a gizmo axis to translate (Move) or r
 (Rotate) the whole selection along/about that axis. Works on multi-selections.
 
 ### Extend (P)
-Shows push-cylinder handles on pipe ends. Click one to start a Draw path locked to that
-direction for the first segment.
+Shows push-cylinder handles on pipe ends. Click one to start an Extend path locked to that
+direction for the first segment. Extend stays active until you explicitly choose another tool.
 
 ### Curve (C)
 Draws **heat-formed** pipe: click a series of points and the tool sweeps a smooth

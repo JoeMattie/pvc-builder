@@ -160,7 +160,7 @@ function JointInspector({ design, joint }: { design: Design; joint: Joint }) {
         : '0°';
 
   return (
-    <div className="absolute top-4 left-1/2 w-[min(94vw,760px)] -translate-x-1/2 rounded-lg border border-border bg-card px-3 py-2 shadow-sm">
+    <div className="w-[min(94vw,760px)] rounded-lg border border-border bg-card px-3 py-2 shadow-sm">
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex min-w-32 items-center gap-2">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-accent text-accent-foreground">
@@ -334,7 +334,7 @@ export function SelectionPanel() {
   const canFree = !!joint; // free applies end-to-end and on-body (saddle eye bolt)
 
   return (
-    <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-2 shadow-sm">
+    <div className="flex max-w-[calc(100vw-2rem)] flex-wrap items-center justify-center gap-3 rounded-lg border border-border bg-card px-3 py-2 shadow-sm">
       <span className="text-xs font-medium text-muted-foreground tabular-nums">{member.size}</span>
       <div className="h-5 w-px bg-border" />
 
