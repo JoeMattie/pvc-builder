@@ -20,6 +20,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       'New Extend tool (P): hover a pipe end to see push-cylinders in every open direction, then click one to draw a new pipe locked to that axis.',
       'New Guide lines (Q): click a pipe to drop an endless construction line parallel to it; type an exact offset, then click to place. Drawing snaps to where guides cross pipes; Shift+Q clears them.',
       'New Wireframe view (W): see the whole model as clean lines and junction dots.',
+      'For developers: a dev-only bridge now exposes the running app’s window.__pvc automation hook to external tools over HTTP/SSE, with an MCP server (tools/pvc-mcp) so an agent can query and drive a live editing session. It never ships in production builds.',
     ],
   },
   {
