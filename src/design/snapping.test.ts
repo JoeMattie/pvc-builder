@@ -3,7 +3,6 @@ import type { Vec3 } from '../schema';
 import {
   closestPointOnSegment,
   defaultSnapTolerances,
-  planeCardinalFromCursor,
   type SnapContext,
   snapPoint,
 } from './snapping';
@@ -116,51 +115,5 @@ describe('grid snapping', () => {
 describe('defaultSnapTolerances', () => {
   it('uses a 1/4-inch grid', () => {
     expect(defaultSnapTolerances().gridStepM).toBeCloseTo(0.00635, 9);
-  });
-});
-
-describe('planeCardinalFromCursor', () => {
-  const X = V(1, 0, 0);
-  const Z = V(0, 0, 1);
-
-  it('with no pipes, snaps to world ±X / ±Z (unchanged behaviour)', () => {
-    // cursor mostly along +X → wall runs along X, normal is +Z
-    expect(planeCardinalFromCursor(V(0.9, 0, 0.1), []).dir).toEqual(X);
-    expect(planeCardinalFromCursor(V(0.9, 0, 0.1), []).normal).toEqual(Z);
-    // cursor mostly along +Z → wall runs along Z, normal is +X (dominant +)
-    expect(planeCardinalFromCursor(V(0.1, 0, 0.9), []).dir).toEqual(Z);
-    expect(planeCardinalFromCursor(V(0.1, 0, 0.9), []).normal).toEqual(X);
-    // cursor along −X still resolves to the −X wall with a +Z normal
-    expect(planeCardinalFromCursor(V(-1, 0, 0), []).dir).toEqual(V(-1, 0, 0));
-    expect(planeCardinalFromCursor(V(-1, 0, 0), []).normal).toEqual(Z);
-  });
-
-  it('the normal is horizontal, unit, and perpendicular to the wall direction', () => {
-    const { dir, normal } = planeCardinalFromCursor(V(0.7, 0, 0.7), [V(2, 0, 1)]);
-    expect(normal.y).toBe(0);
-    expect(Math.hypot(normal.x, normal.z)).toBeCloseTo(1, 9);
-    expect(dir.x * normal.x + dir.z * normal.z).toBeCloseTo(0, 9); // ⟂
-  });
-
-  it('snaps the wall to a diagonal pipe when the cursor runs along it', () => {
-    const pipe = V(1, 0, 1); // 45° in the ground plane
-    const { dir } = planeCardinalFromCursor(V(0.8, 0, 0.75), [pipe]);
-    const inv = Math.SQRT1_2;
-    expect(dir.x).toBeCloseTo(inv, 6);
-    expect(dir.z).toBeCloseTo(inv, 6);
-  });
-
-  it('offers the pipe PERPENDICULAR as a cardinal too', () => {
-    const pipe = V(1, 0, 1); // 45°
-    // cursor pointing across the pipe (toward its perpendicular −X,+Z side)
-    const { dir } = planeCardinalFromCursor(V(-0.8, 0, 0.75), [pipe]);
-    const inv = Math.SQRT1_2;
-    expect(dir.x).toBeCloseTo(-inv, 6);
-    expect(dir.z).toBeCloseTo(inv, 6);
-  });
-
-  it('ignores a purely vertical pipe (no horizontal cardinal)', () => {
-    const { dir } = planeCardinalFromCursor(V(0.9, 0, 0.1), [V(0, 1, 0)]);
-    expect(dir).toEqual(X); // falls back to the world cardinal
   });
 });

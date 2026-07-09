@@ -78,58 +78,6 @@ export function closestPointOnSegment(p: Vec3, a: Vec3, b: Vec3): Vec3 {
   return add(a, scale(ab, t));
 }
 
-/** For the draw-on-plane tool: snap a horizontal cursor offset (from the plane
- * origin) to the nearest "cardinal" and return the vertical wall's in-plane
- * direction + normal. Candidates are the world axes (±X, ±Z) PLUS, for each
- * incident pipe direction, that pipe's horizontal direction and its horizontal
- * perpendicular — so a wall can align to (or square off) an existing pipe. The
- * wall contains Y (up); `normal` is horizontal and signed deterministically
- * (dominant component positive), which reproduces the plain-cardinal normals for
- * an axis-aligned wall. */
-export function planeCardinalFromCursor(
-  cursorOffset: Vec3,
-  pipeDirs: Vec3[],
-): { dir: Vec3; normal: Vec3 } {
-  const unit2 = (x: number, z: number): readonly [number, number] | null => {
-    const m = Math.hypot(x, z);
-    return m < 1e-9 ? null : [x / m, z / m];
-  };
-  const cands: Array<readonly [number, number]> = [
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-    [0, -1],
-  ];
-  for (const p of pipeDirs) {
-    const u = unit2(p.x, p.z);
-    if (!u) continue; // a vertical pipe has no horizontal cardinal
-    cands.push([u[0], u[1]], [-u[0], -u[1]], [-u[1], u[0]], [u[1], -u[0]]);
-  }
-  const c = unit2(cursorOffset.x, cursorOffset.z) ?? ([1, 0] as const);
-  let best = cands[0]!;
-  let bestDot = -Infinity;
-  for (const cand of cands) {
-    const d = cand[0] * c[0] + cand[1] * c[1];
-    if (d > bestDot + 1e-12) {
-      bestDot = d;
-      best = cand;
-    }
-  }
-  // normal = horizontal, perpendicular to dir; sign so the dominant component is
-  // positive (matches the world-cardinal normals when the wall is axis-aligned)
-  let nx = -best[1];
-  let nz = best[0];
-  if (Math.abs(nx) >= Math.abs(nz) ? nx < 0 : nz < 0) {
-    nx = -nx;
-    nz = -nz;
-  }
-  const z0 = (v: number) => v + 0; // normalise -0 → 0
-  return {
-    dir: { x: z0(best[0]), y: 0, z: z0(best[1]) },
-    normal: { x: z0(nx), y: 0, z: z0(nz) },
-  };
-}
-
 /** Resolve a raw pointer point to a snapped drawing point. */
 export function snapPoint(raw: Vec3, ctx: SnapContext): SnapResult {
   // 1. existing node

@@ -43,7 +43,7 @@ function initialSnap(): SnapSettings {
 /** Active editing tool. `formed` draws a heat-bent spline; `move` translates the
  * selected member along a world axis via arrow handles; `rotate` swings it about
  * a ring gizmo. Pivots are created by right-clicking a pipe join (no tool). */
-export type Tool = 'select' | 'draw' | 'formed' | 'move' | 'rotate' | 'measure' | 'bend' | 'plane';
+export type Tool = 'select' | 'draw' | 'formed' | 'move' | 'rotate' | 'measure' | 'bend';
 
 /** Camera projection: orthographic isometric by default, one-toggle
  * perspective (planfile §1). */
@@ -78,10 +78,6 @@ export interface EditorState {
   /** Bend tool: hold the material (developed) length — the far end draws in as
    * you bend, instead of the pipe growing */
   bendLengthLock: boolean;
-  /** draw-on-plane setup: the origin picked by the first click (awaiting angle) */
-  planeOrigin: Vec3 | null;
-  /** the active draw plane (drawing is constrained to it); null = off */
-  drawPlane: { origin: Vec3; normal: Vec3 } | null;
   /** while drawing, the length typed into the length pill (empty = not typing) */
   drawLength: string;
   /** the current draw direction (unit, from the path cursor toward the preview) —
@@ -112,8 +108,6 @@ export interface EditorState {
   selectMeasurement(id: string | null): void;
   setBendLockEndAngles(on: boolean): void;
   setBendLengthLock(on: boolean): void;
-  setPlaneOrigin(p: Vec3 | null): void;
-  setDrawPlane(plane: { origin: Vec3; normal: Vec3 } | null): void;
   setDrawLength(s: string): void;
   setDrawDirection(v: Vec3 | null): void;
   setSimulating(on: boolean): void;
@@ -141,8 +135,6 @@ const INITIAL = {
   selectedMeasurementId: null as string | null,
   bendLockEndAngles: true,
   bendLengthLock: false,
-  planeOrigin: null as Vec3 | null,
-  drawPlane: null as { origin: Vec3; normal: Vec3 } | null,
   drawLength: '',
   drawDirection: null as Vec3 | null,
   simulating: false,
@@ -163,8 +155,6 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
       formedPoints: tool === 'formed' ? get().formedPoints : [],
       measureFrom: tool === 'measure' ? get().measureFrom : null,
       measureAdjustId: tool === 'measure' ? get().measureAdjustId : null,
-      // the plane SETUP is transient; the active drawPlane is cleared by exitDrawPlane
-      planeOrigin: null,
       drawLength: '',
       drawDirection: null,
     });
@@ -210,12 +200,6 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   },
   setBendLengthLock(on) {
     set({ bendLengthLock: on });
-  },
-  setPlaneOrigin(p) {
-    set({ planeOrigin: p });
-  },
-  setDrawPlane(plane) {
-    set({ drawPlane: plane });
   },
   setDrawLength(s) {
     set({ drawLength: s });

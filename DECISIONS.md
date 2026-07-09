@@ -6,6 +6,12 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 
 ## Post-batch fixes (2026-07-08)
 
+- **Draw-on-Plane tool REMOVED** (v0.1.3). Shift-lock now covers 3D drawing (draw up any world
+  axis incl. Y), so the plane tool was redundant. Deleted: the `plane` `Tool`, its `F` hotkey +
+  Pillbox button, all plane state/actions (`drawPlane`/`planeOrigin`, `placePlanePoint`,
+  `enterDrawPlane`/`exitDrawPlane`, `planeNormalFromCursor`, `snapPlanePoint`, `constrainDraw`),
+  `PlaneQuad` rendering, the `__pvc` plane seams, the camera `stashPose`/`unstashPose`/`faceView`,
+  and the 2C `planeCardinalFromCursor` helper — all were plane-only.
 - **Versioned releases + in-app changelog.** EVERY commit-to-main-and-push bumps the semver version
   (patch by default, minor for a notable feature batch). The source of truth is `src/changelog.ts`
   (`CHANGELOG` newest-first + `APP_VERSION`); a "What's new" panel on the project-list page renders

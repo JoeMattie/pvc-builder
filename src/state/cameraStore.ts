@@ -70,30 +70,6 @@ export const VIEW_PRESETS = {
 } as const satisfies Record<string, V3>;
 export type ViewName = keyof typeof VIEW_PRESETS;
 
-// A single stashed pose, so the draw-on-plane tool can flip the camera to face
-// a plane and restore the previous view on exit.
-let stashed: Pose | null = null;
-export function stashPose(): void {
-  stashed = { position: [...pose.position], target: [...pose.target], zoom: pose.zoom };
-}
-export function unstashPose(): void {
-  if (stashed) requestPose(stashed.position, stashed.target, stashed.zoom);
-  stashed = null;
-}
-
-/** Face a plane: put the camera on the +normal side of `origin`, slightly
- * elevated, looking at it (keeps the current zoom). For the draw-on-plane flip. */
-export function faceView(origin: V3, normal: V3): void {
-  const nlen = Math.hypot(normal[0], normal[1], normal[2]) || 1;
-  const n: V3 = [normal[0] / nlen, normal[1] / nlen, normal[2] / nlen];
-  const dist = distance(pose.position, pose.target) || Math.hypot(...ISO_DIR);
-  requestPose(
-    [origin[0] + n[0] * dist * 0.92, origin[1] + dist * 0.36, origin[2] + n[2] * dist * 0.92],
-    [...origin],
-    pose.zoom,
-  );
-}
-
 /** Snap the camera to a named view, keeping the current target + distance +
  * zoom (only the direction changes). */
 export function setView(name: ViewName): void {

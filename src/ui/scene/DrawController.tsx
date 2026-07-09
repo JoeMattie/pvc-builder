@@ -16,19 +16,16 @@ import {
   placeDrawPoint,
   placeFormedPoint,
   placeMeasurePoint,
-  placePlanePoint,
-  planeNormalFromCursor,
   snapDrawPoint,
   snapFormedPoint,
   snapMeasurePoint,
-  snapPlanePoint,
   updateMeasureOffset,
 } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { GROUND_SIZE_M, scenePalette } from '../theme';
 import { formatLengthDisplay } from '../units';
-import { orientZ, placeAxis } from './axis';
+import { placeAxis } from './axis';
 import { dominantAxisNormal, rayToGround, rayToPlane } from './ground';
 import { pickSnapPoint, SNAP_PX, snapDebug } from './pipePick';
 
@@ -38,20 +35,6 @@ const CLICK_SLOP_PX = 6;
 
 const AXIS_COLOR = { x: '#d64545', y: '#3d9950', z: '#2a78d6' } as const;
 const SNAP_GREEN = '#12b886'; // snap indicator (dot / pill / pipe outline)
-
-/** A translucent square lying in the plane {origin, normal}, sitting just above
- * the origin like a wall — the draw-on-plane preview / active-plane guide. */
-function PlaneQuad({ origin, normal, faint }: { origin: Vec3; normal: Vec3; faint?: boolean }) {
-  const size = 1.2;
-  const quat = orientZ(normal); // local +Z → the plane normal; local XY spans the plane
-  const c: [number, number, number] = [origin.x, origin.y + size * 0.4, origin.z];
-  return (
-    <mesh position={c} quaternion={quat}>
-      <planeGeometry args={[size, size]} />
-      <meshBasicMaterial color="#8b5cf6" transparent opacity={faint ? 0.08 : 0.16} side={2} />
-    </mesh>
-  );
-}
 
 /** A translucent bright outline sleeve over a pipe the cursor is snapping to. */
 function OutlineCyl({ a, b, r }: { a: Vec3; b: Vec3; r: number }) {
@@ -133,8 +116,6 @@ export function DrawController() {
   const formedPoints = useEditorStore((s) => s.formedPoints);
   const drawLength = useEditorStore((s) => s.drawLength);
   const measureFrom = useEditorStore((s) => s.measureFrom);
-  const drawPlane = useEditorStore((s) => s.drawPlane);
-  const planeOrigin = useEditorStore((s) => s.planeOrigin);
   const [preview, setPreview] = useState<SnapResult | null>(null);
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
@@ -190,9 +171,6 @@ export function DrawController() {
   };
 
   const targetOf = (ray: Ray, cx: number, cy: number, lockAxis = false): Vec3 | null => {
-    // when a draw plane is active, every point lands ON that plane (draw on a wall)
-    const dp = useEditorStore.getState().drawPlane;
-    if (dp) return rayToPlane(ray, dp.origin, dp.normal) ?? rayToGround(ray);
     // Shift held mid-path → lock to a world axis line (incl. Y); overrides snapping
     const from0 = fromPoint();
     if (lockAxis && from0) return axisLockPoint(from0, ray);
@@ -266,7 +244,7 @@ export function DrawController() {
     else if (tool === 'measure') {
       if (useEditorStore.getState().measureAdjustId) updateMeasureOffset(g);
       else setPreview(snapMeasurePoint(g));
-    } else if (tool === 'plane') setPreview(snapPlanePoint(g));
+    }
   };
 
   // The press+release is driven by WINDOW listeners, not the mesh's own
@@ -310,11 +288,7 @@ export function DrawController() {
     }
     // any non-drawing tool marquee-selects on an empty-canvas drag; move/rotate
     // additionally switch to the select tool so the drag reads as a selection
-    const nonDrawing =
-      liveTool !== 'draw' &&
-      liveTool !== 'formed' &&
-      liveTool !== 'measure' &&
-      liveTool !== 'plane';
+    const nonDrawing = liveTool !== 'draw' && liveTool !== 'formed' && liveTool !== 'measure';
     const move = (ev: PointerEvent) => {
       if (nonDrawing) {
         if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > CLICK_SLOP_PX) {
@@ -333,7 +307,7 @@ export function DrawController() {
       else if (liveTool === 'measure') {
         if (useEditorStore.getState().measureAdjustId) updateMeasureOffset(g);
         else setPreview(snapMeasurePoint(g));
-      } else if (liveTool === 'plane') setPreview(snapPlanePoint(g));
+      }
     };
     const up = (ev: PointerEvent) => {
       window.removeEventListener('pointermove', move);
@@ -373,9 +347,6 @@ export function DrawController() {
         // click; a click during offset-adjust confirms it (placeMeasurePoint reads
         // the phase from state)
         if (moved > CLICK_SLOP_PX || !startedMeasure) placeMeasurePoint(g);
-      } else if (liveTool === 'plane') {
-        // 1st click sets the origin; 2nd sets the angle + enters plane mode
-        placePlanePoint(g);
       }
     };
     window.addEventListener('pointermove', move);
@@ -416,26 +387,9 @@ export function DrawController() {
       </mesh>
 
       {/* snap indicator (dot + End/On Pipe pill + outline) for draw + formed + measure */}
-      {(tool === 'draw' || tool === 'formed' || tool === 'measure' || tool === 'plane') &&
-        preview && <SnapHint preview={preview} night={night} />}
-
-      {/* draw-on-plane: the setup preview (a translucent square) and the active plane */}
-      {tool === 'plane' && preview && !planeOrigin && (
-        <mesh
-          position={[preview.position.x, preview.position.y + 0.001, preview.position.z]}
-          rotation={[-Math.PI / 2, 0, 0]}
-        >
-          <planeGeometry args={[0.7, 0.7]} />
-          <meshBasicMaterial color="#8b5cf6" transparent opacity={0.16} side={2} />
-        </mesh>
+      {(tool === 'draw' || tool === 'formed' || tool === 'measure') && preview && (
+        <SnapHint preview={preview} night={night} />
       )}
-      {tool === 'plane' && preview && planeOrigin && (
-        <PlaneQuad
-          origin={planeOrigin}
-          normal={planeNormalFromCursor(planeOrigin, preview.position)}
-        />
-      )}
-      {drawPlane && <PlaneQuad origin={drawPlane.origin} normal={drawPlane.normal} faint />}
 
       {/* tape-measure rubber band: first end → cursor */}
       {tool === 'measure' &&

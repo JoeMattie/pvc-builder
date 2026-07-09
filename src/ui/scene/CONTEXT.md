@@ -30,7 +30,7 @@ glide on snaps — never raw doc positions.
 | `JointLayer.tsx` (**NEW**) | Unified joints from `design.joints[]` — wrapped/anchor/free | dispatches `WrapJoint`/`FreeJoint`/`FreeHub`; end-to-end free joints at one node draw as ONE shared ball (`FreeHub`), backed by the pairwise records |
 | `WrapStrip.tsx` (mod) | Renderer for a `WrapMesh` (slip-saddle body + screws) | **name is legacy** — no longer a swept strip |
 | `IntersectionLayer.tsx` | Red overlap shells | `intersectingMembers`; cap 200 |
-| `DrawController.tsx` | Draw/formed preview + ground pointer target + marquee | window-listener drag; view-facing plane for wall drawing |
+| `DrawController.tsx` | Draw/formed preview + pointer target + marquee | window-listener drag; screen-space pipe/node snap (`pipePick`); Shift locks to a world axis line (incl. Y) |
 | `SelectionHandles.tsx` | Endpoint drag handles + `MoveGizmo` + `RotateGizmo` | `useGroundDrag` window-listener hook wraps `beginGesture`/`endGesture` |
 
 ## Git state of this dir

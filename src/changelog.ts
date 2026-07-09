@@ -11,6 +11,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.1.3',
+    date: '2026-07-08',
+    changes: [
+      'Removed the Plane tool — Shift-lock while drawing now covers 3D (draw up any axis, including Y)',
+    ],
+  },
+  {
     version: '0.1.2',
     date: '2026-07-08',
     changes: [
