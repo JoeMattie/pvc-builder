@@ -5,9 +5,10 @@
 // documented ESTIMATES to be replaced with manufacturer tables). No three/UI
 // types. Hand-rolled CSV.
 import { bendDihedralsRad } from '../geometry/pipe';
+import { dot, sub } from '../geometry/math3';
 import { type Design, type JointMode, type NominalSize, pipeSpec } from '../schema';
 import { formatLengthDisplay } from '../ui/units';
-import { memberById, memberLengthM } from './docOps';
+import { memberById, memberLengthM, nodeById } from './docOps';
 import { type FittingType, resolveFittings } from './fittings';
 import { analyzeFormed, formedPoints } from './formed';
 
@@ -69,6 +70,10 @@ export interface CutItem {
   endCapM: number;
   /** formed only: bend-plane rotations (fabrication schedule), radians */
   bendsRad?: number[];
+  /** set when a run is CUT into pieces by a manufactured on-body union (a real
+   * socket tee is inserted): the 0-based segment index of this piece. Absent for
+   * an un-split member. */
+  segment?: number;
 }
 
 export interface FittingLine {
@@ -125,11 +130,76 @@ export function bom(design: Design): Bom {
     }
   }
 
+  // manufactured ON-BODY unions insert a real socket tee into an INTACT run, so
+  // that run pipe is physically CUT into pieces at each such branch. Collect the
+  // split points (fraction along the receiver's nodeA→nodeB) + the fitting take-off
+  // both new ends socket into.
+  const splitAt = new Map<string, { t: number; takeoffM: number }[]>();
+  for (const j of design.joints) {
+    if (!j.manufactured || !j.onBody) continue;
+    const recv = memberById(design, j.receiver);
+    if (recv?.kind !== 'straight') continue;
+    const a = nodeById(design, recv.nodeA)?.position;
+    const b = nodeById(design, recv.nodeB)?.position;
+    const p = nodeById(design, j.nodeId)?.position;
+    if (!a || !b || !p) continue;
+    const ab = sub(b, a);
+    const l2 = dot(ab, ab);
+    if (l2 < 1e-9) continue;
+    const t = Math.min(1, Math.max(0, dot(sub(p, a), ab) / l2));
+    if (t <= 1e-4 || t >= 1 - 1e-4) continue; // effectively at an end → no split
+    const list = splitAt.get(recv.id) ?? [];
+    list.push({ t, takeoffM: fittingTakeoffM('tee', recv.size) });
+    splitAt.set(recv.id, list);
+  }
+
+  const push = (c: CutItem) => {
+    cuts.push(c);
+    totalBySize[c.size] = (totalBySize[c.size] ?? 0) + c.cutLengthM;
+  };
+
   for (const m of design.members) {
     const takeoffAM = endTakeoff(m.nodeA, m.size);
     const takeoffBM = endTakeoff(m.nodeB, m.size);
     const wrapAllowance = wrapAdd.get(m.id) ?? 0;
     const endCap = capAdd.get(m.id) ?? 0;
+
+    // a straight run split by manufactured on-body tees → one cut piece per segment
+    const splits = m.kind === 'straight' ? splitAt.get(m.id) : undefined;
+    if (splits?.length) {
+      const full = memberLengthM(design, m);
+      const sorted = [...splits].sort((x, y) => x.t - y.t);
+      // boundaries: run end A, each tee, run end B — each carries the take-off its
+      // adjacent segment loses at that end
+      const bounds = [
+        { t: 0, takeoff: takeoffAM },
+        ...sorted.map((s) => ({ t: s.t, takeoff: s.takeoffM })),
+        { t: 1, takeoff: takeoffBM },
+      ];
+      for (let k = 0; k < bounds.length - 1; k++) {
+        const lo = bounds[k]!;
+        const hi = bounds[k + 1]!;
+        const spanM = (hi.t - lo.t) * full;
+        // the member-level wrap add rides the first segment, the end cap the last,
+        // so a split run still totals the same fabrication material
+        const wrap = k === 0 ? wrapAllowance : 0;
+        const cap = k === bounds.length - 2 ? endCap : 0;
+        const cutLengthM = Math.max(0, spanM - lo.takeoff - hi.takeoff) + wrap + cap;
+        push({
+          memberId: m.id,
+          size: m.size,
+          kind: 'straight',
+          spanM,
+          cutLengthM,
+          takeoffAM: lo.takeoff,
+          takeoffBM: hi.takeoff,
+          wrapAllowanceM: wrap,
+          endCapM: cap,
+          segment: k,
+        });
+      }
+      continue;
+    }
 
     let spanM: number;
     let bendsRad: number[] | undefined;
@@ -142,7 +212,7 @@ export function bom(design: Design): Bom {
       spanM = memberLengthM(design, m);
     }
     const cutLengthM = Math.max(0, spanM - takeoffAM - takeoffBM) + wrapAllowance + endCap;
-    cuts.push({
+    push({
       memberId: m.id,
       size: m.size,
       kind: m.kind,
@@ -154,7 +224,6 @@ export function bom(design: Design): Bom {
       endCapM: endCap,
       bendsRad,
     });
-    totalBySize[m.size] = (totalBySize[m.size] ?? 0) + cutLengthM;
   }
 
   // fitting counts keyed by type + sizes + reducing
@@ -230,7 +299,7 @@ export function bomToCsv(design: Design): string {
     line(
       `P${i + 1}`,
       c.size,
-      c.kind,
+      c.segment !== undefined ? `${c.kind} (tee split)` : c.kind,
       formatLengthDisplay(c.spanM, disp),
       formatLengthDisplay(c.takeoffAM, disp),
       formatLengthDisplay(c.takeoffBM, disp),

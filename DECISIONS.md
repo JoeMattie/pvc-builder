@@ -6,6 +6,16 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 
 ## Post-batch fixes (2026-07-08)
 
+- **BOM: manufactured on-body unions split the run + todo.txt retired** (v0.1.12). The last open
+  todo.txt item: a manufactured ON-BODY union (a real socket tee inserted into an INTACT run) means
+  that run pipe is physically CUT into pieces. `bom()` now collects split points (`joint.manufactured
+  && joint.onBody`, projected onto the receiver's centre-line) and emits one `CutItem` per segment
+  (`segment` index; each new end takes the tee take-off; the member-level wrap rides the first segment
+  + end-cap the last, so total material is conserved). End-to-end manufactured joints don't split
+  (their pipes are already separate members). Covered by Vitest; shown as "·tee split" in BomPanel +
+  CSV. With that done, **`todo.txt` was deleted** (the whole batch is complete; the only never-built
+  item was the "boolean-subtraction pipe interiors" idea, which was explicitly a discuss-first
+  exploration — we keep the recessed bore disc).
 - **Instancing extended to (nearly) all repeated node/object types** (v0.1.11). The v0.1.7 pattern was
   universal (reads design structure, not model-specific), so it was extended beyond pipes + free hubs
   to: **wrapped (swivel) pivots** (`InstancedWrapJoints` — ONE canonical arrow baked in the joint's

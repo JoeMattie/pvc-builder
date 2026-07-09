@@ -11,6 +11,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.1.12',
+    date: '2026-07-08',
+    changes: [
+      'Cut list splits a run into separate pieces where a manufactured tee is inserted mid-run (shown as “·tee split”)',
+    ],
+  },
+  {
     version: '0.1.11',
     date: '2026-07-08',
     changes: [

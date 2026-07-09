@@ -145,6 +145,58 @@ describe('wrapped-union fabrication allowances', () => {
   });
 });
 
+describe('manufactured on-body union splits the run', () => {
+  // a 2 m run with a branch tee'd onto its middle as a MANUFACTURED union → the
+  // intact run must be cut into two pieces to insert the socket tee
+  function branchedRun(manufactured: boolean): Design {
+    const base = createEmptyDesign('d', 'p');
+    return {
+      ...base,
+      nodes: [
+        { id: 'a', position: V(0, 0, 0) },
+        { id: 'b', position: V(2, 0, 0) },
+        { id: 'm', position: V(1, 0, 0) }, // on the run centre-line
+        { id: 't', position: V(1, 0, 1) }, // branch tip
+      ],
+      members: [
+        { id: 'run', kind: 'straight', nodeA: 'a', nodeB: 'b', size: '3/4"' },
+        { id: 'branch', kind: 'straight', nodeA: 'm', nodeB: 't', size: '3/4"' },
+      ],
+      joints: [
+        {
+          id: 'j',
+          nodeId: 'm',
+          receiver: 'run',
+          mover: 'branch',
+          onBody: true,
+          mode: 'anchor',
+          ...(manufactured ? { manufactured: true } : {}),
+        },
+      ],
+    };
+  }
+
+  it('cuts the run into two tee-take-off pieces', () => {
+    const runCuts = bom(branchedRun(true)).cuts.filter((c) => c.memberId === 'run');
+    const tee = fittingTakeoffM('tee', '3/4"');
+    expect(runCuts.length).toBe(2);
+    expect(runCuts.map((c) => c.segment)).toEqual([0, 1]);
+    for (const c of runCuts) {
+      expect(c.spanM).toBeCloseTo(1, 9); // split at the middle
+      expect(c.cutLengthM).toBeCloseTo(1 - tee, 9); // open run end + tee socket end
+    }
+    // total run material is conserved vs. the un-split (minus the two sockets)
+    const total = runCuts.reduce((s, c) => s + c.cutLengthM, 0);
+    expect(total).toBeCloseTo(2 - 2 * tee, 9);
+  });
+
+  it('does NOT split a non-manufactured on-body union (stays one run)', () => {
+    const runCuts = bom(branchedRun(false)).cuts.filter((c) => c.memberId === 'run');
+    expect(runCuts.length).toBe(1);
+    expect(runCuts[0]!.segment).toBeUndefined();
+  });
+});
+
 describe('bomToCsv', () => {
   it('emits cut-list, fittings and totals sections', () => {
     const csv = bomToCsv(path([V(0, 0, 0), V(1, 0, 0), V(1, 0, 1)]));

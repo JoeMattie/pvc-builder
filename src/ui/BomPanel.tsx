@@ -62,10 +62,11 @@ export function BomPanel({ onClose }: { onClose: () => void }) {
                   const extra = c.wrapAllowanceM + c.endCapM;
                   const base = c.cutLengthM - extra;
                   return (
-                    <tr key={c.memberId}>
+                    <tr key={`${c.memberId}-${c.segment ?? 'x'}`}>
                       <td>
                         P{i + 1}
                         {c.kind === 'formed' ? ' ·bent' : ''}
+                        {c.segment !== undefined ? ' ·tee split' : ''}
                       </td>
                       <td>{c.size}</td>
                       <td className="text-right">
