@@ -44,7 +44,6 @@ _Add a row when you start; delete it when merged. Keep it current — a stale cl
 
 | Branch | Agent / session | Files or dirs being changed | Touches choke point? | Status | Started |
 |---|---|---|---|---|---|
-| worktree-agent-a5579fbb1e6151182 | Claude (mobile layout pass) | `src/ui/EditorShell.tsx`, `src/ui/chrome/FloatingIsland.tsx`, `src/ui/Pillbox.tsx`, `src/ui/CONTEXT.md`, `DECISIONS.md` | Yes — `EditorShell.tsx` (compact-chrome props only, surgical) | awaiting merge | 2026-07-09 |
 
 ## Recently merged (rolling, trim freely)
 

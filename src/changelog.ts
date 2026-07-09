@@ -11,6 +11,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.3',
+    date: '2026-07-09',
+    changes: [
+      'The editor now works on phones and small tablets: below 640 px the tool palette becomes an icons-only rail docked under the left panels, the Objects list starts collapsed, the document bar condenses to one row, and the Simulate/Cut-list panels move to the bottom-right so the workflow switcher stays reachable. Desktop layout is unchanged.',
+    ],
+  },
+  {
     version: '0.3.2',
     date: '2026-07-09',
     changes: [
