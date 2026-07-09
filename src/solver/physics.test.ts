@@ -86,6 +86,74 @@ describe('physics (CrashCat)', () => {
   });
 });
 
+/** A bent (formed) pipe elevated at height `y`. */
+function formedAt(y: number): Design {
+  const d = createEmptyDesign('d', 'bent');
+  d.nodes.push({ id: 'a', position: V(-0.3, y, 0) }, { id: 'b', position: V(0.3, y, 0) });
+  d.members.push({
+    id: 'm',
+    kind: 'formed',
+    nodeA: 'a',
+    nodeB: 'b',
+    controlPoints: [V(0, y, 0.2)],
+    filletRadiiM: [0.06],
+    size: '3/4"',
+  });
+  return d;
+}
+
+/** A tilted receiver with a pipe wrapped on its midpoint (on-body wrapped pivot). */
+function wrappedRig(): Design {
+  const d = createEmptyDesign('d', 'wrap');
+  d.nodes.push(
+    { id: 'r0', position: V(0, 1.2, 0) },
+    { id: 'r1', position: V(2, 0.8, 0) }, // tilted receiver
+    { id: 'w', position: V(1, 1.0, 0) }, // wrap node on the receiver midpoint
+    { id: 'mf', position: V(1, 0.3, 0) }, // mover hangs down
+  );
+  d.members.push(
+    { id: 'recv', kind: 'straight', nodeA: 'r0', nodeB: 'r1', size: '3/4"' },
+    { id: 'mov', kind: 'straight', nodeA: 'w', nodeB: 'mf', size: '3/4"' },
+  );
+  d.joints.push({
+    id: 'j',
+    nodeId: 'w',
+    receiver: 'recv',
+    mover: 'mov',
+    onBody: true,
+    mode: 'wrapped',
+  });
+  return d;
+}
+
+describe('formed pipes + wrapped sliding', () => {
+  it('a bent pipe is STATIC in sim — stays put under gravity', () => {
+    startPhysics(formedAt(1));
+    const y0 = physicsNodePositions().a!.y;
+    for (let i = 0; i < 120; i++) stepPhysics(1 / 60);
+    const y1 = physicsNodePositions().a!.y;
+    expect(y1).toBeCloseTo(y0, 3); // did not fall — a static rigid body
+  });
+
+  it('a wrapped pivot stays on the receiver line while simulating (cylindrical joint)', () => {
+    startPhysics(wrappedRig());
+    for (let i = 0; i < 120; i++) stepPhysics(1 / 60);
+    const p = physicsNodePositions();
+    // perpendicular distance of the wrap node from the receiver segment
+    const a = p.r0!;
+    const b = p.w!;
+    const c = p.r1!;
+    const ab = { x: c.x - a.x, y: c.y - a.y, z: c.z - a.z };
+    const t =
+      ((b.x - a.x) * ab.x + (b.y - a.y) * ab.y + (b.z - a.z) * ab.z) /
+      (ab.x * ab.x + ab.y * ab.y + ab.z * ab.z || 1);
+    const cp = { x: a.x + ab.x * t, y: a.y + ab.y * t, z: a.z + ab.z * t };
+    const perp = Math.hypot(b.x - cp.x, b.y - cp.y, b.z - cp.z);
+    expect(Number.isFinite(perp)).toBe(true);
+    expect(perp).toBeLessThan(0.08); // the wrap stayed ON the pipe (not flung off)
+  });
+});
+
 describe('ground extent helpers', () => {
   it('lowestExtentM is the lowest point minus the pipe radius', () => {
     const odM = 0.02667; // 3/4" OD

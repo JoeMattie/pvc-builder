@@ -6,6 +6,14 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 
 ## Post-batch fixes (2026-07-08)
 
+- **Wrapped pivots SLIDE along the pipe (physics)** + **bent pipes are STATIC in sim.** In Play
+  mode: (1) a wrapped joint is now a **cylindrical** 6DOF constraint (`sixDOFConstraint`) — free
+  translation AND rotation along the receiver axis, each with friction, the other 4 DOF fixed, the
+  slide bounded to the receiver's span so it can't slide off. `SLIDE_FRICTION_FORCE` (scaled N) is
+  the tuning knob (rotation keeps `PIVOT_FRICTION_TORQUE`). Physics-only — the slide is emergent
+  and resets on stop, so NO schema/kinematics change. (2) An assembly containing a **formed (bent)**
+  member becomes a `MotionType.STATIC` body on the static layer (a fixed, collidable anchor), so
+  bent pipes stay put while simulating but remain editable when drawing.
 - **Length arrows resize along the pipe AXIS, not the ground** (bug: the yellow length arrows
   worked on horizontal X/Z pipes but not vertical Y ones, and could run backwards — regardless of
   camera). Root cause: `LengthArrow` rode a `rayToGround` (y=0) projection, which can't capture

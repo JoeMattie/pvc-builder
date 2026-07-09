@@ -1,8 +1,9 @@
 // Full rigid-body physics (CrashCat) for Play mode. Each welded ASSEMBLY (the
 // same union-find rigid body the kinematics uses) is ONE dynamic compound body
 // of capsules — so overlapping capsules at a union can't fight a constraint —
-// pivots are hinge (wrapped) / point (free) constraints with friction, pipes
-// never collide with each other (only the ground), and the ground is a static
+// pivots are cylindrical 6DOF (wrapped: spin + slide along the receiver, with
+// friction) / point (free) constraints, an assembly holding a bent pipe is
+// STATIC, pipes never collide with each other (only the ground), the ground a static
 // box temporarily lowered just below the model so nothing starts penetrating.
 // EXPERIMENT (branch sim-precision-rollback): the fixed-substep + CCD + velocity
 // cap precision (added to stop thin pipes tunnelling the floor) is rolled back to
@@ -20,12 +21,12 @@ import {
   createWorldSettings,
   disableCollision,
   enableCollision,
-  hingeConstraint,
   MotionQuality,
   MotionType,
   pointConstraint,
   registerAll,
   rigidBody,
+  sixDOFConstraint,
   staticCompound,
   updateWorld,
   type World,
@@ -42,6 +43,10 @@ const DENSITY = 1400; // PVC ≈ 1400 kg/m³
 // engine-friendly and the motion still reads at real speed.
 const SCALE = 20;
 const PIVOT_FRICTION_TORQUE = 40; // scaled N·m — light resistance, swings under load
+// Friction resisting a wrapped pivot SLIDING along the pipe it wraps (scaled N).
+// A clamped collar grips the pipe, so it mostly stays put but slides under load /
+// on a steep tilt. TUNING KNOB — raise to grip harder, lower to slide freer.
+const SLIDE_FRICTION_FORCE = 5000;
 // EXPERIMENT (sim-precision-rollback): the three precision mechanisms added in
 // 258c139 to stop thin pipes "tunnelling" the floor, isolated by an 8-way sweep
 // of a settling welded elbow (see DECISIONS). Result: the VELOCITY CAP does
@@ -246,16 +251,22 @@ function build(design: Design): Sim {
       1 / segs.length,
     );
 
-    const common = {
-      motionType: MotionType.DYNAMIC,
-      // EXPERIMENT: CCD + velocity cap are toggleable (see setPhysicsPrecision)
-      motionQuality: useCcd ? MotionQuality.LINEAR_CAST : MotionQuality.DISCRETE,
-      ...(useVcap ? { maxLinearVelocity: MAX_LINEAR_VELOCITY } : {}),
-      objectLayer: olMoving,
-      friction: 0.8,
-      linearDamping: 0.05,
-      angularDamping: 0.15,
-    } as const;
+    // a bent (formed) pipe is a fixed structural element: an assembly that holds
+    // one becomes a STATIC rigid body (a collidable anchor, like the floor) so it
+    // stays put while simulating — you still edit it freely when drawing.
+    const hasFormed = memberIds.some((id) => memberById.get(id)!.kind === 'formed');
+    const common = hasFormed
+      ? ({ motionType: MotionType.STATIC, objectLayer: olStatic, friction: 0.8 } as const)
+      : ({
+          motionType: MotionType.DYNAMIC,
+          // EXPERIMENT: CCD + velocity cap are toggleable (see setPhysicsPrecision)
+          motionQuality: useCcd ? MotionQuality.LINEAR_CAST : MotionQuality.DISCRETE,
+          ...(useVcap ? { maxLinearVelocity: MAX_LINEAR_VELOCITY } : {}),
+          objectLayer: olMoving,
+          friction: 0.8,
+          linearDamping: 0.05,
+          angularDamping: 0.15,
+        } as const);
 
     let bodyPos: [number, number, number];
     let bodyQuat: [number, number, number, number];
@@ -322,16 +333,35 @@ function build(design: Design): Sim {
     let normalA = cross(axis, UP);
     if (length(normalA) < 1e-6) normalA = cross(axis, { x: 1, y: 0, z: 0 });
     normalA = normalize(normalA);
-    hingeConstraint.create(world, {
+    // slide bounds: the receiver's own extent (scaled, relative to the node =
+    // slide 0), so the wrap can't slide off the pipe it's wrapped around
+    let sMin = 0;
+    let sMax = 0;
+    const recv = memberById.get(j.receiver);
+    const ra = recv ? nodePos.get(recv.nodeA) : undefined;
+    const rb = recv ? nodePos.get(recv.nodeB) : undefined;
+    if (ra && rb) {
+      const da = dot(sub(ra, pos), axis) * SCALE;
+      const db = dot(sub(rb, pos), axis) * SCALE;
+      sMin = Math.min(da, db);
+      sMax = Math.max(da, db);
+    }
+    // CYLINDRICAL joint (6DOF): free TRANSLATION (idx 0) + ROTATION (idx 3) along
+    // the receiver axis, each with friction; the other 4 DOF fixed. So the wrap
+    // SPINS about AND SLIDES along the pipe it wraps, bounded to the pipe's span.
+    // (limit convention: free = [-∞,+∞], fixed = [+∞,-∞], limited = finite min≤0≤max)
+    sixDOFConstraint.create(world, {
       bodyIdA: ba,
       bodyIdB: bb,
-      pointA: s3(pos),
-      pointB: s3(pos),
-      hingeAxisA: v3(axis),
-      hingeAxisB: v3(axis),
-      normalAxisA: v3(normalA),
-      normalAxisB: v3(normalA),
-      maxFrictionTorque: PIVOT_FRICTION_TORQUE,
+      position1: s3(pos),
+      position2: s3(pos),
+      axisX1: v3(axis),
+      axisY1: v3(normalA),
+      axisX2: v3(axis),
+      axisY2: v3(normalA),
+      limitMin: [sMin, Infinity, Infinity, -Infinity, Infinity, Infinity],
+      limitMax: [sMax, -Infinity, -Infinity, Infinity, -Infinity, -Infinity],
+      maxFriction: [SLIDE_FRICTION_FORCE, 0, 0, PIVOT_FRICTION_TORQUE, 0, 0],
     });
   }
 
