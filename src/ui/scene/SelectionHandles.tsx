@@ -24,6 +24,7 @@ import { useThemeStore } from '../../state/themeStore';
 import { formatLengthDisplay } from '../units';
 import { orientY, orientZ } from './axis';
 import { dominantAxisNormal, rayToGround, rayToPlane } from './ground';
+import { pickSnapPoint, SNAP_PX, snapDebug } from './pipePick';
 
 /**
  * A ground-plane drag driven by WINDOW pointer listeners, not the handle
@@ -40,7 +41,7 @@ import { dominantAxisNormal, rayToGround, rayToPlane } from './ground';
 export type DragMods = { shift: boolean; ctrl: boolean };
 
 function useGroundDrag(
-  onMove: (point: Vec3, mods: DragMods) => void,
+  onMove: (point: Vec3, mods: DragMods, ev: PointerEvent) => void,
   opts?: {
     // when it returns a point, the drag rides a view-facing plane through that
     // point (Blender-style) instead of the y = 0 ground — so a floating node
@@ -85,6 +86,7 @@ function useGroundDrag(
     // switches even without moving the mouse
     const mods: DragMods = { shift: e.nativeEvent.shiftKey, ctrl: e.nativeEvent.ctrlKey };
     let lastG: Vec3 | null = null;
+    let lastEv: PointerEvent | null = null;
 
     const move = (ev: PointerEvent) => {
       const rect = el.getBoundingClientRect();
@@ -100,7 +102,8 @@ function useGroundDrag(
           : rayToGround(rc.ray);
       if (g) {
         lastG = g;
-        onMove(g, mods);
+        lastEv = ev;
+        onMove(g, mods, ev);
       }
     };
     const onKeyDown = (ev: KeyboardEvent) => {
@@ -115,7 +118,7 @@ function useGroundDrag(
       }
       if (changed) {
         ev.preventDefault();
-        if (lastG) onMove(lastG, mods); // switch modes in place
+        if (lastG && lastEv) onMove(lastG, mods, lastEv); // switch modes in place
       }
     };
     const up = () => {
@@ -193,8 +196,10 @@ function MoveHandle({
 }) {
   const anchor = useRef<Vec3 | null>(null);
   const dragId = useRef<string>(nodeId);
+  const camera = useThree((s) => s.camera);
+  const gl = useThree((s) => s.gl);
   const { start, dragging } = useGroundDrag(
-    (g, mods) => {
+    (g, mods, ev) => {
       // Ctrl is a live toggle between "move the shared node" and "detach this
       // member's end and move it alone" — so pressing/releasing Ctrl mid-drag
       // breaks the union or re-welds it, both inside the drag's single gesture.
@@ -208,9 +213,29 @@ function MoveHandle({
         }
       }
       const id = dragId.current;
-      return locked
-        ? dragLocked(id, g)
-        : dragNodeTo(id, g, { lockAxis: mods.shift, anchor: anchor.current ?? undefined });
+      if (locked) return dragLocked(id, g);
+      // snap the endpoint onto a node/pipe the cursor is over (screen-space, any
+      // height) so dropping it forms a tee / weld — unless Shift-locked to an axis
+      let target = g;
+      if (!mods.shift) {
+        const design = useAppStore.getState().current;
+        const snap = useEditorStore.getState().snap;
+        const hit = design
+          ? pickSnapPoint(camera, gl.domElement, design, ev.clientX, ev.clientY, SNAP_PX, {
+              excludeNode: id,
+              nodes: snap.snapToEnds,
+              pipes: snap.snapToPipes,
+            })
+          : null;
+        if (snapDebug()) {
+          console.log(
+            '[drag-snap]',
+            hit ? `${hit.kind} ${hit.id} @${hit.distPx.toFixed(1)}px` : 'none',
+          );
+        }
+        if (hit) target = hit.point;
+      }
+      return dragNodeTo(id, target, { lockAxis: mods.shift, anchor: anchor.current ?? undefined });
     },
     // free move rides a view-facing plane through the node so a floating node
     // keeps its height; locked-mode IK stays on the ground plane

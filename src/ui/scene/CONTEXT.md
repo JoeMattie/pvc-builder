@@ -12,7 +12,8 @@ glide on snaps — never raw doc positions.
 | `pipeModel.ts` | `Design` → flat solid primitives (one cylinder per straight member at true OD, hollow bore at free ends) | `buildPipeModel(design, posOf?)`, `PipeModel`/`PipeCylinder`/`PipeEnd`, `FREE_JOINT_GAP_M` |
 | `fittingMesh.ts` | **`FittingMesh` CAD-swap seam** — procedural socket fittings from `pipeSpec` | `buildFittingMesh(f)`, `buildFittingMeshes`, `FittingMesh`/`FittingPrim` |
 | `wrapMesh.ts` | Mirror seam for heat-wrapped slip-saddle tees (collar+boss+blend+screws) | `buildWrapMesh(inp): WrapMesh \| null`, `WrapMesh`/`WrapInput` |
-| `ground.ts` | Raycasting helpers | `rayToGround`, `rayToPlane`, `dominantAxisNormal`, `closestPointOnSegmentToRay` (draw-snap onto pipes at any height) |
+| `ground.ts` | Raycasting helpers | `rayToGround`, `rayToPlane`, `dominantAxisNormal` |
+| `pipePick.ts` | Screen-space snap: nearest node/pipe under the cursor (draw + endpoint drag, any height) | `pickSnapPoint`, `SNAP_PX`, `snapDebug` |
 | `axis.ts` | Place a unit-Y primitive along a segment (from riglab) | `placeAxis(a,b)`, `orientY(dir)`, `orientZ(dir)` |
 
 ## Impure R3F components

@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react';
 import { CatmullRomCurve3, type Ray, Raycaster, Vector2, Vector3 } from 'three';
 import { memberById, nodeById } from '../../design/docOps';
 import { marqueeFromDrag, memberSelectedBy, type Pt } from '../../design/marquee';
-import { POINT_RADIUS_M, type SnapResult } from '../../design/snapping';
+import type { SnapResult } from '../../design/snapping';
 import { length, sub } from '../../geometry/math3';
 import { type Member, pipeSpec, type Vec3 } from '../../schema';
 import { easedPos } from '../../state/animStore';
@@ -28,7 +28,8 @@ import { useThemeStore } from '../../state/themeStore';
 import { GROUND_SIZE_M, scenePalette } from '../theme';
 import { formatLengthDisplay } from '../units';
 import { orientZ, placeAxis } from './axis';
-import { closestPointOnSegmentToRay, dominantAxisNormal, rayToGround, rayToPlane } from './ground';
+import { dominantAxisNormal, rayToGround, rayToPlane } from './ground';
+import { pickSnapPoint, SNAP_PX, snapDebug } from './pipePick';
 
 // A click and an orbit-drag both start with a pointerdown on the ground; only
 // treat a pointerup as a "click" if the pointer barely moved.
@@ -151,36 +152,37 @@ export function DrawController() {
     if (tool === 'formed' && formedPoints.length) return formedPoints[formedPoints.length - 1];
     return undefined;
   };
-  // The 3D point on the nearest straight pipe the ray is hovering (within a grab
-  // radius), or null. Ray-vs-segment so it works at ANY height — the fix for
-  // drawing onto the Cube Frame's elevated pipes, which a ground/plane raycast
-  // leaves far below the pipe (so on-pipe snapping never fired, and the cursor
-  // jittered on the flip-flopping view plane).
-  const rayPipePoint = (ray: Ray): Vec3 | null => {
-    if (!useEditorStore.getState().snap.snapToPipes) return null;
+  // Screen-space snap: the node / pipe the cursor is visually over (any height),
+  // or null. Screen-space — NOT a 3D ray-distance test, which snaps to any pipe
+  // the ray grazes in depth, firing "beyond" the pipe on screen.
+  const snapUnderCursor = (cx: number, cy: number) => {
+    const snap = useEditorStore.getState().snap;
     const design = useAppStore.getState().current;
     if (!design) return null;
-    let best: { point: Vec3; d: number } | null = null;
-    for (const m of design.members) {
-      if (m.kind !== 'straight') continue;
-      const a = easedPos(m.nodeA) ?? nodeById(design, m.nodeA)?.position;
-      const b = easedPos(m.nodeB) ?? nodeById(design, m.nodeB)?.position;
-      if (!a || !b) continue;
-      const { point, dist } = closestPointOnSegmentToRay(ray, a, b);
-      const tol = pipeSpec(m.size).odM / 2 + POINT_RADIUS_M; // pipe body + grab margin
-      if (dist <= tol && (!best || dist < best.d)) best = { point, d: dist };
-    }
-    return best ? best.point : null;
+    return pickSnapPoint(camera, gl.domElement, design, cx, cy, SNAP_PX, {
+      excludeNode: useEditorStore.getState().drawingFromNodeId ?? undefined,
+      nodes: snap.snapToEnds,
+      pipes: snap.snapToPipes,
+    });
   };
 
-  const targetOf = (ray: Ray): Vec3 | null => {
+  const targetOf = (ray: Ray, cx: number, cy: number): Vec3 | null => {
     // when a draw plane is active, every point lands ON that plane (draw on a wall)
     const dp = useEditorStore.getState().drawPlane;
     if (dp) return rayToPlane(ray, dp.origin, dp.normal) ?? rayToGround(ray);
-    // hovering an existing pipe (any height) → the 3D point on it, so snapPoint
-    // resolves an on-pipe/tee snap instead of a ground point far below
-    const onPipe = rayPipePoint(ray);
-    if (onPipe) return onPipe;
+    // hovering an existing node/pipe (any height) → the 3D point on it, so
+    // snapPoint resolves a node/on-pipe/tee snap instead of a ground point below
+    const hit = snapUnderCursor(cx, cy);
+    if (snapDebug()) {
+      const d = useAppStore.getState().current;
+      console.log(
+        '[snap]',
+        hit ? `${hit.kind} ${hit.id} @${hit.distPx.toFixed(1)}px` : 'none',
+        hit?.point,
+        `members=${d?.members.length ?? 0}`,
+      );
+    }
+    if (hit) return hit.point;
     const from = fromPoint();
     if (!from) return rayToGround(ray);
     camera.getWorldDirection(fwd);
@@ -219,13 +221,13 @@ export function DrawController() {
       -((clientY - rect.top) / rect.height) * 2 + 1,
     );
     rc.setFromCamera(ndc, camera);
-    return targetOf(rc.ray);
+    return targetOf(rc.ray, clientX, clientY);
   };
 
   // hover preview between clicks (mesh event is fine when no button is down)
   const onMove = (e: ThreeEvent<PointerEvent>) => {
     if (e.nativeEvent.buttons !== 0) return; // a press drives its own window move
-    const g = targetOf(e.ray);
+    const g = targetOf(e.ray, e.nativeEvent.clientX, e.nativeEvent.clientY);
     if (!g) return;
     if (tool === 'draw') {
       const snap = snapDrawPoint(g, e.nativeEvent.shiftKey);
@@ -253,7 +255,7 @@ export function DrawController() {
     // click+drag: press places the first point; a path already open just waits
     let startedPath = false;
     if (liveTool === 'draw' && !useEditorStore.getState().drawingFromNodeId) {
-      const g = targetOf(e.ray);
+      const g = targetOf(e.ray, e.nativeEvent.clientX, e.nativeEvent.clientY);
       if (g) {
         setPreview(placeDrawPoint(g, e.nativeEvent.shiftKey));
         startedPath = true;
@@ -264,7 +266,7 @@ export function DrawController() {
     if (liveTool === 'measure') {
       const ms = useEditorStore.getState();
       if (!ms.measureFrom && !ms.measureAdjustId) {
-        const g = targetOf(e.ray);
+        const g = targetOf(e.ray, e.nativeEvent.clientX, e.nativeEvent.clientY);
         if (g) {
           placeMeasurePoint(g);
           startedMeasure = true;

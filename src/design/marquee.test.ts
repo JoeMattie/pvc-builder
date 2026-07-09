@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { marqueeFromDrag, memberSelectedBy, type Pt, segmentsIntersect } from './marquee';
+import {
+  closestOnSegment2D,
+  marqueeFromDrag,
+  memberSelectedBy,
+  type Pt,
+  segmentsIntersect,
+} from './marquee';
 
 const P = (x: number, y: number): Pt => ({ x, y });
 
@@ -49,5 +55,27 @@ describe('memberSelectedBy', () => {
 
   it('selects nothing when fully outside', () => {
     expect(memberSelectedBy([P(200, 200), P(300, 300)], rect, 'crossing')).toBe(false);
+  });
+});
+
+describe('closestOnSegment2D', () => {
+  it('projects a point onto the interior of a segment', () => {
+    // segment along x from (0,0) to (10,0); point above its middle
+    const r = closestOnSegment2D(P(5, 3), P(0, 0), P(10, 0));
+    expect(r.t).toBeCloseTo(0.5, 6);
+    expect(r.dist).toBeCloseTo(3, 6);
+  });
+
+  it('clamps past the ends (t stays in [0,1])', () => {
+    expect(closestOnSegment2D(P(-5, 0), P(0, 0), P(10, 0)).t).toBe(0);
+    expect(closestOnSegment2D(P(50, 0), P(0, 0), P(10, 0)).t).toBe(1);
+    // distance is measured to the clamped endpoint
+    expect(closestOnSegment2D(P(-3, 4), P(0, 0), P(10, 0)).dist).toBeCloseTo(5, 6);
+  });
+
+  it('is stable for a degenerate (zero-length) segment', () => {
+    const r = closestOnSegment2D(P(3, 4), P(1, 1), P(1, 1));
+    expect(r.t).toBe(0);
+    expect(r.dist).toBeCloseTo(Math.hypot(2, 3), 6);
   });
 });

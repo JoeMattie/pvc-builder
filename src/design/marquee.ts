@@ -45,6 +45,20 @@ export function pointInRect(p: Pt, r: Rect): boolean {
   return p.x >= r.minX && p.x <= r.maxX && p.y >= r.minY && p.y <= r.maxY;
 }
 
+/** Closest point to `p` on the 2D segment a→b: the clamped parameter `t`
+ * (0 at a, 1 at b) and the pixel distance. Used for screen-space snapping of the
+ * draw cursor / a dragged endpoint onto a pipe's projected line. */
+export function closestOnSegment2D(p: Pt, a: Pt, b: Pt): { t: number; dist: number } {
+  const abx = b.x - a.x;
+  const aby = b.y - a.y;
+  const len2 = abx * abx + aby * aby;
+  const t =
+    len2 < 1e-9 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * abx + (p.y - a.y) * aby) / len2));
+  const cx = a.x + abx * t;
+  const cy = a.y + aby * t;
+  return { t, dist: Math.hypot(p.x - cx, p.y - cy) };
+}
+
 /** Orientation sign of the triple (a, b, c). */
 function cross3(a: Pt, b: Pt, c: Pt): number {
   return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);

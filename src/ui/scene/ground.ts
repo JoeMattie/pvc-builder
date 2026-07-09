@@ -36,41 +36,6 @@ export function rayToPlane(ray: Ray, point: Vec3, normal: Vec3): Vec3 | null {
   };
 }
 
-/** Closest point ON the segment a→b to a picking `ray`, plus that point's
- * perpendicular distance to the ray line. Lets the draw cursor snap onto a pipe
- * at ANY height — a ground raycast can't, since an elevated pipe is nowhere near
- * the y=0 hit point. `dist` is Infinity when the closest point is behind the
- * camera (t < 0). Pure; no three.js math beyond reading the ray's vectors. */
-export function closestPointOnSegmentToRay(
-  ray: Ray,
-  a: Vec3,
-  b: Vec3,
-): { point: Vec3; dist: number } {
-  const o = ray.origin;
-  const v = ray.direction; // unit
-  const ux = b.x - a.x;
-  const uy = b.y - a.y;
-  const uz = b.z - a.z;
-  const wx = a.x - o.x;
-  const wy = a.y - o.y;
-  const wz = a.z - o.z;
-  const A = ux * ux + uy * uy + uz * uz; // |segment|²
-  const B = ux * v.x + uy * v.y + uz * v.z;
-  const C = v.x * v.x + v.y * v.y + v.z * v.z; // |dir|² (≈1)
-  const D = ux * wx + uy * wy + uz * wz;
-  const E = v.x * wx + v.y * wy + v.z * wz;
-  const denom = A * C - B * B;
-  let s = denom > 1e-12 ? (B * E - C * D) / denom : 0; // param along the segment
-  s = Math.max(0, Math.min(1, s));
-  const point = { x: a.x + ux * s, y: a.y + uy * s, z: a.z + uz * s };
-  const t = ((point.x - o.x) * v.x + (point.y - o.y) * v.y + (point.z - o.z) * v.z) / C;
-  if (t < 0) return { point, dist: Number.POSITIVE_INFINITY }; // behind the camera
-  const cx = o.x + v.x * t;
-  const cy = o.y + v.y * t;
-  const cz = o.z + v.z * t;
-  return { point, dist: Math.hypot(point.x - cx, point.y - cy, point.z - cz) };
-}
-
 /** The world axis (X/Y/Z) most aligned with the camera's view direction, used
  * as the drag-plane normal so a free move slides in the plane facing the camera
  * (Blender-style context-awareness). A small bias toward Y makes near-ties

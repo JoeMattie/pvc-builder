@@ -6,16 +6,19 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 
 ## Post-batch fixes (2026-07-08)
 
-- **Draw snaps onto pipes at ANY height** (bug: drawing on/between the Cube Frame's elevated top
-  pipes snapped both ends to the ground, and the on-pipe indicator jittered). Root cause:
-  `DrawController.targetOf` only ever raycast the **ground plane** (or a view-plane through the path
-  start), so an elevated pipe was far from the raw point and `snapPoint`'s 3D on-pipe test never
-  fired; the jitter was the start-plane's `dominantAxisNormal` flipping frame-to-frame. Fix: a pure
-  `closestPointOnSegmentToRay` (`ground.ts`) + `rayPipePoint` in DrawController raycast the pointer
-  ray against each straight pipe segment; when the ray is within a pipe's grab radius, `targetOf`
-  returns the 3D point ON that pipe (before the ground/plane fallback). `snapPoint` then resolves a
-  stable on-pipe/tee snap and `placeDrawPoint`'s existing on-body union machinery tees both ends at
-  their real height. Respects the snap-to-pipes toggle; straight members only (formed = follow-up).
+- **Snap onto pipes/nodes at ANY height — SCREEN-SPACE** (bugs: drawing on/between the Cube Frame's
+  elevated top pipes snapped both ends to the ground + jittered; dragging an endpoint onto a pipe
+  "usually" didn't tee). Root cause: snapping was resolved from a **ground/view-plane raycast
+  point**, so an elevated pipe was far from it in 3D and never matched. A first attempt used a **3D
+  ray-vs-segment** distance — WRONG: it snaps to any pipe the ray grazes *in depth* (a pipe between
+  the camera and the cursor's target), firing "beyond" the pipe on screen. Fix: `pickSnapPoint`
+  (`ui/scene/pipePick.ts`) projects each node + straight-pipe segment to the SCREEN and takes the
+  nearest within `SNAP_PX` (12) of the cursor — nodes first, then a point along a pipe (behind-camera
+  points are skipped). `DrawController.targetOf` returns that point (so `snapPoint` resolves the
+  node/on-pipe/tee) and the endpoint drag (`SelectionHandles`) snaps the dragged node to it, so
+  `reconcileBodyJoints` tees/welds reliably. Respects the snap-to-ends/pipes pill toggles; straight
+  members only. Pure `closestOnSegment2D` in `marquee.ts`. Opt-in `__pvc.setSnapDebug(true)` logs
+  what the cursor resolves to (`[snap]` / `[drag-snap]`).
 - **Sim precision isolated → CCD-only** (experiment branch `sim-precision-rollback`, NOT on main
   yet). The physics tunnelling fix in 258c139 bundled three mechanisms; an 8-way sweep of a
   settling welded elbow (400 steps of 1/60 s) isolated their effect:

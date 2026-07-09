@@ -59,7 +59,11 @@ let useVcap = false; // OFF: proven to have no effect
 let accumulator = 0;
 /** Toggle the precision mechanisms (must be set BEFORE startPhysics for CCD /
  * velocity-cap, which are baked into the bodies at world-build). */
-export function setPhysicsPrecision(o: { substeps?: boolean; ccd?: boolean; vcap?: boolean }): void {
+export function setPhysicsPrecision(o: {
+  substeps?: boolean;
+  ccd?: boolean;
+  vcap?: boolean;
+}): void {
   if (o.substeps !== undefined) useSubsteps = o.substeps;
   if (o.ccd !== undefined) useCcd = o.ccd;
   if (o.vcap !== undefined) useVcap = o.vcap;

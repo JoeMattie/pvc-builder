@@ -420,6 +420,10 @@ export function EditorShell() {
     hook.makeManufacturedJoint = (nodeId: string, moverId: string) =>
       makeManufacturedJoint(nodeId, moverId);
     hook.makeFreeHub = (nodeId: string) => makeFreeHub(nodeId);
+    // opt-in: logs what the draw cursor / a dragged endpoint snaps to
+    hook.setSnapDebug = (on: boolean) => {
+      hook.snapDebug = on;
+    };
     // pivots / solver seams
     hook.setPivotAngle = (jointId: string, angleRad: number) => setPivotAngle(jointId, angleRad);
     hook.getSolve = () => {
