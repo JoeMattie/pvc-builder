@@ -29,13 +29,13 @@ export const EXAMPLES: Example[] = [
   {
     id: 'trex-rigid',
     name: 'T-rex (rigid)',
-    description: '57 nodes · 145 pipes — decimated low-poly mesh, all joints rigid',
+    description: '262 nodes · 541 pipes — low-poly mesh, tris→quads, all joints rigid',
     load: () => migrateToLatest(trexRigid),
   },
   {
     id: 'trex-pivots',
     name: 'T-rex (universal pivots)',
-    description: '145 pipes · 233 free ball joints — every intersection is a universal pivot',
+    description: '541 pipes — a free ball hub at every one of the 262 nodes',
     load: () => migrateToLatest(trexPivots),
   },
 ];

@@ -28,7 +28,7 @@ import { anchorRendersAsTee } from './jointStyle';
 import { FREE_JOINT_GAP_M, WRAP_END_GAP_M } from './pipeModel';
 import { buildWrapArrow } from './wrapArrow';
 
-const MAX_JOINT_MEMBERS = 200;
+const MAX_JOINT_MEMBERS = 800;
 const CORD_COLOR = '#c9b48a'; // knotted natural cord
 const EYE_COLOR = '#6b7280'; // galvanised eye bolt
 const WRAP_GREEN = '#2fa84f'; // swivel arrow (can rotate)

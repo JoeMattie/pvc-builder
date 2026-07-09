@@ -50,8 +50,10 @@ NEW/untracked: `JointLayer.tsx`. DELETED: `PivotLayer.tsx`, `WrapLayer.tsx` (bot
 - **Two independent window-listener drag systems** (DrawController inline + SelectionHandles
   `useGroundDrag`) exist for the same r3f reason (mesh drops pointerup when the ray leaves the mesh).
   If you change one, mirror the other.
-- **`MAX_*_MEMBERS=200` / `MAX_ANIMATED_NODES=160`** are perf guards for huge designs (T-rex);
-  several layers early-return above the cap.
+- **`MAX_*_MEMBERS=800` (JointLayer/FittingLayer/IntersectionLayer) / `MAX_ANIMATED_NODES=160`**
+  are perf guards for huge designs; layers early-return above the cap. The 541-pipe quad T-rex
+  fits the 800 member cap (renders all layers) but exceeds the 160-node animation cap on purpose
+  (poses snap instantly, no per-frame easing).
 - **`GeometryAnimator`** (in Scene) drives positions: physics step when simulating, else solver
   `pose` when `lengthsLocked`, else doc positions.
 

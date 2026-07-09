@@ -11,7 +11,7 @@ import { scenePalette } from '../theme';
 import { placeAxis } from './axis';
 import { formedCurve } from './FormedLayer';
 
-const MAX_INTERSECT_MEMBERS = 200;
+const MAX_INTERSECT_MEMBERS = 800;
 const SHELL = 1.28;
 
 export function IntersectionLayer() {

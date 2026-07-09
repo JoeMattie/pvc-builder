@@ -15,7 +15,7 @@ import { placeAxis } from './axis';
 import { buildFittingMesh, type FittingCyl } from './fittingMesh';
 
 /** Above this many members, skip fitting resolution/rendering entirely. */
-const MAX_FITTING_MEMBERS = 200;
+const MAX_FITTING_MEMBERS = 800;
 
 function Cyl({ c, color }: { c: FittingCyl; color: string }) {
   const placed = placeAxis(c.a, c.b);

@@ -6,6 +6,15 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 
 ## Post-batch fixes (2026-07-08)
 
+- **T-rex re-baked as QUADS, not decimated.** The earlier examples were over-decimated (welded to
+  57 nodes / 145 pipes). `scripts/gen-trex.mjs` now keeps every vertex (262, only de-duplicating
+  coincident coordinates) and runs a **tris→quads** pass — greedy coplanarity-first triangle
+  pairing that drops each pair's shared (flat-face) diagonal — yielding **541 pipes**. Diagonals
+  on curved regions are kept (they're real structural pipes). Both examples share this wireframe:
+  `trex-rigid` (schema 1, no joints) and `trex-pivots` (schema 6, a free ball hub at all 262
+  nodes → 820 pairwise records, drawn as 262 balls via [[free ball-joint hub]]). To let the
+  fuller model light up every layer, the `ui/scene` `MAX_*_MEMBERS` render caps were raised
+  200 → 800; the 160-node animation guard is still tripped on purpose (poses snap, no easing).
 - **Free ball-joint HUB for N pipes at one point** (`makeFreeHub`). A free pivot can now bind
   any number of pipes meeting at a node as a single shared ball. **No schema change** — a shared
   hub is kinematically identical to PAIRWISE free records all referencing one common receiver
