@@ -105,6 +105,25 @@ Build a PARTIALLY-working prototype: implement the articulations that our
 features support; skip the rest (that's fine). It should be balanced enough to
 mostly move correctly and hang on a mannequin without falling.
 
+### SHARED COORDINATE CONTRACT (mannequin ↔ raptor templates MUST agree)
+Metres, y-up, feet on the ground at **y=0**. The mannequin stands at the ORIGIN
+**facing −Z**, so the raptor's **head/neck extends forward at −Z** and the
+**tail extends back at +Z**; left = −X, right = +X.
+- Feet y=0 · knees y≈0.48 · **hips/waist y≈1.00** · **shoulders y≈1.45** · chin
+  y≈1.52 · **head center y≈1.62 (r≈0.10, top≈1.72)**.
+- Shoulder half-width **x=±0.23**; hip half-width **x=±0.18**; body depth ≈0.20.
+- **RAPTOR MOUNT POINTS (the contract):**
+  - Shoulder saddles: **(±0.23, 1.45, 0)** — harness bows rest here.
+  - Waist rectangle: y=1.00, spanning **x∈[−0.25, +0.25]** (0.5 wide) and
+    **z∈[−0.45 (front), +0.45 (back)]** (0.9 fore-aft).
+  - **Hip pivots (the seesaw fulcrum): (±0.20, 1.00, 0)** — the whole body frame
+    pitches about the shared X axis through these.
+  - Neck root at the front rail **(0, 1.00, −0.45)** reaching forward+up to the
+    head near **(0, 1.15, −1.30)**; tail root at the back rail **(0, 1.00, +0.45)**
+    tapering to a tip near **(0, 0.90, +1.90)**.
+Author every raptor phase against these exact numbers so mount points sit on the
+mannequin. Expose the mannequin's anchor points as named constants so both agree.
+
 ### New feature: static human MANNEQUIN collision body
 - A static (non-dynamic) human-shaped body the raptor can rest/collide against so
   it hangs instead of falling to the ground. Important parts: HEAD (clearance),
