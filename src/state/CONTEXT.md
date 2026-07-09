@@ -44,7 +44,8 @@ Read seams: `getDoc`, `getEditor`, `getFittings` (`{fittings, conflicts}`), `get
 `setDrawSize`, `setProjection`, `setLengthsLocked`, `draw`/`finishPath`, `drawFormed`, `dragNode`,
 `moveMember`, `rotateMember`, `setJoinMode`, `makeManufacturedJoint`, `makeFreeHub`,
 `bendMember` (optional length-ref arg), `setBendLengthLock`, `setPivotAngle`, `importJson`,
-`setSimulating`, `placeElastic`/`getElastics`/`setElasticTension`/`selectElastic`/`deleteElastic`.
+`setSimulating`, `placeElastic`/`getElastics`/`setElasticTension`/`selectElastic`/`deleteElastic`,
+`setSelection`/`openJoinMenu` (scripted-screenshot/test helpers).
 (Examples load via `appStore.createFromExample`, not a `__pvc` seam.)
 
 ## Read before editing

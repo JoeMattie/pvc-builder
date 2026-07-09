@@ -168,5 +168,6 @@ last). Put generators in `scripts/gen-raptor-*.mjs` (like `gen-trex.mjs`), emit
 
 ### Progress log
 - [x] Task 1 — elastic bands (v0.1.15, schema v8; shipped + tagged)
-- [ ] Task 2 — docs + push
+- [x] Task 2 — docs + push (v0.1.16: `docs/USER-GUIDE.md` + 10 screenshots in `docs/img/`;
+      in-app `HelpPanel.tsx` via a `?` editor button + a "Guide" project-list button; shipped + tagged)
 - [ ] Task 3 — raptor (mannequin, friction slider, torso, tail, legs, neck, head)

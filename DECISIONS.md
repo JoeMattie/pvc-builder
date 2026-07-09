@@ -6,6 +6,18 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 
 ## Post-batch fixes (2026-07-08)
 
+- **Documentation + in-app help** (v0.1.16). Added `docs/USER-GUIDE.md` — a complete, screenshot-
+  illustrated walkthrough of every tool, interaction, joint mode, group/copy/paste/nudge behaviour,
+  units/sizes, Play/physics/debug overlay, BOM/cut-list, and persistence, plus a keyboard-shortcut
+  reference table and a right-click reference. Screenshots (`docs/img/*.png`) were captured by driving
+  the BUILT app headless with a temporary `e2e/shots.spec.ts` (deleted after the run) via `window.__pvc`
+  seams + example loads: project list, an example in the editor, the join menu, a wrapped pivot, free
+  hubs, a group faded on enter, the BOM panel, Play + physics-debug overlay, an elastic band in Play,
+  and the help panel (10 shots). In-app: a **self-contained** `src/ui/HelpPanel.tsx` modal (shortcut
+  tables + concise "how it works" for tools/joints/groups/elastics/Play; NO network) opened by a `?`
+  button in the editor top-right toolbar and a "Guide" button in the ProjectList header. Two small
+  `__pvc` test seams were added to make the screenshots deterministic: `setSelection(ids)` and
+  `openJoinMenu({nodeId,moverId,x,y})`. No schema/domain/solver change; purely additive UI + docs.
 - **Elastic bands (schema v8)** (v0.1.15). A `band` = `{id, a, b, restLengthM, stiffnessNPerM}` where
   each end is an `Attachment` = `{nodeId}` (a pipe END / junction) OR `{memberId, t}` (a point at
   fraction `t` along a straight member). Additive/optional to the doc; migration `7:` seeds `elastics:

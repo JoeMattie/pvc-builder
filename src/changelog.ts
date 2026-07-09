@@ -11,6 +11,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.1.16',
+    date: '2026-07-09',
+    changes: [
+      'Documentation + in-app help: a full illustrated user guide (docs/USER-GUIDE.md), plus a “?” help button in the editor toolbar and a “Guide” button on this page that open a keyboard-shortcut + how-it-works reference.',
+    ],
+  },
+  {
     version: '0.1.15',
     date: '2026-07-08',
     changes: [

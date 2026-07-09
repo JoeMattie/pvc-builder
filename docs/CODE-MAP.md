@@ -4,6 +4,8 @@ Index of the per-directory `CONTEXT.md` orientation files. **Read the relevant `
 before working in a directory** — each is a reference card of that directory's files, key exports,
 cross-directory dependencies, and read-before-editing gotchas. The authoritative product spec is
 `docs/planfiles/PLANFILE-pvc-builder.md`; decisions log is `DECISIONS.md`; conventions are `CLAUDE.md`.
+The end-user manual (features + interactions, with screenshots) is `docs/USER-GUIDE.md`; the same
+shortcut reference is surfaced in-app via `src/ui/HelpPanel.tsx`.
 
 ## The architecture in one line
 Pure cores behind narrow interfaces: **`schema`** (Zod source of truth) → **`geometry`** (pure math)

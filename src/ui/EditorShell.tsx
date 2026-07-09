@@ -5,6 +5,7 @@ import {
   ClipboardList,
   FileDown,
   FileUp,
+  HelpCircle,
   Lock,
   LockOpen,
   Moon,
@@ -75,6 +76,7 @@ import { useThemeStore } from '../state/themeStore';
 import { BendPill } from './BendPill';
 import { BomPanel } from './BomPanel';
 import { ElasticPanel } from './ElasticPanel';
+import { HelpPanel } from './HelpPanel';
 import { JoinMenu } from './JoinMenu';
 import { downloadFile } from './lib/download';
 import { Pillbox } from './Pillbox';
@@ -129,6 +131,7 @@ export function EditorShell() {
   const redo = useAppStore((s) => s.redo);
 
   const [bomOpen, setBomOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const exportJson = () => {
@@ -418,6 +421,9 @@ export function EditorShell() {
     hook.moveControlPoint = (memberId: string, index: number, raw: Vec3) =>
       moveFormedControlPoint(memberId, index, raw);
     hook.selectMember = (id: string) => selectMember(id);
+    hook.setSelection = (ids: string[]) => useEditorStore.getState().setSelection(ids);
+    hook.openJoinMenu = (menu: { nodeId: string; moverId: string; x: number; y: number }) =>
+      useEditorStore.getState().openJoinMenu(menu);
     hook.copySelection = () => copySelection();
     hook.cutSelection = () => cutSelection();
     hook.pasteClipboard = () => pasteClipboard();
@@ -670,6 +676,15 @@ export function EditorShell() {
         <div className="mx-0.5 h-5 w-px bg-border" />
         <button
           type="button"
+          onClick={() => setHelpOpen(true)}
+          aria-label="Help & shortcuts"
+          title="Help & keyboard shortcuts"
+          className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+        >
+          <HelpCircle size={16} />
+        </button>
+        <button
+          type="button"
           onClick={toggleNight}
           aria-label="Toggle day/night"
           className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -677,6 +692,8 @@ export function EditorShell() {
           {night ? <Sun size={16} /> : <Moon size={16} />}
         </button>
       </div>
+
+      <HelpPanel open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }

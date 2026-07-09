@@ -21,10 +21,11 @@ siblings.
 | `PivotPanel.tsx` (101) | Locked-mode pivot controls — mobility readout + per-wrapped-joint angle slider | free joints get no slider (posed by dragging) |
 | `ElasticPanel.tsx` (—) | Selected elastic-band controls — tension (stiffness) slider + current/rest span + delete | shown when `selectedElasticId` set; drives `setElasticTension` |
 | `Pillbox.tsx` (104) | Bottom-center tool + size pillbox | sizes hardcoded `['1/2"','3/4"']` |
+| `HelpPanel.tsx` (—) | Self-contained modal help / keyboard-shortcut reference (no network) | opened by the editor `?` button (EditorShell top-right) + the ProjectList "Guide" button; keep the shortcut list in sync with EditorShell's keydown handler |
 | `JoinMenu.tsx` (120) | Right-click join menu (Anchor/Wrapped/Free) — opens only at a shared junction / joint hardware | options gated by `joinContext` geometry |
 | `SizeMenu.tsx` (—) | Right-click size switcher (1/2"↔3/4") for a pipe or the whole multi-selection | opens on a pipe body / lone end; drives `setMembersSize` |
 | `SnapPill.tsx` (133) | Bottom-left snap settings (grid + toggles) | grid options are unit-dependent |
-| `ProjectList.tsx` (103) | Landing screen — create/open/delete + examples | header comment may be stale |
+| `ProjectList.tsx` (103) | Landing screen — create/open/delete + examples + a "Guide" (help) button | header comment may be stale |
 | `units.ts` (168) | **Display-only** length/mass conversion + `formatLengthDisplay`/`parseLength` (mm/cm/in/in-frac, schema v6) | ⚠ everything stored is SI; `parseLength` reads `10mm`/`1/2"`/`10ft`… |
 | `UnitsPill.tsx` (—) | Bottom-right display-units picker → writes `design.lengthDisplay` | display-only; default decimal inches |
 | `theme.ts` (40) | Day/night — toggles `.dark` + supplies **literal three.js scene colors** | three.js can't read CSS vars; edit scene colors HERE |
