@@ -6,6 +6,11 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 
 ## Post-batch fixes (2026-07-08)
 
+- **Bend length-lock on already-bent pipes** (v0.1.4, Option B). The Bend tool's tube press-drag
+  now works on FORMED pipes too (a new `FormedTube` mirrors `PipeLayer.onBend` with a click-vs-drag
+  slop): dragging re-bends the pipe as one fresh bend, and with lock-length on it conserves the
+  current **developed (cut) length** (`bendMemberAt` gets `lengthM = analyzeFormed(...).developedLengthM`);
+  a plain click still adds a control point. Control-point handles remain for fine-tweaks (no lock).
 - **Draw-on-Plane tool REMOVED** (v0.1.3). Shift-lock now covers 3D drawing (draw up any world
   axis incl. Y), so the plane tool was redundant. Deleted: the `plane` `Tool`, its `F` hotkey +
   Pillbox button, all plane state/actions (`drawPlane`/`planeOrigin`, `placePlanePoint`,

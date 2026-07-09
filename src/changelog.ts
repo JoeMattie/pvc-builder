@@ -11,6 +11,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.1.4',
+    date: '2026-07-08',
+    changes: [
+      'Bend tool: drag a bent pipe’s tube to re-bend it — lock-length now works on already-bent pipes (a fresh bend that holds the cut length); a plain click still adds a control point',
+    ],
+  },
+  {
     version: '0.1.3',
     date: '2026-07-08',
     changes: [

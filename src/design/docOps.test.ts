@@ -735,6 +735,26 @@ describe('bendMember', () => {
     if (bent.kind === 'formed') expect(Number.isFinite(bent.controlPoints[0]!.z)).toBe(true);
     expect(pathLen(out, memberIds[0]!)).toBeCloseTo(1, 3);
   });
+
+  it('length-lock conserves developed length when re-bending an ALREADY-bent pipe', () => {
+    const { design, memberIds } = drawPath([V(0, 0, 0), V(1, 0, 0)]);
+    // bend the straight pipe (length-locked) → a formed pipe of developed length ~1
+    const bent1 = bendMember(design, memberIds[0]!, 0.5, V(0, 0, 0.3), 0.06, {
+      lengthLock: { axisDir: V(1, 0, 0), lengthM: 1 },
+    });
+    const dev1 = pathLen(bent1, memberIds[0]!);
+    expect(dev1).toBeCloseTo(1, 3);
+    // re-bend the now-FORMED pipe, conserving its current developed length: capture
+    // the chord axis + developed length (what the FormedTube drag does)
+    const m = bent1.members.find((x) => x.id === memberIds[0])!;
+    const a = nodeById(bent1, m.nodeA)!.position;
+    const b = nodeById(bent1, m.nodeB)!.position;
+    const al = Math.hypot(b.x - a.x, b.z - a.z);
+    const bent2 = bendMember(bent1, memberIds[0]!, 0.5, V(0, 0, 0.5), 0.06, {
+      lengthLock: { axisDir: { x: (b.x - a.x) / al, y: 0, z: (b.z - a.z) / al }, lengthM: dev1 },
+    });
+    expect(pathLen(bent2, memberIds[0]!)).toBeCloseTo(dev1, 3); // still ~1
+  });
 });
 
 describe('setMemberSize', () => {
