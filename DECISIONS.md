@@ -6,6 +6,17 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 
 ## Post-batch fixes (2026-07-08)
 
+- **Sim precision isolated → CCD-only** (experiment branch `sim-precision-rollback`, NOT on main
+  yet). The physics tunnelling fix in 258c139 bundled three mechanisms; an 8-way sweep of a
+  settling welded elbow (400 steps of 1/60 s) isolated their effect:
+  - **Velocity cap (`maxLinearVelocity`): no effect at all** — results byte-identical with/without.
+  - **Substeps (1/120 s ×≤8/frame) and CCD (`LINEAR_CAST`) are REDUNDANT** — either alone keeps the
+    elbow from sinking through the floor (coarse+neither: node reaches y=−0.129; CCD-only: +0.003;
+    substeps-only: +0.007). A plain straight-pipe fall from y=5 rests on the floor even fully
+    coarse, so high-speed tunnelling wasn't the real issue — the compound-body settling sink was.
+  - **Landing config: CCD ON, substeps OFF, velocity-cap OFF** — drops the up-to-8×/frame world
+    stepping (the main cost) and the useless cap, keeping the one mechanism that matters. All tests
+    green. `physics.ts` keeps the three as flags + `setPhysicsPrecision(...)` for manual A/B testing.
 - **Toggleable drag modifiers + arrow-key nudge.**
   - **Toggleable Ctrl/Shift during a drag** (`useGroundDrag` in `SelectionHandles.tsx`). Modifier
     state is now a live `DragMods` seeded from the pointer-down and flipped by each mid-drag key

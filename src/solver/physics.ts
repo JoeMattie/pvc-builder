@@ -4,8 +4,10 @@
 // pivots are hinge (wrapped) / point (free) constraints with friction, pipes
 // never collide with each other (only the ground), and the ground is a static
 // box temporarily lowered just below the model so nothing starts penetrating.
-// Advanced in fixed substeps with CCD + a velocity cap so thin pipes don't
-// tunnel the floor. Stateful (the world persists across frames), unlike the pure
+// EXPERIMENT (branch sim-precision-rollback): the fixed-substep + CCD + velocity
+// cap precision (added to stop thin pipes tunnelling the floor) is rolled back to
+// one coarse step per frame, to see if that precision is still needed — `main`
+// keeps the precise version. Stateful (the world persists across frames), unlike the pure
 // kinematic solve(); the two coexist (kinematics for exact locked posing,
 // physics for dynamic simulation). This handles closed loops (a pivoted square
 // collapses like a real parallelogram) that tree kinematics can't.
@@ -40,12 +42,28 @@ const DENSITY = 1400; // PVC ≈ 1400 kg/m³
 // engine-friendly and the motion still reads at real speed.
 const SCALE = 20;
 const PIVOT_FRICTION_TORQUE = 40; // scaled N·m — light resistance, swings under load
-// Fixed-substep integration: thin PVC capsules on a static floor tunnel through
-// at a coarse frame dt, so we advance the world in small fixed steps (plus CCD +
-// a velocity cap on the bodies) for stable, non-penetrating contacts.
-const FIXED_DT = 1 / 120;
+// EXPERIMENT (sim-precision-rollback): the three precision mechanisms added in
+// 258c139 to stop thin pipes "tunnelling" the floor, isolated by an 8-way sweep
+// of a settling welded elbow (see DECISIONS). Result: the VELOCITY CAP does
+// nothing (identical with/without); substeps and CCD are REDUNDANT — either one
+// alone stops a compound body sinking through the floor. CCD costs ~1 world
+// update/frame vs the substep loop's up to 8, so the cheap correct default is
+// CCD-ONLY. Flags kept toggleable for manual A/B testing via setPhysicsPrecision.
+const MAX_DT = 1 / 30; // clamp a long frame so one step can't over-integrate
+const FIXED_DT = 1 / 120; // substep size when substeps are on
 const MAX_SUBSTEPS = 8; // cap catch-up steps per frame (no spiral of death)
-const MAX_LINEAR_VELOCITY = 30 * SCALE; // scaled m/s — keeps a fall from tunnelling
+const MAX_LINEAR_VELOCITY = 30 * SCALE; // scaled m/s velocity cap when on
+let useSubsteps = false; // OFF: no 8×/frame loop (the big perf cost)
+let useCcd = true; // ON: continuous collision — the one mechanism that matters
+let useVcap = false; // OFF: proven to have no effect
+let accumulator = 0;
+/** Toggle the precision mechanisms (must be set BEFORE startPhysics for CCD /
+ * velocity-cap, which are baked into the bodies at world-build). */
+export function setPhysicsPrecision(o: { substeps?: boolean; ccd?: boolean; vcap?: boolean }): void {
+  if (o.substeps !== undefined) useSubsteps = o.substeps;
+  if (o.ccd !== undefined) useCcd = o.ccd;
+  if (o.vcap !== undefined) useVcap = o.vcap;
+}
 // The physics floor sits this far below the lowest object at sim start, so
 // nothing begins penetrating the ground (which otherwise erupts on the 1st step).
 const GROUND_CLEARANCE_M = 0.003;
@@ -76,8 +94,6 @@ interface Sim {
   /** per node: an incident member body + the node's offset in that body's frame */
   nodeSource: Map<string, { memberId: string; local: Vec3 }>;
   topoHash: string;
-  /** leftover time (s) carried between frames for fixed-substep integration */
-  accumulator: number;
 }
 
 let sim: Sim | null = null;
@@ -228,9 +244,9 @@ function build(design: Design): Sim {
 
     const common = {
       motionType: MotionType.DYNAMIC,
-      // continuous collision so a fast-falling thin pipe can't tunnel the floor
-      motionQuality: MotionQuality.LINEAR_CAST,
-      maxLinearVelocity: MAX_LINEAR_VELOCITY,
+      // EXPERIMENT: CCD + velocity cap are toggleable (see setPhysicsPrecision)
+      motionQuality: useCcd ? MotionQuality.LINEAR_CAST : MotionQuality.DISCRETE,
+      ...(useVcap ? { maxLinearVelocity: MAX_LINEAR_VELOCITY } : {}),
       objectLayer: olMoving,
       friction: 0.8,
       linearDamping: 0.05,
@@ -315,11 +331,12 @@ function build(design: Design): Sim {
     });
   }
 
-  return { world, bodyOfMember, nodeSource, topoHash: physicsTopoHash(design), accumulator: 0 };
+  return { world, bodyOfMember, nodeSource, topoHash: physicsTopoHash(design) };
 }
 
 export function startPhysics(design: Design): void {
   sim = build(design);
+  accumulator = 0;
 }
 export function stopPhysics(): void {
   sim = null;
@@ -331,16 +348,19 @@ export function activeTopoHash(): string {
   return sim?.topoHash ?? '';
 }
 
-/** Advance the simulation in fixed substeps (stable contacts, no tunnelling).
- * Leftover time carries to the next frame; a long stall is clamped so it can't
- * spiral into an unbounded catch-up. */
+/** EXPERIMENT: one coarse step per frame (clamped to MAX_DT), OR fixed 1/120 s
+ * substeps (≤8/frame) when substeps are toggled on. */
 export function stepPhysics(dt: number): void {
   if (!sim) return;
-  sim.accumulator = Math.min(sim.accumulator + dt, MAX_SUBSTEPS * FIXED_DT);
+  if (!useSubsteps) {
+    updateWorld(sim.world, undefined, Math.min(dt, MAX_DT));
+    return;
+  }
+  accumulator = Math.min(accumulator + dt, MAX_SUBSTEPS * FIXED_DT);
   let steps = 0;
-  while (sim.accumulator >= FIXED_DT && steps < MAX_SUBSTEPS) {
+  while (accumulator >= FIXED_DT && steps < MAX_SUBSTEPS) {
     updateWorld(sim.world, undefined, FIXED_DT);
-    sim.accumulator -= FIXED_DT;
+    accumulator -= FIXED_DT;
     steps++;
   }
 }
