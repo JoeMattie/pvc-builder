@@ -11,6 +11,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.1.18',
+    date: '2026-07-09',
+    changes: [
+      'Project Raptor templates (1 of 2): load “Raptor · harness frame” and “Raptor · + tail” from the examples list — a PVC hip/shoulder frame that hangs on the mannequin (enable it in Play), plus a segmented counterweight tail with wrapped flex joints and elastic suspension bands.',
+      'Tip: open a Raptor example, turn on the mannequin, and press Play to watch it rest and settle on the wearer.',
+    ],
+  },
+  {
     version: '0.1.17',
     date: '2026-07-09',
     changes: [

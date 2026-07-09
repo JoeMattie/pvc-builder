@@ -189,4 +189,10 @@ last). Put generators in `scripts/gen-raptor-*.mjs` (like `gen-trex.mjs`), emit
 - [x] Task 1 — elastic bands (v0.1.15, schema v8; shipped + tagged)
 - [x] Task 2 — docs + push (v0.1.16: `docs/USER-GUIDE.md` + 10 screenshots in `docs/img/`;
       in-app `HelpPanel.tsx` via a `?` editor button + a "Guide" project-list button; shipped + tagged)
-- [ ] Task 3 — raptor (mannequin, friction slider, torso, tail, legs, neck, head)
+- [~] Task 3 — raptor (mannequin, friction slider, torso, tail, legs, neck, head)
+  - [x] Shared infra: static mannequin + damping slider (v0.1.17, schema v9)
+  - [x] Phase 1 torso + Phase 2 tail — hang on the mannequin (v0.1.18; `scripts/gen-raptor-{torso,tail}.mjs`
+        over `scripts/raptor-lib.mjs`, examples `raptor-{torso,tail}.json`). Tail uses `wrapped` flex
+        joints (hold the extended shape under gravity) + elastic suspension; frame hangs from a rigid
+        shoulder platform resting on the mannequin. Phase 2 is deliberately tail-heavy (pre-loads the rear).
+  - [ ] Phase 3 legs · Phase 4 neck · Phase 5 head (balance-tuned) — ship v0.1.19

@@ -1,5 +1,7 @@
 import { type Design, migrateToLatest } from '../schema';
 import { articulatedArm, cubeFrame } from './generators';
+import raptorTail from './raptor-tail.json';
+import raptorTorso from './raptor-torso.json';
 import trexPivots from './trex-pivots.json';
 import trexRigid from './trex-rigid.json';
 import trexWrapped from './trex-wrapped.json';
@@ -26,6 +28,20 @@ export const EXAMPLES: Example[] = [
     name: 'Cube frame',
     description: '1 m open cube — 12 pipes, corner conflicts flagged',
     load: () => cubeFrame(),
+  },
+  {
+    id: 'raptor-torso',
+    name: 'Raptor · harness frame',
+    description:
+      'Phase 1 — hip/shoulder PVC frame that hangs on the mannequin (turn it on in Play)',
+    load: () => migrateToLatest(raptorTorso),
+  },
+  {
+    id: 'raptor-tail',
+    name: 'Raptor · + tail',
+    description:
+      'Phase 2 — adds a segmented counterweight tail with wrapped flex joints + elastics',
+    load: () => migrateToLatest(raptorTail),
   },
   {
     id: 'trex-rigid',

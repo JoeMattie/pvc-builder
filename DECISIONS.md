@@ -6,6 +6,31 @@ first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 
 ## Post-batch fixes (2026-07-08)
 
+- **Project Raptor templates, phases 1–2** (v0.1.18). Loadable example templates approximating Esmée
+  Kramer's "Project Raptor" costume (see `docs/RAPTOR-BRIEF.md`), authored natively as PVC Builder
+  docs (schema v9, `mannequin: true`, tuned `jointDamping`). Generators live in `scripts/gen-raptor-*.mjs`
+  (idiom copied from `gen-trex.mjs`) over a shared `scripts/raptor-lib.mjs`; they emit
+  `src/examples/raptor-*.json`, registered in `src/examples/index.ts`. Cumulative (each phase extends
+  the last). **Support model — how it "hangs":** there is NO constraint tying the frame to the static
+  mannequin (they only collide). The frame HANGS from a small rigid SHOULDER PLATFORM (a 0.40×0.16
+  rectangle at y≈1.46) that rests flat on the mannequin's shoulder-bar + torso-top as two broad line
+  contacts either side of the neck — a stable yoke whose CoM sits below it — tied down to the waist
+  rectangle (y=1.0) by four heat-`formed` harness bows. This replaced the first attempt (two thin
+  `formed` bows draped over the shoulders), which was a near-point contact the frame slid off (fell to
+  the floor). **Tail flex uses `wrapped`, not `free`:** a `free` (ball) chain has zero bending
+  stiffness and flops/balls-up; a `wrapped` hinge about the tail's own +z axis RESISTS gravity's droop
+  torque (which is about x) while still swinging the tail side-to-side (its main motion) — so the tail
+  holds its extended cantilever shape (a good stand-in for the fibreglass-sprung garden hose) instead
+  of collapsing. Elastic bands are the suspension/return (rest ≈ 0.9× span so they resist droop /
+  re-centre a swing without hauling the tail inward — an early 0.55×-rest version was massively
+  over-tensioned and retracted the tail into a clump). **Balance:** phase 2 is deliberately tail-heavy
+  (no front counterweight yet) so the frame tips rearward and the tail dips to ≈0.45 m (still well clear
+  of the floor, frame stays seated) — this pre-loads the rear per the brief, to be balanced by the
+  neck+head in later phases. `jointDamping` is exposed as the tuning knob but (per v0.1.17's caveat) is
+  NOT what holds the pose — mass counterweighting + elastics are. Headless balance was iterated with a
+  throwaway vitest (deleted before ship). torso: 18 nodes/26 members; tail: 23 nodes/31 members/2
+  joints/2 elastics.
+
 - **Static human mannequin + global damping (schema v9)** (v0.1.17). Project Raptor shared infra — a
   static human-shaped collision body the design rests/hangs on, plus a global friction-drag slider so
   the sim settles. **Pure geometry** in `src/design/mannequin.ts`: `mannequinShapes(): MannequinShape[]`
