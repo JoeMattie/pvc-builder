@@ -11,6 +11,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.13',
+    date: '2026-07-09',
+    changes: [
+      '"Built with" panel updated: postprocessing (AO + Blender-style cavity), IBM Plex type, and the MCP dev bridge that lets coding agents drive a live session.',
+    ],
+  },
+  {
     version: '0.3.12',
     date: '2026-07-09',
     changes: [

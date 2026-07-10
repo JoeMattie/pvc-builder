@@ -98,6 +98,7 @@ const STACK: { group: string; items: { name: string; role: string }[] }[] = [
       { name: 'three.js', role: 'WebGL renderer' },
       { name: 'react-three-fiber', role: 'React ↔ three' },
       { name: 'drei', role: 'r3f helpers' },
+      { name: 'postprocessing', role: 'AO + Blender-style cavity' },
     ],
   },
   {
@@ -119,6 +120,7 @@ const STACK: { group: string; items: { name: string; role: string }[] }[] = [
       { name: 'Tailwind CSS', role: 'styling' },
       { name: 'Radix UI', role: 'primitives' },
       { name: 'lucide-react', role: 'icons' },
+      { name: 'IBM Plex', role: 'type' },
     ],
   },
   {
@@ -127,6 +129,7 @@ const STACK: { group: string; items: { name: string; role: string }[] }[] = [
       { name: 'Biome', role: 'lint/format' },
       { name: 'Vitest', role: 'unit tests' },
       { name: 'Playwright', role: 'e2e smoke' },
+      { name: 'MCP dev bridge', role: 'agents drive a live session' },
     ],
   },
 ];
