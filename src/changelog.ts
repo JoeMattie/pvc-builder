@@ -11,6 +11,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.6',
+    date: '2026-07-09',
+    changes: [
+      'Entering a group now ghosts everything outside it — pipes, fittings, joints, hubs, curves, and overlap highlights all fade to translucent (keeping their colour, not turning gray) and go inert. Group colour casts are stronger too.',
+      'The HD render toggle is now a true Blender-style cavity: a screen-space ridge/valley curvature pass (ported from Blender’s own Workbench shader) combined with ambient occlusion — crisp bright edges, darkened crevices, and no more phantom outlines from invisible helper surfaces.',
+      'Wrapped pivot arrows were rendering mirrored (the instanced frame was left-handed) — they now wrap the right way at every angle.',
+      'Right-drag to orbit no longer aborts the pipe you are drawing — only a plain right-click ends the path.',
+      'Push (Extend) fixed: every push is one stub-initiated, axis-locked segment. Follow-up pushes no longer degrade into free drawing, and aborting a push no longer plants the next click’s start point under the cursor.',
+      'Guides now offset from the picked pipe along pure X/Y/Z only (grid-snapped) instead of chasing the ground cursor — so guide points land exactly on pipes. The damping slider explains itself on hover.',
+    ],
+  },
+  {
     version: '0.3.5',
     date: '2026-07-09',
     changes: [

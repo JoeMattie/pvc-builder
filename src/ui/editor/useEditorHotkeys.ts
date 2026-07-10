@@ -22,6 +22,7 @@ import {
   ungroupSelection,
 } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
+import { recordPointerDebug, wasRightDrag } from '../scene/rightClickGesture';
 import { parseLength } from '../units';
 
 interface EditorHotkeyActions {
@@ -211,22 +212,35 @@ export function useEditorHotkeys({ undo, redo }: EditorHotkeyActions) {
       }
     };
 
-    // Right button ends any path in progress (and never opens a context menu);
-    // right-drag still rotates via OrbitControls.
-    const onPointerDown = (e: PointerEvent) => {
+    // Right button ends any path in progress (and never opens a context menu).
+    // Fires on RELEASE, gated by the shared right-click gesture module: a
+    // right-DRAG (cursor orbit) must NOT abort the path — only a plain
+    // right-CLICK does. Scene's capture-phase pointerup has already closed the
+    // gesture by the time this bubble listener runs, so `wasRightDrag` sees
+    // the just-finished gesture's moved flag.
+    const onPointerUp = (e: PointerEvent) => {
       if (e.button !== 2) return;
       const s = useEditorStore.getState();
+      if (!s.drawingFromNodeId && !s.formedPoints.length) return;
+      const moved = wasRightDrag(e.pointerId);
+      recordPointerDebug(moved ? 'path-end-suppressed' : 'path-end', {
+        pointerId: e.pointerId,
+        x: e.clientX,
+        y: e.clientY,
+        moved,
+      });
+      if (moved) return;
       if (s.drawingFromNodeId) finishPath();
-      else if (s.formedPoints.length) finishFormed();
+      else finishFormed();
     };
     const onContextMenu = (e: MouseEvent) => e.preventDefault();
 
     window.addEventListener('keydown', onKey);
-    window.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('contextmenu', onContextMenu);
     return () => {
       window.removeEventListener('keydown', onKey);
-      window.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('contextmenu', onContextMenu);
     };
   }, [undo, redo]);

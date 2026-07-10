@@ -8,7 +8,7 @@
 import { type ThreeEvent, useFrame } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import { type InstancedMesh, Matrix4 } from 'three';
-import { memberById, nodeById } from '../../design/docOps';
+import { incidentMembers, memberById, nodeById } from '../../design/docOps';
 import { type FittingEnd, type FittingType, resolveFittings } from '../../design/fittings';
 import { normalize, sub } from '../../geometry/math3';
 import type { Vec3 } from '../../schema';
@@ -18,7 +18,14 @@ import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
 import { buildFittingMesh } from './fittingMesh';
-import { cylinderMatrix, hideMatrix, sphereMatrix } from './instancing';
+import {
+  cylinderMatrix,
+  GROUP_DIM_ALPHA,
+  hideMatrix,
+  instanceAlphaPatch,
+  setInstanceAlphas,
+  sphereMatrix,
+} from './instancing';
 
 /** Above this many members, skip fitting resolution/rendering entirely. */
 const MAX_FITTING_MEMBERS = 800;
@@ -96,12 +103,27 @@ function fittingMeshOf(f: FitSpec, at: (id: string) => Vec3) {
 export function FittingLayer() {
   const design = useAppStore((s) => s.current);
   const night = useThemeStore((s) => s.night);
+  const enteredGroupId = useEditorStore((s) => s.enteredGroupId);
   const spec = useMemo(() => buildSpec(design), [design]);
   const cylRef = useRef<InstancedMesh>(null);
   const sphRef = useRef<InstancedMesh>(null);
   const conflictRef = useRef<InstancedMesh>(null);
   const mat = useRef(new Matrix4()).current;
   const lastV = useRef(-1);
+
+  // nodes whose fitting/conflict GHOSTS while a group is entered: every incident
+  // member is outside the entered group (recomputed on enter/exit only)
+  const dimNodes = useMemo(() => {
+    if (!design || !enteredGroupId) return null;
+    const g = design.groups.find((gr) => gr.id === enteredGroupId);
+    if (!g) return null;
+    const active = new Set(g.memberIds);
+    const dim = new Set<string>();
+    for (const f of spec.fits) if (f.ends.every((e) => !active.has(e.memberId))) dim.add(f.nodeId);
+    for (const nodeId of spec.conflictNodes)
+      if (incidentMembers(design, nodeId).every((m) => !active.has(m.id))) dim.add(nodeId);
+    return dim;
+  }, [design, enteredGroupId, spec]);
 
   const fill = () => {
     if (!design) return;
@@ -165,9 +187,26 @@ export function FittingLayer() {
     fill();
   });
 
+  // per-instance ghost alpha for fittings outside the entered group — set on
+  // enter/exit (and rebuild), never per frame
+  useEffect(() => {
+    const alphaFor = (nodes: string[]) => (i: number) => {
+      const id = nodes[i];
+      return dimNodes && id && dimNodes.has(id) ? GROUP_DIM_ALPHA : 1;
+    };
+    if (cylRef.current) setInstanceAlphas(cylRef.current, alphaFor(spec.cylNodes));
+    if (sphRef.current) setInstanceAlphas(sphRef.current, alphaFor(spec.sphNodes));
+    if (conflictRef.current)
+      setInstanceAlphas(conflictRef.current, alphaFor(spec.conflictNodes), {
+        keepTransparent: true, // conflict markers are transparent by design
+      });
+  }, [spec, dimNodes]);
+
   if (!design || (!spec.fits.length && !spec.conflictNodes.length)) return null;
   const pal = scenePalette(night);
-  const hoverNode = (nodeId: string | undefined) => {
+  const hoverNode = (rawId: string | undefined) => {
+    // ghosted (outside-the-entered-group) fittings are inert, like faded pipes
+    const nodeId = rawId && dimNodes?.has(rawId) ? undefined : rawId;
     const store = useEditorStore.getState();
     if (nodeId) store.setHoveredSceneItem({ kind: 'fitting', id: nodeId });
     else if (store.hoveredSceneItem?.kind === 'fitting') store.setHoveredSceneItem(null);
@@ -199,7 +238,13 @@ export function FittingLayer() {
           onPointerOut={onHoverOut}
         >
           <cylinderGeometry args={[1, 1, 1, 18]} />
-          <meshPhysicalMaterial color={pal.fitting} roughness={0.5} metalness={0} clearcoat={0.4} />
+          <meshPhysicalMaterial
+            color={pal.fitting}
+            roughness={0.5}
+            metalness={0}
+            clearcoat={0.4}
+            onBeforeCompile={instanceAlphaPatch}
+          />
         </instancedMesh>
       )}
       {spec.sphCount > 0 && (
@@ -213,7 +258,13 @@ export function FittingLayer() {
           onPointerOut={onHoverOut}
         >
           <sphereGeometry args={[1, 18, 14]} />
-          <meshPhysicalMaterial color={pal.fitting} roughness={0.5} metalness={0} clearcoat={0.4} />
+          <meshPhysicalMaterial
+            color={pal.fitting}
+            roughness={0.5}
+            metalness={0}
+            clearcoat={0.4}
+            onBeforeCompile={instanceAlphaPatch}
+          />
         </instancedMesh>
       )}
       {spec.conflictNodes.length > 0 && (
@@ -226,7 +277,12 @@ export function FittingLayer() {
           onPointerOut={onHoverOut}
         >
           <sphereGeometry args={[1, 16, 12]} />
-          <meshBasicMaterial color={pal.conflict} transparent opacity={0.55} />
+          <meshBasicMaterial
+            color={pal.conflict}
+            transparent
+            opacity={0.55}
+            onBeforeCompile={instanceAlphaPatch}
+          />
         </instancedMesh>
       )}
     </>

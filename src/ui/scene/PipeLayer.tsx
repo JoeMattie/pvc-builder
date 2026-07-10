@@ -26,7 +26,14 @@ import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
 import { dominantAxisNormal, rayToPlane } from './ground';
-import { cylinderMatrix, hideMatrix, ringMatrix } from './instancing';
+import {
+  cylinderMatrix,
+  GROUP_DIM_ALPHA,
+  hideMatrix,
+  instanceAlphaPatch,
+  ringMatrix,
+  setInstanceAlphas,
+} from './instancing';
 import { startWindowPointerDrag } from './interactions';
 import { buildPipeModel } from './pipeModel';
 import { pickSnapPoint, SNAP_PX } from './pipePick';
@@ -85,14 +92,14 @@ function InstancedPipes() {
   });
 
   // per-instance colour: white PVC (theme), a subtle per-group cast, or select-
-  // blue; faded when a different group is entered. Set on change only.
+  // blue. Outside an entered group a pipe keeps its colour but GHOSTS via a
+  // per-instance alpha (semi-transparent, not grayed). Set on change only.
   useEffect(() => {
     const mesh = meshRef.current;
     if (!mesh || !structural || !design) return;
     const selected = new Set(selectedIds);
     const base = new Color(color);
     const sel = new Color(SELECT_BLUE);
-    const faded = new Color(color).lerp(new Color(scenePalette(night).viewport), 0.82);
     // memberId → its group's colour cast (base lerped 60% toward it — strong
     // enough to tell groups apart at a glance)
     const tint = new Map<string, Color>();
@@ -104,11 +111,15 @@ function InstancedPipes() {
       const cyl = structural.cylinders[i];
       if (!cyl) continue;
       const dim = activeSet && !activeSet.has(cyl.memberId);
-      const c = dim ? faded : selected.has(cyl.memberId) ? sel : (tint.get(cyl.memberId) ?? base);
+      const c = !dim && selected.has(cyl.memberId) ? sel : (tint.get(cyl.memberId) ?? base);
       mesh.setColorAt(i, c);
     }
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  }, [structural, selectedIds, color, activeSet, night, design]);
+    setInstanceAlphas(mesh, (i) => {
+      const id = structural.cylinders[i]?.memberId;
+      return activeSet && (!id || !activeSet.has(id)) ? GROUP_DIM_ALPHA : 1;
+    });
+  }, [structural, selectedIds, color, activeSet, design]);
 
   useEffect(
     () => () => {
@@ -345,6 +356,7 @@ function InstancedPipes() {
         metalness={0}
         clearcoat={0.6}
         clearcoatRoughness={0.35}
+        onBeforeCompile={instanceAlphaPatch}
       />
     </instancedMesh>
   );
@@ -355,16 +367,49 @@ function InstancedPipes() {
 function PipeDecorations() {
   const design = useAppStore((s) => s.current);
   const night = useThemeStore((s) => s.night);
+  const enteredGroupId = useEditorStore((s) => s.enteredGroupId);
   const boreRef = useRef<InstancedMesh>(null);
   const capRef = useRef<InstancedMesh>(null);
   const mat = useRef(new Matrix4()).current;
 
-  // structural counts (recompute only on design change) fix the instance buffers
+  // structural spec (recompute only on design change) fixes the instance
+  // buffers + the instance → node/member maps used for group ghosting
   const counts = useMemo(() => {
-    if (!design) return { bores: 0, caps: 0 };
+    if (!design)
+      return { bores: 0, caps: 0, boreNodes: [] as string[], capMembers: [] as string[] };
     const at = (id: string) => nodeById(design, id)?.position;
-    return { bores: buildPipeModel(design).ends.length, caps: ghostCaps(design, at).length };
+    const ends = buildPipeModel(design).ends;
+    const caps = ghostCaps(design, at);
+    return {
+      bores: ends.length,
+      caps: caps.length,
+      boreNodes: ends.map((e) => e.nodeId),
+      capMembers: caps.map((c) => c.memberId),
+    };
   }, [design]);
+
+  // ghost the decorations of everything OUTSIDE an entered group (per-instance
+  // alpha; recomputed on enter/exit only)
+  useEffect(() => {
+    if (!design) return;
+    const g = enteredGroupId ? design.groups.find((gr) => gr.id === enteredGroupId) : undefined;
+    const active = g ? new Set(g.memberIds) : null;
+    const nodeDim = (nodeId: string | undefined): boolean =>
+      !!active && (!nodeId || incidentMembers(design, nodeId).every((m) => !active.has(m.id)));
+    if (boreRef.current)
+      setInstanceAlphas(boreRef.current, (i) =>
+        nodeDim(counts.boreNodes[i]) ? GROUP_DIM_ALPHA : 1,
+      );
+    if (capRef.current)
+      setInstanceAlphas(
+        capRef.current,
+        (i) => {
+          const id = counts.capMembers[i];
+          return active && (!id || !active.has(id)) ? GROUP_DIM_ALPHA : 1;
+        },
+        { keepTransparent: true }, // the cap ghost is transparent by design
+      );
+  }, [design, enteredGroupId, counts]);
 
   useFrame(() => {
     if (!design) return;
@@ -411,7 +456,12 @@ function PipeDecorations() {
           frustumCulled={false}
         >
           <circleGeometry args={[1, 24]} />
-          <meshStandardMaterial color={night ? '#0c0e12' : '#3a3d44'} roughness={0.9} side={2} />
+          <meshStandardMaterial
+            color={night ? '#0c0e12' : '#3a3d44'}
+            roughness={0.9}
+            side={2}
+            onBeforeCompile={instanceAlphaPatch}
+          />
         </instancedMesh>
       )}
       {counts.caps > 0 && (
@@ -422,7 +472,12 @@ function PipeDecorations() {
           frustumCulled={false}
         >
           <cylinderGeometry args={[1, 1, 1, RADIAL_SEGMENTS]} />
-          <meshBasicMaterial color="#2a78d6" transparent opacity={0.22} />
+          <meshBasicMaterial
+            color="#2a78d6"
+            transparent
+            opacity={0.22}
+            onBeforeCompile={instanceAlphaPatch}
+          />
         </instancedMesh>
       )}
     </>
@@ -435,7 +490,7 @@ function PipeDecorations() {
 function ghostCaps(
   design: NonNullable<ReturnType<typeof useAppStore.getState>['current']>,
   at: (id: string) => Vec3 | undefined,
-): Array<{ a: Vec3; b: Vec3; r: number }> {
+): Array<{ a: Vec3; b: Vec3; r: number; memberId: string }> {
   return design.joints.flatMap((j) => {
     if (j.mode !== 'wrapped') return [];
     const recv = memberById(design, j.receiver);
@@ -452,6 +507,7 @@ function ghostCaps(
         a: endPos,
         b: add(endPos, scale(dir, endCapAllowanceM(recv.size))),
         r: pipeSpec(recv.size).odM / 2,
+        memberId: recv.id,
       },
     ];
   });

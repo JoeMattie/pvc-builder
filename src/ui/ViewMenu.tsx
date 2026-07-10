@@ -45,7 +45,14 @@ const GLYPH_DOT: Record<ViewName, [number, number]> = {
 function ViewGlyph({ name }: { name: ViewName }) {
   const [cx, cy] = GLYPH_DOT[name];
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      aria-hidden="true"
+      role="presentation"
+      className="shrink-0"
+    >
       <rect
         x="3.5"
         y="3.5"

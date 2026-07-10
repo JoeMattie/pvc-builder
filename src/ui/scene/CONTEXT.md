@@ -14,9 +14,9 @@ glide on snaps — never raw doc positions.
 | `wrapMesh.ts` | Mirror seam for heat-wrapped slip-saddle tees (collar+boss+blend+screws) | `buildWrapMesh(inp): WrapMesh \| null`, `WrapMesh`/`WrapInput` |
 | `ground.ts` | Raycasting helpers | `rayToGround`, `rayToPlane`, `dominantAxisNormal` |
 | `pipePick.ts` | Screen-space snap: nearest node/pipe under the cursor (draw + endpoint drag, any height) | `pickSnapPoint`, `SNAP_PX`, `snapDebug` |
-| `rightClickGesture.ts` | Shared right-button gesture gate + debug event ring | lets orbit win over pipe/joint menus after drag slop; `getPointerDebugEvents()` |
+| `rightClickGesture.ts` | Shared right-button gesture gate + debug event ring | lets orbit win over pipe/joint menus AND the draw/formed right-click path-end (`wasRightDrag`, consumed by `ui/editor/useEditorHotkeys.ts`) after drag slop; `getPointerDebugEvents()` |
 | `axis.ts` | Place a unit-Y primitive along a segment (from riglab) | `placeAxis(a,b)`, `orientY(dir)`, `orientZ(dir)` |
-| `instancing.ts` | Compose per-instance matrices for `InstancedMesh` from UNIT base geometry (radius/height 1) | `cylinderMatrix(out,a,b,r)`, `sphereMatrix`, `ringMatrix`, `coneMatrix`, `wrapFrameMatrix` (joint-local basis), `hideMatrix` |
+| `instancing.ts` | Compose per-instance matrices for `InstancedMesh` from UNIT base geometry (radius/height 1); per-instance GHOST alpha for entered-group dimming | `cylinderMatrix(out,a,b,r)`, `sphereMatrix`, `ringMatrix`, `coneMatrix`, `wrapFrameMatrix` (joint-local basis), `hideMatrix`, `GROUP_DIM_ALPHA`, `instanceAlphaPatch`, `setInstanceAlphas` |
 
 ## Impure R3F components
 
@@ -24,7 +24,8 @@ glide on snaps — never raw doc positions.
 |---|---|---|
 | `Viewport.tsx` | The `<Canvas>` host | soft shadows, wraps `<Scene>` |
 | `Scene.tsx` (mod) | Composes everything: cameras, lights, postprocessing, layers, gizmos, headless drivers | **does NOT subscribe to the doc** — each layer subscribes itself; custom right-drag orbits around cursor-picked anchors; exports `preloadRendererEffects()` |
-| `RendererEffectsPass.tsx` | The postprocessing chain (N8AO + SSAO cavity + SMAA) as a **lazy chunk** | loaded on demand by `Scene.RendererEffects`; warmed from `ProjectList` on idle via `preloadRendererEffects()` |
+| `RendererEffectsPass.tsx` | The postprocessing chain (N8AO + Blender-style cavity + SMAA) as a **lazy chunk** | loaded on demand by `Scene.RendererEffects`; warmed from `ProjectList` on idle via `preloadRendererEffects()`; patches the composer's NormalPass to render OPAQUE meshes only |
+| `cavityEffect.ts` | Blender Workbench screen-space cavity (`CavityEffect extends postprocessing.Effect`): view-space normal-buffer curvature, ridges brighten / valleys darken | no React; Blender-scale `ridge`/`valley` (0..2) + `offset` (texels) setters; consumed by `RendererEffectsPass` |
 | `PipeLayer.tsx` (mod) | Straight pipe bodies as ONE `InstancedMesh` + INSTANCED bores + end-cap ghosts (`PipeDecorations`) | `InstancedPipes` routes select/menu/bend/double-click via ray `instanceId`; right-button menus use pointer-up after the shared orbit gate; selection is a per-instance colour |
 | `InstancedFreeHubs.tsx` | End-to-end FREE (ball) hubs as 3 `InstancedMesh` (balls + eye bolts + cords), imperative useFrame transforms | ball click selects the joint; right-button-up after the shared orbit gate opens its menu; replaces JointLayer's old `FreeHub` |
 | `InstancedWrapJoints.tsx` (**NEW**) | WRAPPED (swivel) pivots as 2 `InstancedMesh` (loop + arrowhead) | ONE canonical arrow baked in the joint local frame; each instance re-orients/scales it via `wrapFrameMatrix` (loop doesn't deform as the branch swivels). Rigid/anchor wraps stay declarative |
@@ -71,9 +72,13 @@ tubes (`FormedLayer`, unique curves), rigid-pin wraps + on-body free + anchor te
   for pipes/joints/hubs. `window.__pvc.getPointerDebug()` exposes recent orbit/menu/hover decisions.
 - **Renderer effects are transient workspace state** (`editorStore.rendererEffects`, default off):
   when enabled, `Scene.RendererEffects` suspends in the lazy `RendererEffectsPass.tsx` chunk
-  (full-resolution N8AO + SSAO cavity pass + SMAA). `preloadRendererEffects()` (exported from
-  `Scene.tsx`) warms the chunk — `ProjectList` calls it on idle; `EditorShell` shows a brief blur
-  overlay while the toggle (re)builds the chain.
+  (full-resolution N8AO + Blender-style cavity (`cavityEffect.ts`) + SMAA). `preloadRendererEffects()`
+  (exported from `Scene.tsx`) warms the chunk — `ProjectList` calls it on idle; `EditorShell` shows a
+  brief blur overlay while the toggle (re)builds the chain. ⚠ The cavity reads the composer's
+  NormalPass, whose override material ignores transparency — `RendererEffectsPass` hides
+  transparent-material meshes during that pass (else the invisible 200 m pointer/shadow plane, grid,
+  and drag ghosts render as phantom planes outlined by the cavity). Keep helper/overlay meshes
+  `transparent: true` so they stay excluded.
 - **Three CAD-swap seams**: `fittingMesh.ts`, `wrapMesh.ts`, `pipeModel.ts` — swap real CAD here
   without touching R3F code.
 - **Instanced layers (`PipeLayer`/`InstancedFreeHubs`) do NOT subscribe to `useAnim`.** They build
@@ -84,6 +89,18 @@ tubes (`FormedLayer`, unique curves), rigid-pin wraps + on-body free + anchor te
   = per-instance colour (material `color` is white; `instanceColor` carries theme/select). Pointer
   events resolve the member/joint from `ev.instanceId`; set `frustumCulled={false}` (dynamic
   matrices). Verify draw-call collapse with `window.__pvc.sceneStats()` → `{meshes, instanced, instances}`.
+- **Entered-group ghosting is SEMI-TRANSPARENCY, not gray-lerp** (`GROUP_DIM_ALPHA` = 0.18,
+  colour/tint kept). Instanced layers dim per instance via `instancing.ts`: a 1-float
+  `aInstanceAlpha` `InstancedBufferAttribute` + `instanceAlphaPatch` as the material's
+  `onBeforeCompile` (injects `diffuseColor.a *= vInstanceAlpha` after `color_fragment`), with
+  `setInstanceAlphas(mesh, alphaOf)` rewriting the attribute in a `useEffect` on enter/exit —
+  NEVER per frame. Declarative meshes (JointLayer hardware, FormedTube) flip
+  `transparent`/`opacity` props instead. ⚠ three bakes an `OPAQUE` define into programs compiled
+  while `transparent === false` that FORCES fragment alpha to 1 — any `transparent` flip must
+  recompile: `setInstanceAlphas` bumps `material.needsUpdate` on the flip; declarative materials
+  carry `key={dimmed ? 'dim' : 'solid'}` to remount. A dimmed pipe/joint/fitting is also INERT
+  (no select/hover/menu). Dim membership: a member is dimmed when outside the entered group's
+  `memberIds`; a joint/fitting/hub when ALL its incident members are outside.
 - **Window-listener drags share `interactions.ts`** for the same r3f reason (mesh drops pointerup
   when the ray leaves the mesh). `useGroundDrag` passes a live **`DragMods`** (toggleable Shift/Ctrl
   — seeded at pointer-down, flipped by each mid-drag key press) to its `onMove`, not the raw event;

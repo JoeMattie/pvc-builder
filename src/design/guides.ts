@@ -108,6 +108,38 @@ export function perpUnit(refOrigin: Vec3, dir: Vec3, point: Vec3): Vec3 | null {
   return length(perp) < 1e-9 ? null : normalize(perp);
 }
 
+/** Constrain guide placement to a PURE-AXIS perpendicular offset from the
+ * reference point: of the world axes perpendicular to the guide direction, pick
+ * the one the cursor is most displaced along, grid-snap that offset, and return
+ * the guide origin (`refOrigin + axis·offset`). Placement therefore never
+ * tracks the free ground cursor — a guide always sits at an X/Y/Z offset from
+ * the picked pipe, so its pipe intersections stay exact. */
+export function axisOffsetGuideOrigin(
+  refOrigin: Vec3,
+  dir: Vec3,
+  cursor: Vec3,
+  gridStepM = 0,
+): { origin: Vec3; axis: Vec3; offsetM: number } {
+  const u = snapDirToAxis(normalize(dir));
+  const rel = sub(cursor, refOrigin);
+  const axes: Vec3[] = [
+    { x: 1, y: 0, z: 0 },
+    { x: 0, y: 1, z: 0 },
+    { x: 0, y: 0, z: 1 },
+  ].filter((a) => Math.abs(dot(a, u)) < 0.5);
+  let best = axes[0] ?? { x: 0, y: 1, z: 0 };
+  let bestOff = dot(rel, best);
+  for (const a of axes) {
+    const off = dot(rel, a);
+    if (Math.abs(off) > Math.abs(bestOff)) {
+      best = a;
+      bestOff = off;
+    }
+  }
+  const snapped = gridStepM > 0 ? Math.round(bestOff / gridStepM) * gridStepM : bestOff;
+  return { origin: add(refOrigin, scale(best, snapped)), axis: best, offsetM: snapped };
+}
+
 /** A far-reaching pair of endpoints for rendering a guide as a long segment
  * (guides are conceptually infinite). */
 export function guideDrawSpan(g: Guide, halfLenM = 100): [Vec3, Vec3] {

@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react';
 import { CatmullRomCurve3, type Ray, Raycaster, Vector2, Vector3 } from 'three';
 import { attachmentPos, incidentMembers, memberById, nodeById } from '../../design/docOps';
 import { closestAxisPointToRay } from '../../design/dragMath';
-import { guideDrawSpan, perpOffsetM } from '../../design/guides';
+import { axisOffsetGuideOrigin, guideDrawSpan } from '../../design/guides';
 import { marqueeFromDrag, memberSelectedBy, type Pt } from '../../design/marquee';
 import type { SnapResult } from '../../design/snapping';
 import { add, dot, length, scale, sub } from '../../geometry/math3';
@@ -530,17 +530,24 @@ export function DrawController() {
           );
         })()}
 
-      {/* guide-line placement preview: a parallel axis-snapped line through the
-          cursor + the perpendicular-offset distance (live-typable) */}
+      {/* guide-line placement preview: the guide is CONSTRAINED to a pure-axis
+          offset from the reference point (never the raw ground cursor), so the
+          preview shows exactly where placeGuide will put it */}
       {tool === 'guide' &&
         guideDraft &&
         guideCursor &&
         (() => {
-          const g = { id: '', origin: guideCursor, dir: guideDraft.dir };
+          const { origin, offsetM } = axisOffsetGuideOrigin(
+            guideDraft.refOrigin,
+            guideDraft.dir,
+            guideCursor,
+            useEditorStore.getState().snap.gridStepM,
+          );
+          const g = { id: '', origin, dir: guideDraft.dir };
           const [s0, s1] = guideDrawSpan(g);
           const axis: 'x' | 'y' | 'z' =
             guideDraft.dir.x === 1 ? 'x' : guideDraft.dir.y === 1 ? 'y' : 'z';
-          const off = perpOffsetM(guideDraft.refOrigin, guideDraft.dir, guideCursor);
+          const off = Math.abs(offsetM);
           return (
             <>
               <Line
@@ -554,7 +561,7 @@ export function DrawController() {
                 dashSize={0.04}
                 gapSize={0.03}
               />
-              <Html position={[guideCursor.x, guideCursor.y, guideCursor.z]} center>
+              <Html position={[origin.x, origin.y, origin.z]} center>
                 <div
                   style={{
                     padding: '2px 6px',

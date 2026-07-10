@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { Vec3 } from '../schema';
-import { type Guide, guideIntersections, perpOffsetM, perpUnit, snapDirToAxis } from './guides';
+import {
+  axisOffsetGuideOrigin,
+  type Guide,
+  guideIntersections,
+  perpOffsetM,
+  perpUnit,
+  snapDirToAxis,
+} from './guides';
 
 const V = (x: number, y: number, z: number): Vec3 => ({ x, y, z });
 
@@ -35,6 +42,39 @@ describe('guideIntersections', () => {
     const guide: Guide = { id: 'g', origin: V(5, 0, 0), dir: V(0, 0, 1) };
     const hits = guideIntersections([guide], [{ a: V(-1, 0, 0), b: V(1, 0, 0) }]);
     expect(hits).toHaveLength(0);
+  });
+});
+
+describe('axisOffsetGuideOrigin (pure-axis placement)', () => {
+  it('constrains a diagonal ground cursor to the dominant perpendicular axis', () => {
+    // guide along X picked at (0, 0.5, 0); cursor drifted to the ground plane
+    // (y=0) mostly along +Z → the guide must offset in pure Z at the pipe's y
+    const { origin, axis } = axisOffsetGuideOrigin(V(0, 0.5, 0), V(1, 0, 0), V(0.7, 0, 0.6));
+    expect(axis).toEqual(V(0, 0, 1));
+    expect(origin).toEqual(V(0, 0.5, 0.6));
+  });
+
+  it('offsets vertically when the cursor moves most in Y', () => {
+    const { origin, axis } = axisOffsetGuideOrigin(V(0, 0.5, 0), V(1, 0, 0), V(0.2, 1.4, 0.1));
+    expect(axis).toEqual(V(0, 1, 0));
+    expect(origin).toEqual(V(0, 1.4, 0));
+  });
+
+  it('grid-snaps the offset and keeps its sign', () => {
+    const g = axisOffsetGuideOrigin(V(0, 0, 0), V(1, 0, 0), V(0, 0, -0.26), 0.25);
+    expect(g.offsetM).toBeCloseTo(-0.25, 9);
+    expect(g.origin.z).toBeCloseTo(-0.25, 9);
+  });
+
+  it('a constrained guide still intersects the picked pipe exactly', () => {
+    // pipe along X at y=0.5; guide placed off a ground-tracking cursor
+    const { origin } = axisOffsetGuideOrigin(V(0.3, 0.5, 0), V(0, 0, 1), V(0.9, 0, 0.2));
+    const hits = guideIntersections(
+      [{ id: 'g', origin, dir: V(0, 0, 1) }],
+      [{ a: V(-1, 0.5, 0), b: V(1, 0.5, 0) }],
+    );
+    expect(hits).toHaveLength(1);
+    expect(hits[0]!.y).toBeCloseTo(0.5, 6);
   });
 });
 

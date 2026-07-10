@@ -11,7 +11,7 @@ import stores/actions, but must not introduce new document write paths.
 | `SimulationPanel.tsx` | Simulate tab body (bare — no card chrome; renders inside the workflow panel) | damping, mannequin, debug, reset + state chips; NO Play button (the tab strip owns Play/Stop) and NO lengths lock — that moved to the toolbar as "Drag lock" (`../Pillbox.tsx`, toggles `design.lengthsLocked`) |
 | `PvcAutomationBridge.tsx` | Registers and merges `window.__pvc` methods | Preserve method names/signatures; this is the scripted automation contract |
 | `editorStatus.ts` | Derives editor warning totals from fittings, intersections, and formed-pipe bend checks | Summary only; detailed diagnostics stay in their existing panels |
-| `useEditorHotkeys.ts` | Global keyboard, right-click, and context-menu behavior | Keep in sync with `../HelpPanel.tsx` and `../Pillbox.tsx` |
+| `useEditorHotkeys.ts` | Global keyboard, right-click, and context-menu behavior | Keep in sync with `../HelpPanel.tsx` and `../Pillbox.tsx`. Right button ends an in-progress draw/formed path on RELEASE, gated by `../scene/rightClickGesture.ts` (`wasRightDrag`) — an orbit right-drag must never abort the path |
 
 ## Depends on
 

@@ -103,6 +103,39 @@ describe('draw tool integration (snapping → docOps → store)', () => {
     expect(extended.position.z).toBeCloseTo(0, 9);
     expect(extended.position.x).toBeGreaterThan(0.3048);
   });
+
+  it('a push is ONE segment: placing it ends the path (next push needs a stub)', () => {
+    placeDrawPoint(V(0, 0, 0));
+    placeDrawPoint(V(0.3048, 0, 0));
+    finishPath();
+    const anchor = design().members[0]!.nodeB;
+
+    useEditorStore.getState().setTool('extend');
+    startExtend(anchor, V(1, 0, 0));
+    placeDrawPoint(V(0.6096, 0, 0));
+    // the path ended — a second click must NOT extend as a free draw segment
+    expect(useEditorStore.getState().drawingFromNodeId).toBeNull();
+    const before = design().members.length;
+    placeDrawPoint(V(0.9, 0, 0.3));
+    expect(design().members).toHaveLength(before);
+  });
+
+  it('extend never starts a path from a ground click (aborted push stays aborted)', () => {
+    placeDrawPoint(V(0, 0, 0));
+    placeDrawPoint(V(0.3048, 0, 0));
+    finishPath();
+    const anchor = design().members[0]!.nodeB;
+
+    useEditorStore.getState().setTool('extend');
+    startExtend(anchor, V(1, 0, 0));
+    finishPath(); // right-click abort
+    expect(useEditorStore.getState().drawingFromNodeId).toBeNull();
+
+    const nodesBefore = design().nodes.length;
+    placeDrawPoint(V(0.2, 0, 0.4)); // stray ground click
+    expect(useEditorStore.getState().drawingFromNodeId).toBeNull();
+    expect(design().nodes).toHaveLength(nodesBefore);
+  });
 });
 
 describe('select + edit integration', () => {

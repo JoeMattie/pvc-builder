@@ -132,6 +132,19 @@ export function canOpenRightClickMenu(
   return allowed;
 }
 
+/** True when this pointer's right-button gesture crossed the drag slop (i.e.
+ * the press became an orbit). Checked on RELEASE by consumers that must not
+ * fire after a drag — e.g. the draw-path right-click abort in
+ * `ui/editor/useEditorHotkeys.ts`. Reads the active gesture, falling back to
+ * the just-finished one (Scene's capture-phase pointerup calls
+ * `finishRightClickGesture` before bubble listeners see the same event). */
+export function wasRightDrag(pointerId: number): boolean {
+  if (gesture?.pointerId === pointerId) return gesture.moved;
+  if (lastUp?.pointerId === pointerId && now() - lastUp.endedAt <= LAST_UP_GRACE_MS)
+    return lastUp.moved;
+  return false;
+}
+
 export function shouldSuppressNativeContextMenu(): boolean {
   const t = now();
   const recentMoved = !!lastUp?.moved && t - lastUp.endedAt <= CONTEXT_SUPPRESS_MS;

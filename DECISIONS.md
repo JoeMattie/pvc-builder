@@ -4,6 +4,43 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Interaction semantics: extend, guides, orbit-safe right-click (2026-07-09)
+
+- **A push (Extend) is ONE segment and strictly stub-initiated.** Placing the point (click-drag,
+  two-click, or typed length) ends the path; a ground click can never start a path in extend mode.
+  This kills two bugs: subsequent pushes silently degrading into free draw segments, and an aborted
+  push arming the cursor point as the next path's start.
+- **Guides offset along pure world axes only.** `axisOffsetGuideOrigin` (pure, tested) picks the
+  perpendicular axis the cursor runs most along, grid-snaps the offset, and anchors the guide at
+  `refOrigin + axis·offset` — never the raw ground-raycast cursor. This keeps the guide in the picked
+  pipe's plane, so guide∩pipe snap intersections are exact (a ground-height guide never truly crossed
+  an elevated pipe in 3D — the old "doesn't snap to pipes" bug).
+- **Right-button aborts fire on RELEASE, gated by the shared orbit-drag threshold**
+  (`rightClickGesture.wasRightDrag`) — an orbit right-drag never ends an in-progress draw/formed
+  path; a plain right-click still does. Same gate the scene context menus already used.
+- **`wrapFrameMatrix` must be right-handed.** The instanced wrap-arrow frame used `cross(u, er)`
+  (a mirror): every instanced wrapped pivot rendered as its mirror image — the "wrong angle" wraps.
+  The canonical arrow is baked at er=+X/u=+Y, so that pose must map through the identity;
+  `cross(er, u)` restores it.
+- **Entered-group ghosting is per-instance alpha, not gray-lerp** (see scene CONTEXT card for the
+  `aInstanceAlpha` pattern and the three.js `OPAQUE`-define recompile gotcha). Applies to pipes,
+  fittings, joints, hubs, wraps, formed tubes, and overlap shells; ghosted items are inert.
+
+## Screen-space cavity replaces SSAO in the renderer-effects chain (2026-07-09)
+
+- **Blender Workbench's cavity (curvature ridge/valley) is ported** as `CavityEffect`
+  (`src/ui/scene/cavityEffect.ts`): 4-tap view-space normal-buffer differencing + the D3617
+  soft-clamp, multiplying color by `1 + curvature` so ridges brighten and valleys darken. Params use
+  Blender's UI scale (0..2; converted `0.5/f²` ridge, `0.7/f²` valley); defaults ridge 1.0 /
+  valley 1.0 at a 1-texel offset (1.75/1.25 was tried and judged too strong).
+- **The SSAO effect is dropped** from the chain (now N8AO + cavity + SMAA) — N8AO already supplies
+  AO, and the cavity provides the crevice/edge definition SSAO was approximating.
+- **The composer's NormalPass renders opaque meshes only** (patched in `RendererEffectsPass.tsx`):
+  the override `MeshNormalMaterial` ignores transparency, so the invisible 200 m
+  pointer-target/shadow plane, the grid, and drag ghosts otherwise appear in the normal buffer and
+  the cavity outlines them as phantom planes. Mirrors Blender, whose cavity samples only opaque
+  geometry. Helper/overlay meshes must keep `transparent: true` to stay excluded.
+
 ## The workflow panel is the single mode container (2026-07-09)
 
 - **Design/Fabricate/Simulate content lives in ONE tabbed panel** on the right stack under View

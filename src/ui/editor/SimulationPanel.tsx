@@ -72,7 +72,10 @@ export function SimulationPanel() {
         </button>
       </div>
 
-      <label className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+      <label
+        className="mb-2 flex items-center gap-2 text-xs text-muted-foreground"
+        title="Global friction for Play: how quickly joints and elastic bands settle. Raise it if the build swings or oscillates; lower it for looser motion."
+      >
         <Gauge size={13} />
         Damping
         <input

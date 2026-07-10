@@ -19,7 +19,14 @@ import { useAppStore } from '../../state/appStore';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
-import { cylinderMatrix, ringMatrix, sphereMatrix } from './instancing';
+import {
+  cylinderMatrix,
+  GROUP_DIM_ALPHA,
+  instanceAlphaPatch,
+  ringMatrix,
+  setInstanceAlphas,
+  sphereMatrix,
+} from './instancing';
 import { FREE_JOINT_GAP_M } from './pipeModel';
 import { canOpenRightClickMenu, recordPointerDebug } from './rightClickGesture';
 
@@ -41,6 +48,9 @@ interface Hub {
   eyeR: number;
   cordR: number;
   ends: HubEnd[];
+  /** the incident member ids — a hub GHOSTS while a group is entered iff none
+   * of them belong to that group */
+  memberIds: string[];
 }
 interface HubSpec {
   hubs: Hub[];
@@ -75,6 +85,7 @@ function buildHubSpec(design: ReturnType<typeof useAppStore.getState>['current']
       eyeR: odMax * 0.42,
       cordR: odMax * 0.09,
       ends,
+      memberIds: incident.map((m) => m.id),
     });
   }
   return { hubs, endCount: hubs.reduce((s, h) => s + h.ends.length, 0) };
@@ -84,9 +95,18 @@ export function InstancedFreeHubs() {
   const design = useAppStore((s) => s.current);
   const tool = useEditorStore((s) => s.tool);
   const selectedJointId = useEditorStore((s) => s.selectedJointId);
+  const enteredGroupId = useEditorStore((s) => s.enteredGroupId);
   const night = useThemeStore((s) => s.night);
 
   const spec = useMemo(() => buildHubSpec(design), [design]);
+  // hub index → GHOSTED (every incident member outside the entered group)
+  const dimHub = useMemo(() => {
+    if (!design || !enteredGroupId) return null;
+    const g = design.groups.find((gr) => gr.id === enteredGroupId);
+    if (!g) return null;
+    const active = new Set(g.memberIds);
+    return spec.hubs.map((h) => h.memberIds.every((id) => !active.has(id)));
+  }, [design, enteredGroupId, spec]);
   const ballRef = useRef<InstancedMesh>(null);
   const eyeRef = useRef<InstancedMesh>(null);
   const cordRef = useRef<InstancedMesh>(null);
@@ -140,11 +160,24 @@ export function InstancedFreeHubs() {
     if (ball.instanceColor) ball.instanceColor.needsUpdate = true;
   }, [spec, selectedJointId, selectable, accent]);
 
+  // ghost alpha (outside an entered group) — on enter/exit only, not per frame.
+  // Eye/cord instances run hub-by-hub in `ends` order, matching the useFrame fill.
+  useEffect(() => {
+    const hubAlpha = (h: number) => (dimHub?.[h] ? GROUP_DIM_ALPHA : 1);
+    if (ballRef.current) setInstanceAlphas(ballRef.current, hubAlpha);
+    const endHub: number[] = [];
+    for (let h = 0; h < spec.hubs.length; h++)
+      for (let k = 0; k < (spec.hubs[h]?.ends.length ?? 0); k++) endHub.push(h);
+    const endAlpha = (i: number) => hubAlpha(endHub[i] ?? -1);
+    if (eyeRef.current) setInstanceAlphas(eyeRef.current, endAlpha);
+    if (cordRef.current) setInstanceAlphas(cordRef.current, endAlpha);
+  }, [spec, dimHub]);
+
   if (!spec.hubs.length) return null;
 
   const onBallClick = selectable
     ? (ev: ThreeEvent<MouseEvent>) => {
-        if (ev.instanceId == null) return;
+        if (ev.instanceId == null || dimHub?.[ev.instanceId]) return; // ghosted hubs are inert
         ev.stopPropagation();
         const jointId = spec.hubs[ev.instanceId]?.jointId;
         if (jointId) useEditorStore.getState().selectJoint(jointId);
@@ -153,7 +186,7 @@ export function InstancedFreeHubs() {
   const onBallMenuPointerUp = editing
     ? (ev: ThreeEvent<PointerEvent>) => {
         if (ev.nativeEvent.button !== 2) return;
-        if (ev.instanceId == null) return;
+        if (ev.instanceId == null || dimHub?.[ev.instanceId]) return;
         ev.stopPropagation();
         const hub = spec.hubs[ev.instanceId];
         if (!hub) return;
@@ -173,7 +206,7 @@ export function InstancedFreeHubs() {
     : undefined;
   const onBallHover = editing
     ? (ev: ThreeEvent<PointerEvent>) => {
-        if (ev.instanceId == null) return;
+        if (ev.instanceId == null || dimHub?.[ev.instanceId]) return;
         const jointId = spec.hubs[ev.instanceId]?.jointId;
         if (jointId) {
           ev.stopPropagation();
@@ -203,7 +236,12 @@ export function InstancedFreeHubs() {
         onPointerOut={onBallHoverOut}
       >
         <sphereGeometry args={[1, 20, 16]} />
-        <meshPhysicalMaterial roughness={0.3} metalness={0.1} clearcoat={0.6} />
+        <meshPhysicalMaterial
+          roughness={0.3}
+          metalness={0.1}
+          clearcoat={0.6}
+          onBeforeCompile={instanceAlphaPatch}
+        />
       </instancedMesh>
       {/* one draw call: every eye bolt */}
       {spec.endCount > 0 && (
@@ -213,7 +251,12 @@ export function InstancedFreeHubs() {
           frustumCulled={false}
         >
           <torusGeometry args={[1, 0.28, 12, 20]} />
-          <meshStandardMaterial color={EYE_COLOR} roughness={0.35} metalness={0.85} />
+          <meshStandardMaterial
+            color={EYE_COLOR}
+            roughness={0.35}
+            metalness={0.85}
+            onBeforeCompile={instanceAlphaPatch}
+          />
         </instancedMesh>
       )}
       {/* one draw call: every knotted cord */}
@@ -224,7 +267,12 @@ export function InstancedFreeHubs() {
           frustumCulled={false}
         >
           <cylinderGeometry args={[1, 1, 1, 8]} />
-          <meshStandardMaterial color={CORD_COLOR} roughness={0.9} metalness={0} />
+          <meshStandardMaterial
+            color={CORD_COLOR}
+            roughness={0.9}
+            metalness={0}
+            onBeforeCompile={instanceAlphaPatch}
+          />
         </instancedMesh>
       )}
     </>

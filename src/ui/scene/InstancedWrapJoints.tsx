@@ -27,7 +27,12 @@ import { pipeSpec, type Vec3 } from '../../schema';
 import { easedPos } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
 import { useEditorStore } from '../../state/editorStore';
-import { wrapFrameMatrix } from './instancing';
+import {
+  GROUP_DIM_ALPHA,
+  instanceAlphaPatch,
+  setInstanceAlphas,
+  wrapFrameMatrix,
+} from './instancing';
 import { WRAP_END_GAP_M } from './pipeModel';
 import { buildWrapArrow } from './wrapArrow';
 
@@ -69,6 +74,10 @@ const CONE_LOCAL = new Matrix4().compose(
 interface Wrap {
   jointId: string;
   nodeId: string;
+  /** receiver + mover member ids — the wrap GHOSTS while a group is entered
+   * iff neither belongs to that group */
+  receiverId: string;
+  moverId: string;
   recvA: string;
   recvB: string;
   moverFar: string;
@@ -97,6 +106,8 @@ function buildWrapSpec(design: ReturnType<typeof useAppStore.getState>['current'
     wraps.push({
       jointId: j.id,
       nodeId: j.nodeId,
+      receiverId: recv.id,
+      moverId: mover.id,
       recvA: recv.nodeA,
       recvB: recv.nodeB,
       moverFar,
@@ -124,10 +135,19 @@ export function InstancedWrapJoints() {
   const design = useAppStore((s) => s.current);
   const tool = useEditorStore((s) => s.tool);
   const selectedJointId = useEditorStore((s) => s.selectedJointId);
+  const enteredGroupId = useEditorStore((s) => s.enteredGroupId);
   const editing = tool === 'select' || tool === 'move' || tool === 'rotate';
   const selectable = tool === 'select';
 
   const spec = useMemo(() => buildWrapSpec(design), [design]);
+  // wrap index → GHOSTED (both its members outside the entered group)
+  const dimWrap = useMemo(() => {
+    if (!design || !enteredGroupId) return null;
+    const g = design.groups.find((gr) => gr.id === enteredGroupId);
+    if (!g) return null;
+    const active = new Set(g.memberIds);
+    return spec.map((w) => !active.has(w.receiverId) && !active.has(w.moverId));
+  }, [design, enteredGroupId, spec]);
   const loopRef = useRef<InstancedMesh>(null);
   const coneRef = useRef<InstancedMesh>(null);
   const mat = useRef(new Matrix4()).current;
@@ -171,11 +191,19 @@ export function InstancedWrapJoints() {
     if (cone.instanceColor) cone.instanceColor.needsUpdate = true;
   }, [spec, selectedJointId, selectable]);
 
+  // ghost alpha (outside an entered group) — on enter/exit only, not per frame
+  // biome-ignore lint/correctness/useExhaustiveDependencies: spec is a dep so a rebuilt instance buffer always gets the attribute
+  useEffect(() => {
+    const alphaOf = (i: number) => (dimWrap?.[i] ? GROUP_DIM_ALPHA : 1);
+    if (loopRef.current) setInstanceAlphas(loopRef.current, alphaOf);
+    if (coneRef.current) setInstanceAlphas(coneRef.current, alphaOf);
+  }, [spec, dimWrap]);
+
   if (!spec.length) return null;
 
   const onSelect = selectable
     ? (ev: ThreeEvent<MouseEvent>) => {
-        if (ev.instanceId == null) return;
+        if (ev.instanceId == null || dimWrap?.[ev.instanceId]) return; // ghosted wraps are inert
         ev.stopPropagation();
         const id = spec[ev.instanceId]?.jointId;
         if (id) useEditorStore.getState().selectJoint(id);
@@ -183,7 +211,7 @@ export function InstancedWrapJoints() {
     : undefined;
   const onHover = editing
     ? (ev: ThreeEvent<PointerEvent>) => {
-        if (ev.instanceId == null) return;
+        if (ev.instanceId == null || dimWrap?.[ev.instanceId]) return;
         const id = spec[ev.instanceId]?.jointId;
         if (id) {
           ev.stopPropagation();
@@ -210,7 +238,11 @@ export function InstancedWrapJoints() {
         onPointerMove={onHover}
         onPointerOut={onHoverOut}
       >
-        <meshStandardMaterial roughness={0.5} metalness={0.15} />
+        <meshStandardMaterial
+          roughness={0.5}
+          metalness={0.15}
+          onBeforeCompile={instanceAlphaPatch}
+        />
       </instancedMesh>
       <instancedMesh
         ref={coneRef}
@@ -219,7 +251,11 @@ export function InstancedWrapJoints() {
         onPointerMove={onHover}
         onPointerOut={onHoverOut}
       >
-        <meshStandardMaterial roughness={0.5} metalness={0.1} />
+        <meshStandardMaterial
+          roughness={0.5}
+          metalness={0.1}
+          onBeforeCompile={instanceAlphaPatch}
+        />
       </instancedMesh>
     </>
   );

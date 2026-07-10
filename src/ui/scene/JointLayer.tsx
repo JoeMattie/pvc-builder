@@ -24,6 +24,7 @@ import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
 import { orientY, orientZ, placeAxis } from './axis';
 import { buildFittingMesh, type FittingCyl } from './fittingMesh';
+import { GROUP_DIM_ALPHA } from './instancing';
 import { anchorRendersAsTee } from './jointStyle';
 import { FREE_JOINT_GAP_M, WRAP_END_GAP_M } from './pipeModel';
 import { canOpenRightClickMenu, recordPointerDebug } from './rightClickGesture';
@@ -45,6 +46,7 @@ function AnchorTee({
   joint,
   selectable,
   selected,
+  dimmed,
   fitting,
   onMenuPointerUp,
   onHover,
@@ -53,6 +55,7 @@ function AnchorTee({
   joint: Joint;
   selectable: boolean;
   selected: boolean;
+  dimmed: boolean;
   fitting: string;
   onMenuPointerUp?: (e: ThreeEvent<PointerEvent>) => void;
   onHover?: (e: ThreeEvent<PointerEvent>) => void;
@@ -82,21 +85,22 @@ function AnchorTee({
     ],
   });
 
-  const color = selected ? SELECT_BLUE : fitting;
-  const onSelect = selectable
-    ? (e: ThreeEvent<MouseEvent>) => {
-        e.stopPropagation();
-        useEditorStore.getState().selectJoint(joint.id);
-      }
-    : undefined;
+  const color = selected && !dimmed ? SELECT_BLUE : fitting;
+  const onSelect =
+    selectable && !dimmed
+      ? (e: ThreeEvent<MouseEvent>) => {
+          e.stopPropagation();
+          useEditorStore.getState().selectJoint(joint.id);
+        }
+      : undefined;
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: r3f group is a scene node
     <group
       onClick={onSelect}
-      onPointerUp={onMenuPointerUp}
-      onPointerMove={onHover}
-      onPointerOut={onHoverOut}
+      onPointerUp={dimmed ? undefined : onMenuPointerUp}
+      onPointerMove={dimmed ? undefined : onHover}
+      onPointerOut={dimmed ? undefined : onHoverOut}
     >
       {mesh.prims.map((p, i) =>
         p.kind === 'cylinder' ? (
@@ -105,6 +109,7 @@ function AnchorTee({
             key={i}
             c={p}
             color={color}
+            dimmed={dimmed}
           />
         ) : (
           <mesh
@@ -114,7 +119,17 @@ function AnchorTee({
             castShadow
           >
             <sphereGeometry args={[p.radiusM, 18, 14]} />
-            <meshPhysicalMaterial color={color} roughness={0.5} metalness={0} clearcoat={0.4} />
+            <meshPhysicalMaterial
+              // key: three bakes an OPAQUE define into non-transparent programs
+              // (forces alpha 1) — remount the material when the flag flips
+              key={dimmed ? 'dim' : 'solid'}
+              color={color}
+              roughness={0.5}
+              metalness={0}
+              clearcoat={0.4}
+              transparent={dimmed}
+              opacity={dimmed ? GROUP_DIM_ALPHA : 1}
+            />
           </mesh>
         ),
       )}
@@ -122,13 +137,21 @@ function AnchorTee({
   );
 }
 
-function TeeCyl({ c, color }: { c: FittingCyl; color: string }) {
+function TeeCyl({ c, color, dimmed }: { c: FittingCyl; color: string; dimmed: boolean }) {
   const placed = placeAxis(c.a, c.b);
   if (!placed) return null;
   return (
     <mesh position={placed.mid} quaternion={placed.quat} castShadow>
       <cylinderGeometry args={[c.radiusM, c.radiusM, placed.len, 18]} />
-      <meshPhysicalMaterial color={color} roughness={0.5} metalness={0} clearcoat={0.4} />
+      <meshPhysicalMaterial
+        key={dimmed ? 'dim' : 'solid'} // remount on flip: OPAQUE define, see AnchorTee
+        color={color}
+        roughness={0.5}
+        metalness={0}
+        clearcoat={0.4}
+        transparent={dimmed}
+        opacity={dimmed ? GROUP_DIM_ALPHA : 1}
+      />
     </mesh>
   );
 }
@@ -138,6 +161,7 @@ function WrapJoint({
   joint,
   selectable,
   selected,
+  dimmed,
   onMenuPointerUp,
   onHover,
   onHoverOut,
@@ -145,6 +169,7 @@ function WrapJoint({
   joint: Joint;
   selectable: boolean;
   selected: boolean;
+  dimmed: boolean;
   onMenuPointerUp?: (e: ThreeEvent<PointerEvent>) => void;
   onHover?: (e: ThreeEvent<PointerEvent>) => void;
   onHoverOut?: () => void;
@@ -176,13 +201,18 @@ function WrapJoint({
   if (!arrow) return null;
   const curve = new CatmullRomCurve3(arrow.path.map((p) => new Vector3(p.x, p.y, p.z)));
 
-  const bodyColor = selected ? SELECT_BLUE : rigid ? RIGID_STEEL : WRAP_GREEN;
-  const onSelect = selectable
-    ? (e: ThreeEvent<MouseEvent>) => {
-        e.stopPropagation();
-        useEditorStore.getState().selectJoint(joint.id);
-      }
-    : undefined;
+  const bodyColor = selected && !dimmed ? SELECT_BLUE : rigid ? RIGID_STEEL : WRAP_GREEN;
+  const onSelect =
+    selectable && !dimmed
+      ? (e: ThreeEvent<MouseEvent>) => {
+          e.stopPropagation();
+          useEditorStore.getState().selectJoint(joint.id);
+        }
+      : undefined;
+  // spread WITH key={dimmed ? 'dim' : 'solid'}: the key remounts the material on
+  // the flip — three bakes an OPAQUE define (alpha forced to 1) into programs
+  // compiled while transparent=false, so the flag can't just be toggled
+  const dimProps = { transparent: dimmed, opacity: dimmed ? GROUP_DIM_ALPHA : 1 };
 
   const headH = Math.max(arrow.tubeR * 4.5, 0.014);
   const headR = arrow.tubeR * 2.6;
@@ -195,32 +225,55 @@ function WrapJoint({
     // biome-ignore lint/a11y/noStaticElementInteractions: r3f group is a scene node
     <group
       onClick={onSelect}
-      onPointerUp={onMenuPointerUp}
-      onPointerMove={onHover}
-      onPointerOut={onHoverOut}
+      onPointerUp={dimmed ? undefined : onMenuPointerUp}
+      onPointerMove={dimmed ? undefined : onHover}
+      onPointerOut={dimmed ? undefined : onHoverOut}
     >
       {/* the loop body swept once around the run */}
       <mesh castShadow>
         <tubeGeometry args={[curve, 72, arrow.tubeR, 8, false]} />
-        <meshStandardMaterial color={bodyColor} roughness={0.5} metalness={rigid ? 0.5 : 0.1} />
+        <meshStandardMaterial
+          color={bodyColor}
+          roughness={0.5}
+          metalness={rigid ? 0.5 : 0.1}
+          key={dimmed ? 'dim' : 'solid'}
+          {...dimProps}
+        />
       </mesh>
       {rigid ? (
         // locking pin: a shaft driven into the run + a round head
         <group>
           <mesh position={[pinMid.x, pinMid.y, pinMid.z]} quaternion={orientY(arrow.pinDir)}>
             <cylinderGeometry args={[arrow.tubeR * 0.8, arrow.tubeR * 0.8, pinLen, 12]} />
-            <meshStandardMaterial color={PIN_SHAFT} roughness={0.35} metalness={0.85} />
+            <meshStandardMaterial
+              color={PIN_SHAFT}
+              roughness={0.35}
+              metalness={0.85}
+              key={dimmed ? 'dim' : 'solid'}
+              {...dimProps}
+            />
           </mesh>
           <mesh position={[pinTop.x, pinTop.y, pinTop.z]} castShadow>
             <sphereGeometry args={[pinHeadR, 16, 12]} />
-            <meshStandardMaterial color={selected ? SELECT_BLUE : PIN_HEAD} roughness={0.4} />
+            <meshStandardMaterial
+              color={selected && !dimmed ? SELECT_BLUE : PIN_HEAD}
+              roughness={0.4}
+              key={dimmed ? 'dim' : 'solid'}
+              {...dimProps}
+            />
           </mesh>
         </group>
       ) : (
         // arrowhead closing the loop (the swivel direction)
         <mesh position={[arrow.tip.x, arrow.tip.y, arrow.tip.z]} quaternion={orientY(arrow.tipDir)}>
           <coneGeometry args={[headR, headH, 16]} />
-          <meshStandardMaterial color={bodyColor} roughness={0.5} metalness={0.1} />
+          <meshStandardMaterial
+            color={bodyColor}
+            roughness={0.5}
+            metalness={0.1}
+            key={dimmed ? 'dim' : 'solid'}
+            {...dimProps}
+          />
         </mesh>
       )}
     </group>
@@ -231,6 +284,7 @@ function WrapJoint({
 function FreeJoint({
   joint,
   selectable,
+  dimmed,
   ball,
   onMenuPointerUp,
   onHover,
@@ -238,6 +292,7 @@ function FreeJoint({
 }: {
   joint: Joint;
   selectable: boolean;
+  dimmed: boolean;
   ball: string;
   onMenuPointerUp?: (e: ThreeEvent<PointerEvent>) => void;
   onHover?: (e: ThreeEvent<PointerEvent>) => void;
@@ -269,20 +324,25 @@ function FreeJoint({
   const runDir = joint.onBody ? normalize(sub(eased(receiver.nodeB), eased(receiver.nodeA))) : null;
   const saddleR = pipeSpec(receiver.size).odM * 0.72;
 
-  const onSelect = selectable
-    ? (e: ThreeEvent<MouseEvent>) => {
-        e.stopPropagation();
-        useEditorStore.getState().selectJoint(joint.id);
-      }
-    : undefined;
+  const onSelect =
+    selectable && !dimmed
+      ? (e: ThreeEvent<MouseEvent>) => {
+          e.stopPropagation();
+          useEditorStore.getState().selectJoint(joint.id);
+        }
+      : undefined;
+  // spread WITH key={dimmed ? 'dim' : 'solid'}: the key remounts the material on
+  // the flip — three bakes an OPAQUE define (alpha forced to 1) into programs
+  // compiled while transparent=false, so the flag can't just be toggled
+  const dimProps = { transparent: dimmed, opacity: dimmed ? GROUP_DIM_ALPHA : 1 };
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: r3f group is a scene node
     <group
       onClick={onSelect}
-      onPointerUp={onMenuPointerUp}
-      onPointerMove={onHover}
-      onPointerOut={onHoverOut}
+      onPointerUp={dimmed ? undefined : onMenuPointerUp}
+      onPointerMove={dimmed ? undefined : onHover}
+      onPointerOut={dimmed ? undefined : onHoverOut}
     >
       {eyeEnds.map((e, i) => {
         const cord = placeAxis(e.end, node);
@@ -292,13 +352,25 @@ function FreeJoint({
             {/* eye-bolt ring at the pipe end */}
             <mesh position={[e.end.x, e.end.y, e.end.z]} quaternion={orientZ(e.dir)}>
               <torusGeometry args={[eyeR, eyeR * 0.28, 12, 20]} />
-              <meshStandardMaterial color={EYE_COLOR} roughness={0.35} metalness={0.85} />
+              <meshStandardMaterial
+                color={EYE_COLOR}
+                roughness={0.35}
+                metalness={0.85}
+                key={dimmed ? 'dim' : 'solid'}
+                {...dimProps}
+              />
             </mesh>
             {/* knotted cord from the eye to the ball */}
             {cord && (
               <mesh position={cord.mid} quaternion={cord.quat}>
                 <cylinderGeometry args={[odMax * 0.09, odMax * 0.09, cord.len, 8]} />
-                <meshStandardMaterial color={CORD_COLOR} roughness={0.9} metalness={0} />
+                <meshStandardMaterial
+                  color={CORD_COLOR}
+                  roughness={0.9}
+                  metalness={0}
+                  key={dimmed ? 'dim' : 'solid'}
+                  {...dimProps}
+                />
               </mesh>
             )}
           </group>
@@ -308,13 +380,26 @@ function FreeJoint({
       {runDir && (
         <mesh position={[node.x, node.y, node.z]} quaternion={orientZ(runDir)}>
           <torusGeometry args={[saddleR, saddleR * 0.22, 12, 24]} />
-          <meshStandardMaterial color={EYE_COLOR} roughness={0.35} metalness={0.85} />
+          <meshStandardMaterial
+            color={EYE_COLOR}
+            roughness={0.35}
+            metalness={0.85}
+            key={dimmed ? 'dim' : 'solid'}
+            {...dimProps}
+          />
         </mesh>
       )}
       {/* the ball at the joint */}
       <mesh position={[node.x, node.y, node.z]} castShadow>
         <sphereGeometry args={[ballR, 20, 16]} />
-        <meshPhysicalMaterial color={ball} roughness={0.3} metalness={0.1} clearcoat={0.6} />
+        <meshPhysicalMaterial
+          color={ball}
+          roughness={0.3}
+          metalness={0.1}
+          clearcoat={0.6}
+          key={dimmed ? 'dim' : 'solid'}
+          {...dimProps}
+        />
       </mesh>
     </group>
   );
@@ -325,9 +410,18 @@ export function JointLayer() {
   const design = useAppStore((s) => s.current);
   const tool = useEditorStore((s) => s.tool);
   const selectedJointId = useEditorStore((s) => s.selectedJointId);
+  const enteredGroupId = useEditorStore((s) => s.enteredGroupId);
   const night = useThemeStore((s) => s.night);
   if (!design || design.members.length > MAX_JOINT_MEMBERS) return null;
   const pal = scenePalette(night);
+  // while a group is entered, a joint whose members are ALL outside it GHOSTS
+  // (semi-transparent, matching the instanced layers) and goes inert
+  const enteredGroup = enteredGroupId
+    ? design.groups.find((gr) => gr.id === enteredGroupId)
+    : undefined;
+  const activeSet = enteredGroup ? new Set(enteredGroup.memberIds) : null;
+  const isDimmed = (j: Joint): boolean =>
+    !!activeSet && !activeSet.has(j.receiver) && !activeSet.has(j.mover);
   const editing = tool === 'select' || tool === 'move' || tool === 'rotate';
   const selectable = tool === 'select';
   // a joint is a first-class selectable — selecting it highlights the hardware
@@ -386,6 +480,7 @@ export function JointLayer() {
               key={j.id}
               joint={j}
               selectable={selectable}
+              dimmed={isDimmed(j)}
               ball={pal.accent}
               onMenuPointerUp={onMenuPointerUp(j)}
               onHover={onHover(j)}
@@ -400,6 +495,7 @@ export function JointLayer() {
               joint={j}
               selectable={selectable}
               selected={isSelected(j)}
+              dimmed={isDimmed(j)}
               fitting={pal.fitting}
               onMenuPointerUp={onMenuPointerUp(j)}
               onHover={onHover(j)}
@@ -412,6 +508,7 @@ export function JointLayer() {
             joint={j}
             selectable={selectable}
             selected={isSelected(j)}
+            dimmed={isDimmed(j)}
             onMenuPointerUp={onMenuPointerUp(j)}
             onHover={onHover(j)}
             onHoverOut={onHoverOut}

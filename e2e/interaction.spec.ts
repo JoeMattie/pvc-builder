@@ -158,6 +158,38 @@ test('right-drag orbits around the cursor anchor', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('right-drag orbit keeps an in-progress draw path alive; plain right-click ends it', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await openNewDesign(page, 'Interaction orbit vs draw abort');
+
+  await page.keyboard.press('D');
+  await page.waitForFunction(() => (window as any).__pvc.getEditor().tool === 'draw');
+
+  const start = await screenOf(page, { x: 0, y: 0, z: 0 });
+  const next = await screenOf(page, { x: 0.35, y: 0, z: 0 });
+  await page.mouse.click(start.x, start.y);
+  await page.waitForFunction(() => !!(window as any).__pvc.getEditor().drawingFromNodeId);
+  await page.mouse.click(next.x, next.y);
+  await page.waitForFunction(() => (window as any).__pvc.getMembers().length === 1);
+
+  // Right-DRAG well past the slop threshold to orbit — the path must survive.
+  await page.mouse.move(next.x + 60, next.y + 60);
+  await page.mouse.down({ button: 'right' });
+  await page.mouse.move(next.x + 180, next.y + 120, { steps: 12 });
+  await page.mouse.up({ button: 'right' });
+  expect(
+    await page.evaluate(() => (window as any).__pvc.getEditor().drawingFromNodeId),
+  ).toBeTruthy();
+
+  // Plain right-CLICK (no drag) ends the path as before.
+  await page.mouse.click(next.x + 60, next.y + 60, { button: 'right' });
+  await page.waitForFunction(() => !(window as any).__pvc.getEditor().drawingFromNodeId);
+  expect(await page.evaluate(() => (window as any).__pvc.getMembers().length)).toBe(1);
+  expect(errors).toEqual([]);
+});
+
 test('opens the join menu with a real right-click and creates a wrapped pivot', async ({ page }) => {
   const errors = collectErrors(page);
   await openNewDesign(page, 'Interaction right-click join');

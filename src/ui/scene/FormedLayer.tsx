@@ -20,6 +20,7 @@ import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
 import { dominantAxisNormal, rayToPlane } from './ground';
+import { GROUP_DIM_ALPHA } from './instancing';
 
 const toV3 = (p: Vec3) => new Vector3(p.x, p.y, p.z);
 const CLICK_SLOP_PX = 6; // press-move below this reads as a click, not a bend drag
@@ -95,6 +96,7 @@ function FormedTube({
   r,
   segs,
   isSel,
+  dimmed,
   color,
   tool,
   onSelect,
@@ -105,6 +107,7 @@ function FormedTube({
   r: number;
   segs: number;
   isSel: boolean;
+  dimmed: boolean;
   color: string;
   tool: string;
   onSelect: ((id: string) => void) | undefined;
@@ -170,8 +173,10 @@ function FormedTube({
   };
 
   const inBend = tool === 'bend';
+  // outside an entered group the tube GHOSTS (semi-transparent, colour kept —
+  // matching the instanced pipes) and is inert
   const click =
-    !inBend && onSelect
+    !inBend && !dimmed && onSelect
       ? (e: ThreeEvent<MouseEvent>) => {
           e.stopPropagation();
           onSelect(member.id);
@@ -179,16 +184,26 @@ function FormedTube({
       : undefined;
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: r3f <mesh> is a scene node
-    <mesh onClick={click} onPointerDown={inBend ? startBend : undefined} castShadow receiveShadow>
+    <mesh
+      onClick={click}
+      onPointerDown={inBend && !dimmed ? startBend : undefined}
+      castShadow
+      receiveShadow
+    >
       <tubeGeometry args={[curve, segs, r, 14, false]} />
       <meshPhysicalMaterial
+        // key: remount the material when the dim flag flips — three bakes an
+        // OPAQUE define (alpha forced to 1) into non-transparent programs
+        key={dimmed ? 'dim' : 'solid'}
         color={color}
         roughness={0.38}
         metalness={0}
         clearcoat={0.6}
         clearcoatRoughness={0.35}
-        emissive={isSel || inBend ? '#2a78d6' : '#000000'}
-        emissiveIntensity={isSel ? 0.35 : inBend ? 0.12 : 0}
+        transparent={dimmed}
+        opacity={dimmed ? GROUP_DIM_ALPHA : 1}
+        emissive={(isSel || inBend) && !dimmed ? '#2a78d6' : '#000000'}
+        emissiveIntensity={dimmed ? 0 : isSel ? 0.35 : inBend ? 0.12 : 0}
       />
     </mesh>
   );
@@ -199,6 +214,7 @@ export function FormedLayer() {
   const design = useAppStore((s) => s.current);
   const selectedIds = useEditorStore((s) => s.selectedIds);
   const tool = useEditorStore((s) => s.tool);
+  const enteredGroupId = useEditorStore((s) => s.enteredGroupId);
   const night = useThemeStore((s) => s.night);
   if (!design) return null;
   const formed = design.members.filter((m): m is FormedMember => m.kind === 'formed');
@@ -206,6 +222,11 @@ export function FormedLayer() {
 
   const color = scenePalette(night).pvc;
   const selected = new Set(selectedIds);
+  // when a group is entered, formed pipes outside it ghost like straight pipes
+  const enteredGroup = enteredGroupId
+    ? design.groups.find((gr) => gr.id === enteredGroupId)
+    : undefined;
+  const activeSet = enteredGroup ? new Set(enteredGroup.memberIds) : null;
   // click-select in the same tools straight pipes allow (select / move / rotate)
   const onSelect =
     tool === 'select' || tool === 'move' || tool === 'rotate' ? selectMember : undefined;
@@ -228,6 +249,7 @@ export function FormedLayer() {
               r={r}
               segs={segs}
               isSel={selected.has(m.id)}
+              dimmed={!!activeSet && !activeSet.has(m.id)}
               color={color}
               tool={tool}
               onSelect={onSelect}

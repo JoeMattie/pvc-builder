@@ -60,7 +60,12 @@ import {
   nearestAxisKey,
 } from '../design/dragMath';
 import { MIN_BEND_RADIUS_FACTOR } from '../design/formed';
-import { type GuideSegment, guideIntersections, perpUnit, snapDirToAxis } from '../design/guides';
+import {
+  axisOffsetGuideOrigin,
+  type GuideSegment,
+  guideIntersections,
+  snapDirToAxis,
+} from '../design/guides';
 import { makeId } from '../design/ids';
 import {
   AXIS_BAND_M,
@@ -242,6 +247,11 @@ export function placeDrawPoint(raw: Vec3, lockAxis = false): SnapResult {
   // snapped from outside: don't share it, defer the union to ungroup)
   const joinNode = design ? drawJoinNode(design, snap) : null;
 
+  // the extend (push) tool is strictly stub-initiated: a ground click can never
+  // START a path (only startExtend can), so an aborted push doesn't leave the
+  // cursor point armed as the next path's start
+  if (!fromId && editor.tool === 'extend') return snap;
+
   if (!fromId) {
     if (joinNode) {
       editor.setDrawingFrom(joinNode);
@@ -287,6 +297,13 @@ export function placeDrawPoint(raw: Vec3, lockAxis = false): SnapResult {
   if (startWrap) editor.setDrawStartWrap(null);
   // the axis lock governs only the FIRST extend segment — release it once placed
   if (editor.drawAxisLock) editor.setDrawAxisLock(null);
+  // a push is ONE segment: end the path so the next push starts from a stub
+  // (axis-locked) instead of continuing as a free draw path
+  if (editor.tool === 'extend') {
+    editor.setDrawingFrom(null);
+    editor.setDrawLength('');
+    editor.setDrawDirection(null);
+  }
   return snap;
 }
 
@@ -333,9 +350,14 @@ export function placeDrawAtDistance(distanceM: number): boolean {
     if (startWrap) nd = addBodyJoint(nd, startWrap, fromId).design;
     return reconcileBodyJoints(nd);
   });
-  editor.setDrawingFrom(nextId);
+  // a push is ONE segment (see placeDrawPoint) — typed lengths too
+  editor.setDrawingFrom(editor.tool === 'extend' ? null : nextId);
   editor.setDrawStartWrap(null);
   editor.setDrawLength('');
+  if (editor.tool === 'extend') {
+    editor.setDrawDirection(null);
+    editor.setDrawAxisLock(null);
+  }
   return true;
 }
 
@@ -372,29 +394,32 @@ export function pickGuideRef(memberId: string, point: Vec3): void {
   ed.setGuideLength('');
 }
 
-/** Guide tool step 2: commit a guide through `cursor`, parallel to the picked
- * pipe (axis-snapped). Clears the in-progress draft. */
+/** Guide tool step 2: commit a guide offset from the reference point along a
+ * PURE world axis (whichever perpendicular axis the cursor runs most along,
+ * grid-snapped) — never through the raw ground-tracked cursor, so the guide
+ * stays in the picked pipe's plane and its pipe intersections stay exact. */
 export function placeGuide(cursor: Vec3): void {
   const ed = useEditorStore.getState();
   const draft = ed.guideDraft;
   if (!draft) return;
-  ed.addGuide({ id: makeId('guide'), origin: cursor, dir: draft.dir });
+  const { origin } = axisOffsetGuideOrigin(draft.refOrigin, draft.dir, cursor, snapTol().gridStepM);
+  ed.addGuide({ id: makeId('guide'), origin, dir: draft.dir });
   ed.setGuideDraft(null);
   ed.setGuideLength('');
 }
 
 /** Guide tool: commit a guide at an EXACT perpendicular offset (typed distance)
- * from the reference pipe, on the side of the line the `cursor` is on. Returns
- * whether a guide was placed. */
+ * from the reference pipe, along the pure axis (and side) the cursor indicates.
+ * Returns whether a guide was placed. */
 export function placeGuideAtOffset(cursor: Vec3, distanceM: number): boolean {
   const ed = useEditorStore.getState();
   const draft = ed.guideDraft;
   if (!draft || distanceM <= 0) return false;
-  const pu = perpUnit(draft.refOrigin, draft.dir, cursor);
-  if (!pu) return false;
+  const { axis, offsetM } = axisOffsetGuideOrigin(draft.refOrigin, draft.dir, cursor);
+  const side = offsetM >= 0 ? 1 : -1;
   ed.addGuide({
     id: makeId('guide'),
-    origin: add(draft.refOrigin, scale(pu, distanceM)),
+    origin: add(draft.refOrigin, scale(axis, side * distanceM)),
     dir: draft.dir,
   });
   ed.setGuideDraft(null);
