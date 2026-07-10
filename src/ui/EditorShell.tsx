@@ -3,7 +3,6 @@ import {
   Box,
   Check,
   ChevronLeft,
-  ClipboardList,
   Download,
   FileDown,
   FileUp,
@@ -13,7 +12,6 @@ import {
   Magnet,
   Moon,
   Pencil,
-  PlayCircle,
   Redo2,
   RefreshCcw,
   Sparkles,
@@ -53,19 +51,8 @@ import { ViewMenu } from './ViewMenu';
 const OBJECT_TREE_SIZE = { width: 304, height: 220 };
 const OBJECT_TREE_COMPACT_SIZE = { width: 304, height: 150 };
 const OBJECT_TREE_MIN_SIZE = { width: 224, height: 150 };
-const OBJECT_TREE_MAX_SIZE = { width: 520, height: 1000 };
 const OBJECT_TREE_DOCKED_MAX_SIZE = { width: 350, height: 1000 };
 const OBJECT_TREE_COMPACT_MAX_SIZE = { width: 330, height: 220 };
-const BOM_SIZE = { width: 384, height: 420 };
-const BOM_COMPACT_SIZE = { width: 300, height: 220 };
-const BOM_MIN_SIZE = { width: 280, height: 220 };
-const BOM_MAX_SIZE = { width: 560, height: 1000 };
-const BOM_DOCKED_MAX_SIZE = { width: 384, height: 1000 };
-const BOM_COMPACT_MAX_SIZE = { width: 320, height: 240 };
-const RIGHT_STACK_SIZE = { width: 352, height: 360 };
-const RIGHT_STACK_COMPACT_SIZE = { width: 300, height: 300 };
-const RIGHT_STACK_MIN_SIZE = { width: 288, height: 220 };
-const RIGHT_STACK_MAX_SIZE = { width: 430, height: 1000 };
 
 function useCompactChrome() {
   const [compact, setCompact] = useState(() =>
@@ -122,7 +109,6 @@ export function EditorShell() {
   const renameProject = useAppStore((s) => s.renameProject);
   const undo = useAppStore((s) => s.undo);
   const redo = useAppStore((s) => s.redo);
-  const [bomOpen, setBomOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [nameEditing, setNameEditing] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
@@ -259,23 +245,14 @@ export function EditorShell() {
 
   useEditorHotkeys({ undo, redo });
 
+  // starting a run from anywhere jumps to the Simulate tab
   useEffect(() => {
-    if (!simulating) return;
-    setWorkflow('simulate');
-    setBomOpen(false);
+    if (simulating) setWorkflow('simulate');
   }, [simulating, setWorkflow]);
 
-  const changeWorkflow = (next: typeof workflow) => {
-    setWorkflow(next);
-    if (next !== 'fabricate') setBomOpen(false);
-  };
+  const changeWorkflow = (next: typeof workflow) => setWorkflow(next);
 
-  const openCutList = () => {
-    setWorkflow('fabricate');
-    setBomOpen(true);
-  };
-
-  const chromeLayoutSignature = `${bomOpen}:${compactChrome}:${workflow}`;
+  const chromeLayoutSignature = `${compactChrome}:${workflow}`;
   useEffect(() => {
     if (!hasDesign) return;
     void chromeLayoutSignature;
@@ -289,19 +266,10 @@ export function EditorShell() {
 
   const showInspector =
     selectedCount > 0 || !!selectedJointId || !!selectedElasticId || tool === 'bend';
-  const rightDockOpen = workflow === 'simulate';
-  const objectTreeMaxSize = rightDockOpen
-    ? compactChrome
-      ? OBJECT_TREE_COMPACT_MAX_SIZE
-      : OBJECT_TREE_DOCKED_MAX_SIZE
-    : compactChrome
-      ? OBJECT_TREE_COMPACT_MAX_SIZE
-      : OBJECT_TREE_MAX_SIZE;
-  const bomMaxSize = compactChrome
-    ? BOM_COMPACT_MAX_SIZE
-    : rightDockOpen
-      ? BOM_DOCKED_MAX_SIZE
-      : BOM_MAX_SIZE;
+  // the workflow panel always occupies the right side now — keep Objects narrow
+  const objectTreeMaxSize = compactChrome
+    ? OBJECT_TREE_COMPACT_MAX_SIZE
+    : OBJECT_TREE_DOCKED_MAX_SIZE;
   const toolbarVertical = compactChrome || toolPaletteLayout === 'vertical';
 
   return (
@@ -441,24 +409,6 @@ export function EditorShell() {
       </FloatingIsland>
 
       <FloatingIsland
-        id="workflow-stack"
-        placement="left-stack"
-        collapsible={false}
-        handleLabel="Move workflow panel"
-        icon={Waypoints}
-        stackId="left"
-        stackOrder={1}
-        title="Workflow"
-        titleLayout="inline"
-      >
-        <EditorWorkflowStatus
-          activeWorkflow={workflow}
-          onWorkflowChange={changeWorkflow}
-          onOpenBom={openCutList}
-        />
-      </FloatingIsland>
-
-      <FloatingIsland
         id="object-tree"
         placement="left-stack"
         defaultCollapsed={compactChrome}
@@ -470,7 +420,7 @@ export function EditorShell() {
         resizeLabel="Resize objects panel"
         icon={ListTree}
         stackId="left"
-        stackOrder={2}
+        stackOrder={1}
         title="Objects"
         titleLayout="top"
       >
@@ -479,21 +429,58 @@ export function EditorShell() {
         </div>
       </FloatingIsland>
 
-      {showInspector && (
-        <FloatingIsland
-          id="inspector-stack"
-          placement={compactChrome ? 'bottom-center' : 'top-center'}
-          handleLabel="Move inspector panels"
-          icon={Box}
-          title="Inspect"
-        >
-          <div className="flex max-w-[calc(100vw-2rem)] flex-col items-center gap-2">
-            <SelectionPanel />
-            <BendPill />
-            <ElasticPanel />
-          </div>
-        </FloatingIsland>
-      )}
+      {/* the workflow panel: Design/Fabricate/Simulate tabs (+ Play/Stop) whose
+          body is the active mode's tools — inspector, cut list, or sim controls.
+          Sits under View on the right; bottom-right on compact chrome. */}
+      <FloatingIsland
+        id="workflow-panel"
+        placement={compactChrome ? 'bottom-right' : 'right-stack'}
+        handleLabel="Move workflow panel"
+        icon={Waypoints}
+        stackId={compactChrome ? undefined : 'right'}
+        stackOrder={1}
+        title="Workflow"
+        titleLayout="top"
+        titleActions={
+          workflow === 'fabricate' ? (
+            <button
+              type="button"
+              onClick={exportBomCsv}
+              className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            >
+              <Download size={13} /> CSV
+            </button>
+          ) : undefined
+        }
+      >
+        <div className="flex w-[min(92vw,24rem)] flex-col gap-1.5">
+          <EditorWorkflowStatus activeWorkflow={workflow} onWorkflowChange={changeWorkflow} />
+          <div className="h-px w-full bg-border/70" />
+          {workflow === 'design' &&
+            (showInspector ? (
+              <div className="flex flex-col items-stretch gap-2 p-1">
+                <SelectionPanel />
+                <BendPill />
+                <ElasticPanel />
+              </div>
+            ) : (
+              <p className="px-2 py-3 text-center text-xs text-muted-foreground">
+                Select a pipe, joint, or band to inspect it.
+              </p>
+            ))}
+          {workflow === 'fabricate' && (
+            <div className="scrollbar-minimal h-[min(55vh,30rem)] overflow-y-auto">
+              <BomPanel hideHeader />
+            </div>
+          )}
+          {workflow === 'simulate' && (
+            <div className="scrollbar-minimal flex max-h-[min(55vh,30rem)] flex-col overflow-y-auto">
+              <SimulationPanel />
+              <PivotPanel />
+            </div>
+          )}
+        </div>
+      </FloatingIsland>
 
       {/* tool pillbox — sizes to its content so every button is always visible;
           no resize, no scroll. Compact chrome docks it into the left measured
@@ -529,73 +516,6 @@ export function EditorShell() {
           <UnitsPill />
         </div>
       </FloatingIsland>
-
-      {rightDockOpen ? (
-        <FloatingIsland
-          id="right-stack"
-          placement={compactChrome ? 'bottom-right' : 'right-stack'}
-          handleLabel="Move simulation and fabrication panels"
-          defaultSize={
-            workflow === 'simulate'
-              ? compactChrome
-                ? RIGHT_STACK_COMPACT_SIZE
-                : RIGHT_STACK_SIZE
-              : undefined
-          }
-          maxSize={workflow === 'simulate' ? RIGHT_STACK_MAX_SIZE : undefined}
-          minSize={workflow === 'simulate' ? RIGHT_STACK_MIN_SIZE : undefined}
-          resizable={workflow === 'simulate'}
-          icon={PlayCircle}
-          stackId={compactChrome ? undefined : 'right'}
-          stackOrder={1}
-          title={workflow === 'simulate' ? 'Simulate' : 'Pivots'}
-          titleLayout="top"
-        >
-          <div className="scrollbar-minimal flex h-full max-h-[calc(100vh-7rem)] w-full flex-col items-stretch gap-2 overflow-y-auto pr-1">
-            {workflow === 'simulate' && <SimulationPanel />}
-            <PivotPanel />
-          </div>
-        </FloatingIsland>
-      ) : null}
-
-      {bomOpen && (
-        <FloatingIsland
-          id="bom-panel"
-          placement={compactChrome ? 'bottom-right' : 'right-stack'}
-          defaultSize={compactChrome ? BOM_COMPACT_SIZE : BOM_SIZE}
-          maxSize={bomMaxSize}
-          minSize={BOM_MIN_SIZE}
-          resizable
-          handleLabel="Move BOM panel"
-          resizeLabel="Resize BOM panel"
-          icon={ClipboardList}
-          stackId={compactChrome ? undefined : 'right'}
-          stackOrder={2}
-          title="Cut list"
-          titleActions={
-            <div className="flex items-center gap-0.5">
-              <button
-                type="button"
-                onClick={exportBomCsv}
-                className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              >
-                <Download size={13} /> CSV
-              </button>
-              <button
-                type="button"
-                aria-label="Close cut list"
-                onClick={() => setBomOpen(false)}
-                className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          }
-          titleLayout="top"
-        >
-          <BomPanel hideHeader onClose={() => setBomOpen(false)} />
-        </FloatingIsland>
-      )}
 
       {/* right-click join menu (anchor / wrapped / free) */}
       <JoinMenu />

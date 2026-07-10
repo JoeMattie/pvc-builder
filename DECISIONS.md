@@ -4,6 +4,27 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## The workflow panel is the single mode container (2026-07-09)
+
+- **Design/Fabricate/Simulate content lives in ONE tabbed panel** on the right stack under View
+  (bottom-right on compact chrome). `EditorWorkflowStatus` is the tab strip; the panel body is the
+  active mode's tools: Design → the selection inspector (or a "select something" hint), Fabricate →
+  the cut list (CSV in the title bar), Simulate → bare sim controls + pivots. The separate
+  inspector / right-stack / BOM islands and the left workflow row are gone — this removes the
+  inspector z-fighting and the nested card-in-card look structurally.
+- **Play/Stop lives in the tab strip**, always visible, so a run can start/stop from any tab
+  (starting a run still auto-switches to the Simulate tab). `SimulationPanel` no longer renders its
+  own Play button or card chrome.
+- **The panel is not resizable** — the cut-list tab scrolls inside a fixed `min(55vh, 30rem)`
+  viewport instead. Bring back per-tab resize only if the fixed cut-list height proves too small.
+- **Resize ≠ position** in `FloatingIsland`: `finishResize` no longer marks a panel user-positioned
+  (that excluded a resized Objects panel from the measured stack and made Snap jump up over it).
+- **Snap grid options follow `lengthDisplay`** (the units pill), not the legacy doc
+  `unitsPreference`: inch modes offer Off/¼″/½″/1″/2″ (¼″ is the floor), mm/cm modes offer mm steps;
+  an off-system saved step renders converted, never as raw metres.
+- **BOM assumption warnings group by (measurement, source)** and list the pipes they apply to,
+  instead of one repeated line per pipe end.
+
 ## Mobile layout: responsive compact chrome, no settings (2026-07-09)
 
 - **Compact chrome is purely responsive** (`useCompactChrome()` = width < 640): no user-facing

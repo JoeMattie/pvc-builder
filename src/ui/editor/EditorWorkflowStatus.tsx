@@ -3,12 +3,14 @@ import {
   CheckCircle2,
   DraftingCompass,
   Hammer,
+  Play,
   PlayCircle,
   Save,
+  Square,
 } from 'lucide-react';
 import { useMemo } from 'react';
 import { useAppStore } from '../../state/appStore';
-import type { SceneStatus } from '../../state/editorStore';
+import { type SceneStatus, useEditorStore } from '../../state/editorStore';
 import { summarizeEditorWarnings } from './editorStatus';
 
 export type EditorWorkflow = SceneStatus;
@@ -42,7 +44,6 @@ const WORKFLOWS: {
 interface EditorWorkflowStatusProps {
   activeWorkflow: EditorWorkflow;
   onWorkflowChange(workflow: EditorWorkflow): void;
-  onOpenBom(): void;
 }
 
 function statusChipClass(tone: 'ok' | 'warn' | 'neutral' | 'active'): string {
@@ -52,14 +53,16 @@ function statusChipClass(tone: 'ok' | 'warn' | 'neutral' | 'active'): string {
   return 'bg-muted text-muted-foreground';
 }
 
-/** The Design / Fabricate / Simulate switcher — a single inline row (the
- * workflow island keeps its title beside these). Status chips live in
+/** The workflow tab strip — Design / Fabricate / Simulate tabs whose content
+ * renders in the workflow panel body, plus an always-available Play/Stop so
+ * the simulation can be run from any tab. Status chips live in
  * `EditorStatusChips` on the document panel. */
 export function EditorWorkflowStatus({
   activeWorkflow,
   onWorkflowChange,
-  onOpenBom,
 }: EditorWorkflowStatusProps) {
+  const simulating = useEditorStore((s) => s.simulating);
+  const setSimulating = useEditorStore((s) => s.setSimulating);
   return (
     <div className="pointer-events-auto flex items-center gap-1 p-1">
       {WORKFLOWS.map(({ id, icon: Icon, label, title }) => {
@@ -70,10 +73,7 @@ export function EditorWorkflowStatus({
             type="button"
             aria-pressed={active}
             title={title}
-            onClick={() => {
-              onWorkflowChange(id);
-              if (id === 'fabricate') onOpenBom();
-            }}
+            onClick={() => onWorkflowChange(id)}
             className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium ${
               active
                 ? 'bg-primary text-primary-foreground'
@@ -85,6 +85,21 @@ export function EditorWorkflowStatus({
           </button>
         );
       })}
+      <div className="mx-0.5 h-5 w-px bg-border" />
+      <button
+        type="button"
+        onClick={() => setSimulating(!simulating)}
+        aria-pressed={simulating}
+        aria-label={simulating ? 'Stop simulation' : 'Play simulation'}
+        title={simulating ? 'Stop simulation (Ctrl+Space)' : 'Play simulation (Ctrl+Space)'}
+        className={`flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium ${
+          simulating
+            ? 'bg-primary text-primary-foreground'
+            : 'bg-accent text-accent-foreground hover:bg-accent/80'
+        }`}
+      >
+        {simulating ? <Square size={13} /> : <Play size={13} />}
+      </button>
     </div>
   );
 }

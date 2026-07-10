@@ -11,6 +11,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.4',
+    date: '2026-07-09',
+    changes: [
+      'One workflow panel now rules the right side: the Design / Fabricate / Simulate tabs live under the View bar, and the panel body is the active mode’s tools — the selection inspector in Design, the cut list in Fabricate, and the simulation controls in Simulate. No more panels loading over or under each other.',
+      'Play/Stop sits right in the workflow tab strip, so you can run or stop a simulation from any tab; the Simulate tab keeps damping, body, debug, and pivot controls (no more nested panel-in-panel).',
+      'Snap grid choices now follow your display units: inch mode offers inch-aligned steps (1/4" to 2"), millimetre mode offers mm steps — no more raw metric values in the snap pill.',
+      'Cut-list assumptions are grouped: one line per assumption listing the pipes it applies to, instead of the same sentence repeated per pipe.',
+      'Panel fixes: resizing the Objects panel no longer makes the Snap panel jump over it, collapsing the tool bar no longer leaves a tall empty slab, and on narrow screens panel headers go icon-only (the title bar itself drags).',
+    ],
+  },
+  {
     version: '0.3.3',
     date: '2026-07-09',
     changes: [

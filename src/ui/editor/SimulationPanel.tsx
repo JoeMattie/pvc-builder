@@ -1,4 +1,4 @@
-import { Bug, Gauge, PersonStanding, Play, RotateCcw, Square } from 'lucide-react';
+import { Bug, Gauge, PersonStanding, RotateCcw } from 'lucide-react';
 import { useAppStore } from '../../state/appStore';
 import { resetPivots, setJointDamping, setMannequin } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
@@ -24,25 +24,11 @@ export function SimulationPanel() {
   const elasticCount = design.elastics.length;
 
   return (
-    <div className="w-full rounded-lg border border-border bg-card p-3 shadow-md">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        {/* the island title bar already reads "Simulate" — just the state here */}
-        <div className="truncate text-sm font-medium">
-          {simulating ? 'Physics live' : 'Design pose'}
-        </div>
-        <button
-          type="button"
-          onClick={() => setSimulating(!simulating)}
-          aria-pressed={simulating}
-          className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium ${
-            simulating
-              ? 'bg-primary text-primary-foreground'
-              : 'bg-accent text-accent-foreground hover:bg-accent/80'
-          }`}
-        >
-          {simulating ? <Square size={13} /> : <Play size={13} />}
-          {simulating ? 'Stop' : 'Play'}
-        </button>
+    // no card chrome — this renders as the workflow panel's Simulate tab body;
+    // Play/Stop lives in the tab strip (EditorWorkflowStatus)
+    <div className="w-full px-1 pb-1">
+      <div className="mb-2 truncate text-sm font-medium">
+        {simulating ? 'Physics live' : 'Design pose'}
       </div>
 
       <div className="mb-3 grid grid-cols-2 gap-1 text-[10px]">

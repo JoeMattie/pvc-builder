@@ -1,17 +1,19 @@
 import { Check, Magnet } from 'lucide-react';
 import { DropdownMenu } from 'radix-ui';
 import { useState } from 'react';
-import type { UnitsPreference } from '../schema';
+import type { LengthDisplay } from '../schema';
 import { useAppStore } from '../state/appStore';
 import { useEditorStore } from '../state/editorStore';
+import { formatLengthDisplay } from './units';
 
 const IN = 0.0254;
+// inch-aligned steps, 1/4" at the finest (finer grids fight the pipe ODs)
 const IMPERIAL = [
   { label: 'Off', m: 0 },
-  { label: '1/8"', m: IN / 8 },
   { label: '1/4"', m: IN / 4 },
   { label: '1/2"', m: IN / 2 },
   { label: '1"', m: IN },
+  { label: '2"', m: IN * 2 },
 ];
 const METRIC = [
   { label: 'Off', m: 0 },
@@ -21,8 +23,11 @@ const METRIC = [
   { label: '50', m: 0.05 },
 ];
 
-function optionsFor(units: UnitsPreference) {
-  return units === 'imperial' ? IMPERIAL : METRIC;
+/** Grid options follow the DISPLAY units (the units pill / `lengthDisplay`),
+ * not the legacy document `unitsPreference` — inch mode offers inch-aligned
+ * steps, mm/cm modes offer millimetre steps. */
+function optionsFor(display: LengthDisplay) {
+  return display === 'in' || display === 'in-frac' ? IMPERIAL : METRIC;
 }
 
 function ToggleRow({ label, on, onClick }: { label: string; on: boolean; onClick: () => void }) {
@@ -50,16 +55,20 @@ function ToggleRow({ label, on, onClick }: { label: string; on: boolean; onClick
 export function SnapPill() {
   const snap = useEditorStore((s) => s.snap);
   const setSnap = useEditorStore((s) => s.setSnap);
-  const units = useAppStore((s) => s.current?.unitsPreference ?? 'imperial');
+  const display = useAppStore((s) => s.current?.lengthDisplay ?? 'in');
   const [open, setOpen] = useState(false);
 
-  const opts = optionsFor(units);
+  const inches = display === 'in' || display === 'in-frac';
+  const opts = optionsFor(display);
   const current = opts.find((o) => Math.abs(o.m - snap.gridStepM) < 1e-9);
-  const unitTag = units === 'imperial' ? '' : ' mm';
+  const unitTag = inches ? '' : ' mm';
   const label =
     snap.gridStepM === 0
       ? 'No grid'
-      : `${current?.label ?? snap.gridStepM}${current ? unitTag : ''}`;
+      : current
+        ? `${current.label}${unitTag}`
+        : // a step saved under the other unit system — show it converted, not raw metres
+          formatLengthDisplay(snap.gridStepM, display);
 
   return (
     <DropdownMenu.Root open={open} onOpenChange={setOpen}>
@@ -85,7 +94,7 @@ export function SnapPill() {
           className="z-[100] w-44 rounded-lg border border-border bg-card p-2 shadow-lg"
         >
           <div className="px-1 pb-1 text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">
-            Grid {units === 'imperial' ? '(inch)' : '(mm)'}
+            Grid {inches ? '(inch)' : '(mm)'}
           </div>
           <div className="grid grid-cols-3 gap-1">
             {opts.map((o) => {

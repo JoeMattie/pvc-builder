@@ -629,8 +629,10 @@ export function FloatingIsland({
     const resolved = clampFloatingPos(current, { width: box.width, height: box.height });
     posRef.current = resolved;
     setPos(resolved);
-    userPositioned.current = true;
-    savePos(id, resolved);
+    // Resizing is NOT positioning: a default-stacked panel must stay in the
+    // measured stack (promoting it here made lower stack members ignore its
+    // new rect and jump up over it). Only persist pos if the user dragged it.
+    if (userPositioned.current) savePos(id, resolved);
     requestLayoutSettle();
   };
 
@@ -701,8 +703,12 @@ export function FloatingIsland({
           e.currentTarget.setPointerCapture(e.pointerId);
           beginDrag(e.clientX, e.clientY);
         }}
-        className={`flex shrink-0 cursor-grab items-center justify-center text-muted-foreground/80 hover:text-foreground active:cursor-grabbing ${
-          variant === 'side' ? 'h-7 w-full' : 'h-7 w-7 rounded-md hover:bg-accent'
+        className={`shrink-0 cursor-grab items-center justify-center text-muted-foreground/80 hover:text-foreground active:cursor-grabbing ${
+          // below lg the title bar itself is the drag surface — the grip dots
+          // only pad out narrow rails (labels are hidden there anyway)
+          variant === 'side'
+            ? 'flex h-7 w-full'
+            : 'hidden h-7 w-7 rounded-md hover:bg-accent lg:flex'
         } ${dragging ? 'text-foreground' : ''}`}
       >
         {variant === 'side' ? <GripVertical size={13} /> : <GripHorizontal size={14} />}
@@ -757,7 +763,9 @@ export function FloatingIsland({
       {dragButton('top')}
       <div className="flex min-w-0 flex-1 items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
         {Icon && <Icon size={13} className="shrink-0" />}
-        <span className="truncate">{panelTitle}</span>
+        {/* top titles also go icon-only below lg — the label otherwise forces
+            narrow rails (e.g. the icons-only tools rail) wider than their content */}
+        <span className="hidden truncate lg:inline">{panelTitle}</span>
       </div>
       {titleActions}
       {collapseButton('top')}
@@ -810,7 +818,10 @@ export function FloatingIsland({
           }`}
           aria-hidden={collapsed}
           style={{
-            height: collapsed && layout === 'top' ? 0 : size?.height,
+            // collapsed pins BOTH axes: zeroing only the width lets wrapping
+            // content (e.g. the tool row) reflow one-per-row into a tall
+            // invisible column that the island border still wraps around
+            height: collapsed ? 0 : size?.height,
             width: collapsed && layout !== 'top' ? 0 : size?.width,
           }}
         >

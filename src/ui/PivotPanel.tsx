@@ -36,7 +36,8 @@ export function PivotPanel() {
   );
 
   return (
-    <div className="w-full rounded-lg border border-border bg-card p-3 shadow-md">
+    // no card chrome — renders inside the workflow panel's Simulate tab body
+    <div className="w-full border-border/70 border-t px-1 pt-2 pb-1">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">
           Pivots

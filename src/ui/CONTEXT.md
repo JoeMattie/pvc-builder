@@ -50,14 +50,19 @@ chrome in draggable `chrome/FloatingIsland` wrappers.
   islands need stable `id` values because drag positions, optional sizes, and collapse states persist
   in `localStorage`; the reset button (in the Document panel) clears those keys and reflows mounted
   islands. Islands join measured default stacks via `stackId`+`stackOrder` (left: Document 0 /
-  Workflow 1 / Objects 2 / Snap 3; right: View 0 / Simulate 1 / Cut list 2). The Document panel is
-  pinned (`draggable={false}`); Document, Workflow, Snap, and View islands are `collapsible={false}`.
+  Objects 1 / Snap 3 / Tools 4 on compact; right: View 0 / Workflow 1). The Document panel is
+  pinned (`draggable={false}`); Document, Snap, and View islands are `collapsible={false}`.
+- **The workflow panel is the single mode container** (right stack, under View): the
+  `EditorWorkflowStatus` tab strip (Design/Fabricate/Simulate + always-visible Play/Stop) selects the
+  panel body — Design → inspector (`SelectionPanel`/`BendPill`/`ElasticPanel`, or a select-something
+  hint), Fabricate → `BomPanel` (CSV in `titleActions`), Simulate → `SimulationPanel`+`PivotPanel`.
+  There are NO separate inspector/cut-list/simulate islands anymore.
 - **Compact chrome (<640, `useCompactChrome`)** is responsive-only, no settings: the document row is
   a single line (export/import/reset hidden <`lg`, save chip icon-only <`lg`, narrower name); the
   tool palette docks into the left measured stack (order 4) as an icons-only vertical rail
-  (`Pillbox compact`); Objects mounts `defaultCollapsed`; the inspector and the Simulate/Cut-list
-  islands move to `bottom-center`/`bottom-right` (no `stackId`); Snap + View stay `hidden sm:block`.
-  Desktop ≥`lg` is visually unchanged — keep it that way when editing.
+  (`Pillbox compact`); Objects mounts `defaultCollapsed`; the workflow panel moves to `bottom-right`
+  (no `stackId`); Snap + View stay `hidden sm:block`. Top/inline island titles and the grip-dot drag
+  handle are hidden <`lg` (the title bar itself drags). Desktop ≥`lg` is visually unchanged.
 - **Right mouse button is globally hijacked** by `editor/useEditorHotkeys.ts` to end a path + suppress
   the native context menu; scene pipe/joint menus open on right-button up through
   `scene/rightClickGesture.ts` only when a rotate drag did not happen. Keyboard shortcuts (V/D/P/C/M/R/B/T/Q/E/W/G, space,

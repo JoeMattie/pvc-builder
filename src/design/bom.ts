@@ -466,15 +466,20 @@ function bomWarnings(cuts: CutItem[]): BomWarning[] {
     if (!warnings.some((w) => w.key === warning.key)) warnings.push(warning);
   };
 
+  // one assumption per (measurement kind, source), listing every pipe it
+  // applies to — not one line per pipe end (that read as pure repetition)
+  const assumptions = new Map<string, { message: string; pipes: string[] }>();
   cuts.forEach((c, i) => {
     const pipe = `P${i + 1}`;
     for (const m of cutMeasurements(c)) {
       if (m.valueM <= EPS || m.source.basis !== 'estimate') continue;
-      push({
-        key: `${pipe}:${m.label}:${m.source.label}:${m.source.note ?? ''}`,
-        severity: 'assumption',
-        message: `${pipe} ${m.label} uses an estimated value; ${m.source.note ?? m.source.label}.`,
-      });
+      const key = `${m.label}:${m.source.label}:${m.source.note ?? ''}`;
+      const entry = assumptions.get(key) ?? {
+        message: `${m.label} uses an estimated value (${m.source.note ?? m.source.label})`,
+        pipes: [],
+      };
+      if (!entry.pipes.includes(pipe)) entry.pipes.push(pipe);
+      assumptions.set(key, entry);
     }
     for (const b of c.bendSchedule ?? []) {
       if (!b.belowMin) continue;
@@ -485,6 +490,13 @@ function bomWarnings(cuts: CutItem[]): BomWarning[] {
       });
     }
   });
+  for (const [key, a] of assumptions) {
+    push({
+      key: `assumption:${key}`,
+      severity: 'assumption',
+      message: `${a.message} — ${a.pipes.join(', ')}.`,
+    });
+  }
   return warnings;
 }
 

@@ -16,7 +16,8 @@ export function BomPanel({
   onClose,
 }: {
   hideHeader?: boolean;
-  onClose: () => void;
+  /** only used by the built-in header; optional when hideHeader */
+  onClose?: () => void;
 }) {
   const design = useAppStore((s) => s.current);
   if (!design) return null;
