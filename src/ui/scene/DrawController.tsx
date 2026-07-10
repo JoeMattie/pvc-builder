@@ -59,9 +59,11 @@ function SnapHint({ preview, night }: { preview: SnapResult; night: boolean }) {
       ? 'Guide intersection'
       : preview.kind === 'node'
         ? 'End'
-        : preview.kind === 'on-pipe'
-          ? 'On Pipe'
-          : null;
+        : preview.kind === 'corner'
+          ? 'Corner'
+          : preview.kind === 'on-pipe'
+            ? 'On Pipe'
+            : null;
   if (!design || !label) return null;
   const at = (id: string): Vec3 | undefined => easedPos(id) ?? nodeById(design, id)?.position;
   const outlines: { a: Vec3; b: Vec3; r: number }[] = [];

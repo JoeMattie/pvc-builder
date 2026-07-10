@@ -14,7 +14,7 @@ glide on snaps — never raw doc positions.
 | `wrapMesh.ts` | Mirror seam for heat-wrapped slip-saddle tees (collar+boss+blend+screws) | `buildWrapMesh(inp): WrapMesh \| null`, `WrapMesh`/`WrapInput` |
 | `jointStyle.ts` | How a rigid (anchor) union draws: socket TEE (lone ~90° on-body branch — exactly 3 pipe ends), wrap-arrow pin (other angles), or ONE brown fabricated-union SPHERE per node when the cluster exceeds any standard fitting — >3 pipe ends, OR an end-to-end record at a 3-end junction (three ends, no straight run). `anchorRendersAsHub` gates EVERY anchor render + its hit target | `anchorRendersAsTee`, `anchorRendersAsHub`, `junctionEndCount` |
 | `ground.ts` | Raycasting helpers | `rayToGround`, `rayToPlane`, `dominantAxisNormal` |
-| `pipePick.ts` | Screen-space snap: nearest node/pipe under the cursor (draw + endpoint drag, any height) | `pickSnapPoint`, `SNAP_PX`, `snapDebug` |
+| `pipePick.ts` | Screen-space snap: nearest node / formed-bend CORNER / pipe under the cursor (draw + endpoint drag, any height) | `pickSnapPoint` (kinds `node`\|`corner`\|`pipe`; corners gate with the ends toggle), `SNAP_PX`, `snapDebug` |
 | `rightClickGesture.ts` | Shared right-button gesture gate + debug event ring | lets orbit win over pipe/joint menus AND the draw/formed right-click path-end (`wasRightDrag`, consumed by `ui/editor/useEditorHotkeys.ts`) after drag slop; `getPointerDebugEvents()` |
 | `axis.ts` | Place a unit-Y primitive along a segment (from riglab) | `placeAxis(a,b)`, `orientY(dir)`, `orientZ(dir)` |
 | `instancing.ts` | Compose per-instance matrices for `InstancedMesh` from UNIT base geometry (radius/height 1); per-instance GHOST alpha for entered-group dimming | `cylinderMatrix(out,a,b,r)`, `sphereMatrix`, `ringMatrix`, `coneMatrix`, `wrapFrameMatrix` (joint-local basis), `hideMatrix`, `GROUP_DIM_ALPHA`, `instanceAlphaPatch`, `setInstanceAlphas` |
@@ -31,7 +31,7 @@ glide on snaps — never raw doc positions.
 | `InstancedFreeHubs.tsx` | End-to-end FREE (ball) hubs as 3 `InstancedMesh` (balls + eye bolts + cords), imperative useFrame transforms | ball click selects the joint; right-button-up after the shared orbit gate opens its menu; replaces JointLayer's old `FreeHub` |
 | `InstancedWrapJoints.tsx` (**NEW**) | WRAPPED (swivel) pivots as 2 `InstancedMesh` (loop + arrowhead) | ONE canonical arrow baked in the joint local frame; each instance re-orients/scales it via `wrapFrameMatrix` (loop doesn't deform as the branch swivels). Rigid/anchor wraps stay declarative |
 | `FittingLayer.tsx` (mod) | Auto-resolved fittings + conflicts, now INSTANCED (cyls + spheres + conflict markers pooled) | types resolved once (`useMemo`), geometry rebuilt from eased positions in a **v-gated** useFrame (idle = no cost) |
-| `FormedLayer.tsx` (mod) | Heat-bent pipe tubes + Bend-tool control-point handles | dragging orange handles tweaks the bend |
+| `FormedLayer.tsx` (mod) | Heat-bent pipe tubes + Bend-tool control-point handles | dragging orange handles tweaks the bend; mid-sim the curve uses `physicsFormedControlPoints()` (bends ride the rigid body) and handles hide; `formedCurve(member, at, controlPoints?)` takes the override |
 | `MeasureLayer.tsx` | Persistent tape measures (dimension line + label) | selectable; offset perpendicular |
 | `ElasticLayer.tsx` | Elastic bands (schema v8) — a thin orange tube between the two attachment points at eased positions | selectable (click → `selectElastic`); tints hotter with stretch; a `{memberId,t}` end lerps the member's eased endpoints |
 | `MannequinLayer.tsx` | Static human mannequin (schema v9 `design.mannequin`) — the SAME `mannequinShapes()` the physics collides against, drawn as semi-transparent gray spheres/capsules/boxes | shown in edit AND Play; **not interactive** (no pointer handlers); static → reads the shapes once, no easing |
@@ -112,7 +112,11 @@ tubes (`FormedLayer`, unique curves), rigid-pin wraps + on-body free + anchor te
   fits the 800 member cap (renders all layers) but exceeds the 160-node animation cap on purpose
   (poses snap instantly, no per-frame easing).
 - **`GeometryAnimator`** (in Scene) drives positions: physics step when simulating, else solver
-  `pose` when `lengthsLocked`, else doc positions.
+  `pose` when `lengthsLocked`, else doc positions. Node positions flow through `easedPos`; formed
+  BEND control points are not nodes — mid-sim `FormedLayer`/`IntersectionLayer`/`SceneLabels`
+  substitute `physicsFormedControlPoints()` for `member.controlPoints` (doc coords are frozen at
+  the sim's rest pose). Marquee/draw hit-tests (`DrawController.memberScreenPts`, `__pvc.marquee`)
+  deliberately keep doc control points (editing mid-sim doesn't matter).
 - **No CONTROLLED `<input>`s inside drei `Html`.** Html renders its children into a separate React
   DOM root; a `value=` bound to state in the r3f tree can't flush synchronously across the two
   roots, so React DOM restores the stale value between keystrokes (typing "30" degrades to "0").

@@ -7,6 +7,7 @@ import { memberById, memberLengthM, nodeById } from '../../design/docOps';
 import { type FittingType, resolveFittings } from '../../design/fittings';
 import { add, dot, scale, sub } from '../../geometry/math3';
 import type { Design, Joint, Member, Vec3 } from '../../schema';
+import { physicsActive, physicsFormedControlPoints } from '../../solver/physics';
 import { easedPos, useAnim } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
 import { type HoveredSceneItem, useEditorStore } from '../../state/editorStore';
@@ -255,7 +256,10 @@ function memberPosition(design: Design, memberId: string, t0?: number, t1?: numb
     const t = t0 !== undefined && t1 !== undefined ? (t0 + t1) / 2 : 0.5;
     return add(a, scale(sub(b, a), t));
   }
-  const pts = [a, ...member.controlPoints, b];
+  // mid-sim a formed member's bends ride the rigid body — anchor to the live ones
+  const cps =
+    (physicsActive() ? physicsFormedControlPoints()[member.id] : undefined) ?? member.controlPoints;
+  const pts = [a, ...cps, b];
   const sum = pts.reduce((acc, p) => add(acc, p), { x: 0, y: 0, z: 0 });
   return scale(sum, 1 / pts.length);
 }

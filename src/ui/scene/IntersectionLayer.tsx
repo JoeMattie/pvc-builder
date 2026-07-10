@@ -4,6 +4,7 @@
 import { nodeById } from '../../design/docOps';
 import { intersectingMembers } from '../../design/intersections';
 import { type FormedMember, pipeSpec, type Vec3 } from '../../schema';
+import { physicsActive, physicsFormedControlPoints } from '../../solver/physics';
 import { easedPos, useAnim } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
 import { useEditorStore } from '../../state/editorStore';
@@ -29,6 +30,8 @@ export function IntersectionLayer() {
   if (!hits.size) return null;
   const red = scenePalette(night).conflict;
   const at = (id: string): Vec3 | undefined => easedPos(id) ?? nodeById(design, id)?.position;
+  // mid-sim the red shell must ride the live bends (detection stays doc-space)
+  const simCPs = physicsActive() ? physicsFormedControlPoints() : null;
   const entered = enteredGroupId ? design.groups.find((g) => g.id === enteredGroupId) : undefined;
   const active = entered ? new Set(entered.memberIds) : null;
   const opacityFor = (memberId: string) =>
@@ -41,7 +44,7 @@ export function IntersectionLayer() {
         .map((m) => {
           const r = (pipeSpec(m.size).odM / 2) * SHELL;
           if (m.kind === 'formed') {
-            const curve = formedCurve(m as FormedMember, at);
+            const curve = formedCurve(m as FormedMember, at, simCPs?.[m.id]);
             if (!curve) return null;
             const segs = Math.max(24, (m.controlPoints.length + 1) * 20);
             return (

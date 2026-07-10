@@ -7,7 +7,12 @@ import { intersectingMembers } from '../../design/intersections';
 import { exportDesignJson } from '../../persistence/exportImport';
 import type { Vec3 } from '../../schema';
 import { solve } from '../../solver';
-import { physicsNodePositions, setPhysicsPrecision, setPhysicsTuning } from '../../solver/physics';
+import {
+  physicsFormedControlPoints,
+  physicsNodePositions,
+  setPhysicsPrecision,
+  setPhysicsTuning,
+} from '../../solver/physics';
 import { useAppStore } from '../../state/appStore';
 import { setView, type ViewName } from '../../state/cameraStore';
 import {
@@ -236,6 +241,7 @@ export function PvcAutomationBridge() {
     hook.setToolPaletteLayout = (layout: 'horizontal' | 'vertical') =>
       useEditorStore.getState().setToolPaletteLayout(layout);
     hook.getPhysics = () => physicsNodePositions();
+    hook.getPhysicsFormed = () => physicsFormedControlPoints();
 
     // Mannequin (static human collision body) + global damping (friction/drag).
     hook.setMannequin = (on: boolean) => setMannequin(on);

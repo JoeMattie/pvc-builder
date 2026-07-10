@@ -12,6 +12,7 @@ import type { Vec3 } from '../schema';
 
 export type SnapKind =
   | 'node'
+  | 'corner'
   | 'axis-x'
   | 'axis-y'
   | 'axis-z'
@@ -38,6 +39,9 @@ export interface SnapContext {
   nodes: SnapNode[];
   /** existing member segments, for on-pipe snapping */
   segments: SnapSegment[];
+  /** bend CORNERS of formed (heat-bent) members — snapped to like a node (but
+   * they are geometry, not nodes: no join forms), reported as kind 'corner' */
+  corners?: Vec3[];
   /** the path's start point, when drawing — enables axis inference */
   fromNode?: Vec3;
   /** intersection points of guide lines with pipes — snapped to like an END
@@ -109,6 +113,17 @@ export function snapPoint(raw: Vec3, ctx: SnapContext): SnapResult {
     if (d <= ctx.pointRadiusM && (!best || d < best.d)) best = { d, node: n };
   }
   if (best) return { position: best.node.position, kind: 'node', nodeId: best.node.id };
+
+  // 1.5 a formed pipe's bend corner — end-like priority (a point target), but
+  //     purely geometric: drawing to it does NOT join to the bent pipe.
+  if (ctx.corners && ctx.pointRadiusM > 0) {
+    let bestCorner: { d: number; p: Vec3 } | null = null;
+    for (const p of ctx.corners) {
+      const d = length(sub(raw, p));
+      if (d <= ctx.pointRadiusM && (!bestCorner || d < bestCorner.d)) bestCorner = { d, p };
+    }
+    if (bestCorner) return { position: bestCorner.p, kind: 'corner' };
+  }
 
   // 2. on-pipe point (a point ALONG a pipe — its own snap radius)
   const pipeRadius = ctx.pipeRadiusM ?? ctx.pointRadiusM;

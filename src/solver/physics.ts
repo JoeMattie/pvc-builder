@@ -153,6 +153,9 @@ interface Sim {
   /** per node: an incident member body + the node's offset in that body's frame
    * (a mathcat tuple, so the per-frame read path stays allocation-free) */
   nodeSource: Map<string, { memberId: string; local: [number, number, number] }>;
+  /** per FORMED member: each control point's offset in its assembly body's local
+   * frame (mathcat tuples), so bends ride the rigid body exactly like nodes */
+  formedLocals: Map<string, [number, number, number][]>;
   /** resolved elastic bands (spring forces applied each step) */
   elastics: SimElastic[];
   /** global friction/drag multiplier (design.jointDamping ?? 1) — scales the
@@ -299,6 +302,7 @@ function build(design: Design): Sim {
 
   const bodyOfMember = new Map<string, number>();
   const nodeSource = new Map<string, { memberId: string; local: [number, number, number] }>();
+  const formedLocals = new Map<string, [number, number, number][]>();
   // per-body rest transform (scaled position + quaternion) — so an elastic
   // attached at a point ALONG a member can be resolved to that body's local frame
   const bodyRest = new Map<number, { pos: Vec3; quat: Quaternion }>();
@@ -439,6 +443,18 @@ function build(design: Design): Sim {
         const l = rotate(qc, worldOff);
         nodeSource.set(nid, { memberId: s.id, local: [l.x, l.y, l.z] });
       }
+      // a formed member's bend control points are absolute world coords in the
+      // doc — fold each into the body's local frame (same transform as nodes)
+      // so the bends ride the rigid body during the sim
+      if (s.m.kind === 'formed') {
+        formedLocals.set(
+          s.id,
+          s.m.controlPoints.map((cp) => {
+            const l = rotate(qc, sub(scale(cp, SCALE), bodyPosV));
+            return [l.x, l.y, l.z] as [number, number, number];
+          }),
+        );
+      }
     }
   }
 
@@ -534,7 +550,15 @@ function build(design: Design): Sim {
     });
   }
 
-  return { world, bodyOfMember, nodeSource, elastics, damping, topoHash: physicsTopoHash(design) };
+  return {
+    world,
+    bodyOfMember,
+    nodeSource,
+    formedLocals,
+    elastics,
+    damping,
+    topoHash: physicsTopoHash(design),
+  };
 }
 
 export function startPhysics(design: Design): void {
@@ -640,6 +664,27 @@ export function physicsNodePositions(): Record<string, Vec3> {
     vec3.transformQuat(_scratch, src.local, body.quaternion);
     vec3.add(_scratch, _scratch, body.position);
     out[nodeId] = { x: _scratch[0] / SCALE, y: _scratch[1] / SCALE, z: _scratch[2] / SCALE };
+  }
+  return out;
+}
+
+/** Current world-space bend control points of each formed member (memberId →
+ * Vec3[], metres), computed on read exactly like `physicsNodePositions` — the
+ * doc's control points transformed by their assembly body's live pose. Empty
+ * when no sim is active. */
+export function physicsFormedControlPoints(): Record<string, Vec3[]> {
+  const out: Record<string, Vec3[]> = {};
+  if (!sim) return out;
+  for (const [memberId, locals] of sim.formedLocals) {
+    const id = sim.bodyOfMember.get(memberId);
+    if (id === undefined) continue;
+    const body = rigidBody.get(sim.world, id);
+    if (!body) continue;
+    out[memberId] = locals.map((local) => {
+      vec3.transformQuat(_scratch, local, body.quaternion);
+      vec3.add(_scratch, _scratch, body.position);
+      return { x: _scratch[0] / SCALE, y: _scratch[1] / SCALE, z: _scratch[2] / SCALE };
+    });
   }
   return out;
 }

@@ -8,6 +8,7 @@ import { nodeById } from '../../design/docOps';
 import { analyzeFormed } from '../../design/formed';
 import { add, dot, scale, sub } from '../../geometry/math3';
 import { type FormedMember, pipeSpec, type Vec3 } from '../../schema';
+import { physicsActive, physicsFormedControlPoints } from '../../solver/physics';
 import { easedPos, useAnim } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
 import {
@@ -75,15 +76,18 @@ function ControlHandle({ memberId, index, pos }: { memberId: string; index: numb
   );
 }
 
-/** Catmull-Rom curve through a formed member's eased points, or null. */
+/** Catmull-Rom curve through a formed member's eased points, or null.
+ * `controlPoints` overrides the doc's (used during a physics run, when the live
+ * bend positions come from `physicsFormedControlPoints`). */
 export function formedCurve(
   member: FormedMember,
   at: (id: string) => Vec3 | undefined,
+  controlPoints?: Vec3[],
 ): CatmullRomCurve3 | null {
   const a = at(member.nodeA);
   const b = at(member.nodeB);
   if (!a || !b) return null;
-  const pts = [a, ...member.controlPoints, b].map(toV3);
+  const pts = [a, ...(controlPoints ?? member.controlPoints), b].map(toV3);
   return new CatmullRomCurve3(pts, false, 'catmullrom', 0.5);
 }
 
@@ -237,13 +241,18 @@ export function FormedLayer() {
   // click-select in the same tools straight pipes allow (select / move / rotate)
   const selectable = tool === 'select' || tool === 'move' || tool === 'rotate';
   const at = (id: string): Vec3 | undefined => easedPos(id) ?? nodeById(design, id)?.position;
+  // during a physics run the bends ride their rigid body — render the curve from
+  // the live sim control points, not the (frozen) doc ones. On stop this returns
+  // null and the curve reverts to the doc, matching how node positions revert.
+  const simCPs = physicsActive() ? physicsFormedControlPoints() : null;
   // the Bend tool shows draggable control-point handles so bends can be tweaked
-  const showHandles = tool === 'bend';
+  // (hidden mid-sim — they'd anchor to the stale doc bends, and editing is off)
+  const showHandles = tool === 'bend' && !simCPs;
 
   return (
     <>
       {formed.map((m) => {
-        const curve = formedCurve(m, at);
+        const curve = formedCurve(m, at, simCPs?.[m.id]);
         if (!curve) return null;
         const r = pipeSpec(m.size).odM / 2;
         const segs = Math.max(24, (m.controlPoints.length + 1) * 20);

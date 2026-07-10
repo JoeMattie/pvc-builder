@@ -12,7 +12,9 @@ import type { Design, Vec3 } from '../../schema';
 
 export interface SnapPick {
   point: Vec3;
-  kind: 'node' | 'pipe';
+  /** 'corner' = a formed pipe's bend control point (a point target like a node,
+   * but geometry only — no node id, nothing joins) */
+  kind: 'node' | 'corner' | 'pipe';
   /** node id or member id */
   id: string;
   distPx: number;
@@ -81,6 +83,29 @@ export function pickSnapPoint(
     }
   if (bestNode)
     return { point: bestNode.point, kind: 'node', id: bestNode.id, distPx: bestNode.distPx };
+
+  // 1.5 formed pipes' bend CORNERS — point targets like nodes (usually up in the
+  // air, where a ground raycast can't reach), toggled with the ends snap
+  let bestCorner: { id: string; point: Vec3; distPx: number } | null = null;
+  if (wantNodes)
+    for (const m of design.members) {
+      if (m.kind !== 'formed') continue;
+      if (exclude && (m.nodeA === exclude || m.nodeB === exclude)) continue;
+      for (const cp of m.controlPoints) {
+        const sp = project(cp);
+        if (!sp) continue;
+        const distPx = Math.hypot(sp.x - cx, sp.y - cy);
+        if (distPx <= tolPx && (!bestCorner || distPx < bestCorner.distPx))
+          bestCorner = { id: m.id, point: cp, distPx };
+      }
+    }
+  if (bestCorner)
+    return {
+      point: bestCorner.point,
+      kind: 'corner',
+      id: bestCorner.id,
+      distPx: bestCorner.distPx,
+    };
 
   // 2. a point along a straight pipe (skip members touching the excluded node)
   let bestPipe: { id: string; point: Vec3; distPx: number } | null = null;

@@ -42,7 +42,8 @@ to the live camera. `setViewport` is **non-undoable** (temporal paused).
 The hook is **registered in `../ui/editor/PvcAutomationBridge.tsx`** and merged (not replaced) onto
 `window`; `../ui/scene/Scene.tsx` adds camera + pointer-debug seams. It calls THESE actions, giving pointer/script parity.
 Read seams: `getDoc`, `getEditor`, `getFittings` (`{fittings, conflicts}`), `getMembers`,
-`getJoints`, `getSolve`, `getBom`, `getPhysics`, `exportJson`. Command seams: `setTool`,
+`getJoints`, `getSolve`, `getBom`, `getPhysics`, `getPhysicsFormed` (live sim bend control points,
+memberId → Vec3[]), `exportJson`. Command seams: `setTool`,
 `setDrawSize`, `setProjection`, `setLengthsLocked`, `draw`/`finishPath`, `drawFormed`, `dragNode`,
 `moveMember`, `rotateMember`, `setJoinMode`, `makeManufacturedJoint`, `makeFreeHub`,
 `bendMember` (optional length-ref arg), `setBendLengthLock`, `setPivotAngle`, `importJson`,
@@ -63,7 +64,9 @@ Scene diagnostics: `sceneStats`, `getCameraPos`, `getCameraTarget`, `screenOf`, 
 - **`setPivotAngle` is coupled**: in a locked mechanism with ≥2 joints it re-`solve`s and writes
   back every OTHER wrapped joint's resolved angle so closed loops stay closed.
 - **`segmentsOf` gives only straight members a `memberId`** — an on-pipe hit on a straight can
-  split into a tee; formed members snap to the chord but never split.
+  split into a tee; formed members snap to the chord but never split. `cornersOf` feeds formed
+  members' bend control points into the draw/formed/measure/drag snap contexts as end-priority
+  `'corner'` point targets (geometric snap only — no node forms).
 - **`endGesture` records an entry only when the doc REFERENCE changed** since `beginGesture` —
   cancel paths (e.g. the rotate tool's typed-angle Escape in `ui/scene/SelectionHandles.tsx`)
   restore the captured pre-gesture doc verbatim via `updateCurrent(() => preDoc)` so the gesture

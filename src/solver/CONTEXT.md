@@ -12,7 +12,7 @@ There is **no `crashcat/` subdirectory** — `crashcat` is the npm package `cras
 |---|---|---|
 | `index.ts` (82) | The `solve()` façade (§5) | `solve(design, inputs: SolveInputs, mode: 'pose'): SolveResult`, `SolveMode`, `SolveInputs`, `SolveResult` |
 | `kinematics.ts` (643) | Deterministic FK + IK behind the boundary | `solvePose(design, inputs): PoseResult`, `Transform`, `PoseResult` (everything else module-private) |
-| `physics.ts` | CrashCat rigid-body sim for Play mode (**outside** solve()) | `startPhysics`, `stopPhysics`, `stepPhysics(dt)`, `physicsActive`, `physicsWorld` (debug renderer), `physicsNodePositions`, `physicsTopoHash`, `simGroundY`, `lowestExtentM`, `PHYSICS_SCALE`, `setPhysicsPrecision`, `setPhysicsTuning` |
+| `physics.ts` | CrashCat rigid-body sim for Play mode (**outside** solve()) | `startPhysics`, `stopPhysics`, `stepPhysics(dt)`, `physicsActive`, `physicsWorld` (debug renderer), `physicsNodePositions`, `physicsFormedControlPoints`, `physicsTopoHash`, `simGroundY`, `lowestExtentM`, `PHYSICS_SCALE`, `setPhysicsPrecision`, `setPhysicsTuning` |
 
 ## Depends on
 `index.ts` → `../schema` (types only), `./kinematics`. `kinematics.ts` → `../geometry/math3`,
@@ -41,6 +41,10 @@ There is **no `crashcat/` subdirectory** — `crashcat` is the npm package `cras
   = one `staticCompound` mirroring the kinematics union-find; pipe-vs-pipe collisions disabled
   (pipes only hit the ground); floor lowered to `simGroundY` at sim start so nothing erupts;
   fixed-substep + CCD stops thin pipes tunnelling. Mutable module-level `sim` state.
+  Formed members' bend `controlPoints` (absolute world coords in the doc) get body-local offsets at
+  `build()` (like `nodeSource`) and read back live via `physicsFormedControlPoints()` (memberId →
+  world Vec3[]) — so bends ride their rigid body; on stop it returns `{}` and renderers revert to
+  the doc (nothing is written back, same as node positions).
 - **Elastic bands** (schema v8): resolved at `build()` to `SimElastic{aBody,aLocal,bBody,bLocal,
   restLenScaled,kScaled}` reusing the `nodeSource` body+local-offset mapping (a `{memberId,t}` end is
   lerped in world space then folded into that member's assembly body local frame via `bodyRest`).

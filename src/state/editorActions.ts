@@ -156,6 +156,19 @@ function segmentsOf(design: Design, excludeNode?: string): SnapContext['segments
   return out;
 }
 
+/** Bend CORNERS of formed members (their control points) — end-like point snap
+ * targets, so drawing/measuring can latch onto a bent pipe's corners. Members
+ * touching `excludeNode` are skipped (matching `segmentsOf`). */
+function cornersOf(design: Design, excludeNode?: string): Vec3[] {
+  const out: Vec3[] = [];
+  for (const m of design.members) {
+    if (m.kind !== 'formed') continue;
+    if (excludeNode && (m.nodeA === excludeNode || m.nodeB === excludeNode)) continue;
+    out.push(...m.controlPoints);
+  }
+  return out;
+}
+
 /** Snap context for the draw tool: all nodes + segments, with axis inference
  * anchored at the current path start. */
 export function buildDrawSnapContext(): SnapContext {
@@ -165,6 +178,7 @@ export function buildDrawSnapContext(): SnapContext {
   return {
     nodes: design ? design.nodes.map((n) => ({ id: n.id, position: n.position })) : [],
     segments: design ? segmentsOf(design) : [],
+    corners: design ? cornersOf(design) : [],
     fromNode: from,
     guidePoints: design ? guideSnapPoints(design) : [],
     ...snapTol(),
@@ -451,6 +465,7 @@ export function snapFormedPoint(raw: Vec3): SnapResult {
   const snap = snapPoint(raw, {
     nodes: design ? design.nodes.map((n) => ({ id: n.id, position: n.position })) : [],
     segments: design ? segmentsOf(design) : [],
+    corners: design ? cornersOf(design) : [],
     fromNode,
     guidePoints: design ? guideSnapPoints(design) : [],
     ...snapTol(),
@@ -735,6 +750,7 @@ export function dragNodeTo(
         .filter((n) => n.id !== nodeId)
         .map((n) => ({ id: n.id, position: n.position })),
       segments: segmentsOf(design, nodeId),
+      corners: cornersOf(design, nodeId),
       fromNode: undefined,
       ...snapTol(),
     }).position;
@@ -875,6 +891,7 @@ export function snapMeasurePoint(raw: Vec3): SnapResult {
   const snap = snapPoint(raw, {
     nodes: design ? design.nodes.map((n) => ({ id: n.id, position: n.position })) : [],
     segments: design ? segmentsOf(design) : [],
+    corners: design ? cornersOf(design) : [],
     fromNode: undefined,
     guidePoints: design ? guideSnapPoints(design) : [],
     ...snapTol(),

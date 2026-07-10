@@ -45,7 +45,9 @@ applied elsewhere via `appStore.updateCurrent` for undo/autosave.
   elbow45 is detected at 135° between outgoing dirs. 5+ ends = conflict.
 - **BOM take-off constants (`CENTRE_TO_FACE_FACTOR`, `EYE_BOLT_TAKEOFF_M`) are documented
   estimates** to replace with manufacturer tables. Math is exact for whatever constants are set.
-- **`snapping.ts` priority order is UX** — changing node→on-pipe→axis→grid order changes feel.
+- **`snapping.ts` priority order is UX** — changing node→corner→on-pipe→axis→grid order changes
+  feel. `corners` (formed members' bend control points, kind `'corner'`) snap like ends
+  (`pointRadiusM`) but are geometry only — no nodeId, nothing joins.
 - **`intersections.ts` `segmentSegmentClosest`** is the Ericson RTCD closest-segment algorithm —
   subtle branch logic; don't refactor casually. Pairs sharing a node are excluded, and so is the
   whole CLUSTER at a joint's node (the joint's mover + receiver + every member incident to that

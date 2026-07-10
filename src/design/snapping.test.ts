@@ -41,6 +41,41 @@ describe('node snapping (highest priority)', () => {
   });
 });
 
+describe('corner snapping (formed pipe bends)', () => {
+  it('snaps to a nearby bend corner and reports kind corner (no node id)', () => {
+    const r = snapPoint(V(0.505, 0.3, 0.5), ctx({ corners: [V(0.5, 0.3, 0.5)] }));
+    expect(r.kind).toBe('corner');
+    expect(r.nodeId).toBeUndefined();
+    expect(r.position).toEqual(V(0.5, 0.3, 0.5));
+  });
+
+  it('a real node outranks a corner at the same distance', () => {
+    const r = snapPoint(
+      V(0.505, 0, 0.5),
+      ctx({ nodes: [{ id: 'n1', position: V(0.5, 0, 0.5) }], corners: [V(0.5, 0, 0.5)] }),
+    );
+    expect(r.kind).toBe('node');
+    expect(r.nodeId).toBe('n1');
+  });
+
+  it('a corner outranks an on-pipe hit', () => {
+    const r = snapPoint(
+      V(0.5, 0, 0.01),
+      ctx({
+        segments: [{ a: V(0, 0, 0), b: V(1, 0, 0), memberId: 'm1' }],
+        corners: [V(0.5, 0, 0)],
+      }),
+    );
+    expect(r.kind).toBe('corner');
+  });
+
+  it('ignores a corner outside the point radius / when ends snapping is off', () => {
+    expect(snapPoint(V(1, 0, 0), ctx({ corners: [V(0.5, 0, 0.5)] })).kind).not.toBe('corner');
+    const off = snapPoint(V(0.505, 0, 0.5), ctx({ corners: [V(0.5, 0, 0.5)], pointRadiusM: 0 }));
+    expect(off.kind).not.toBe('corner');
+  });
+});
+
 describe('on-pipe snapping', () => {
   it('snaps to the closest point on a segment', () => {
     const r = snapPoint(V(0.5, 0, 0.01), ctx({ segments: [{ a: V(0, 0, 0), b: V(1, 0, 0) }] }));

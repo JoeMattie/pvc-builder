@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createEmptyDesign, type Design, type Vec3 } from '../schema';
 import {
   lowestExtentM,
+  physicsFormedControlPoints,
   physicsNodePositions,
   simGroundY,
   startPhysics,
@@ -140,6 +141,66 @@ describe('formed pipes + wrapped sliding', () => {
     // the chord span is preserved (rigid — the bend didn't deform)
     const spread1 = Math.hypot(p.a!.x - p.b!.x, p.a!.z - p.b!.z);
     expect(spread1).toBeCloseTo(spread0, 1);
+  });
+
+  it('formed control points ride the rigid body (move, and keep node distances)', () => {
+    const d = formedAt(1);
+    const doc = d.members[0]!;
+    const docCp = (doc.kind === 'formed' ? doc.controlPoints[0] : undefined)!;
+    const docA = d.nodes.find((n) => n.id === 'a')!.position;
+    const docB = d.nodes.find((n) => n.id === 'b')!.position;
+    const dist = (p: Vec3, q: Vec3) => Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z);
+    startPhysics(d);
+    // at start (no steps) the control points read back at their doc positions
+    const cp0 = physicsFormedControlPoints().m![0]!;
+    expect(dist(cp0, docCp)).toBeLessThan(1e-6);
+    for (let i = 0; i < 60; i++) stepPhysics(1 / 60);
+    const cps = physicsFormedControlPoints().m!;
+    expect(cps).toHaveLength(1);
+    const cp = cps[0]!;
+    // (a) the bend MOVED from its doc position (it fell with the body)
+    expect(dist(cp, docCp)).toBeGreaterThan(0.05);
+    expect(cp.y).toBeLessThan(docCp.y - 0.05);
+    // (b) rigid-body invariant: its distance to each endpoint is preserved
+    const p = physicsNodePositions();
+    expect(dist(cp, p.a!)).toBeCloseTo(dist(docCp, docA), 2);
+    expect(dist(cp, p.b!)).toBeCloseTo(dist(docCp, docB), 2);
+  });
+
+  it('formed control points ride a WELDED assembly (compound body) too', () => {
+    // a formed member welded to a straight one at a shared node → one compound
+    const d = createEmptyDesign('d', 'bent-weld');
+    d.nodes.push(
+      { id: 'a', position: V(-0.3, 1, 0) },
+      { id: 'b', position: V(0.3, 1, 0) },
+      { id: 'c', position: V(0.6, 1, 0.3) },
+    );
+    d.members.push(
+      {
+        id: 'mf',
+        kind: 'formed',
+        nodeA: 'a',
+        nodeB: 'b',
+        controlPoints: [V(0, 1, 0.2)],
+        filletRadiiM: [0.06],
+        size: '3/4"',
+      },
+      { id: 'ms', kind: 'straight', nodeA: 'b', nodeB: 'c', size: '3/4"' },
+    );
+    const dist = (p: Vec3, q: Vec3) => Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z);
+    startPhysics(d);
+    for (let i = 0; i < 60; i++) stepPhysics(1 / 60);
+    const cp = physicsFormedControlPoints().mf![0]!;
+    const p = physicsNodePositions();
+    expect(cp.y).toBeLessThan(1 - 0.05); // fell with the assembly
+    // rigid across the whole weld: distances to BOTH members' nodes preserved
+    expect(dist(cp, p.a!)).toBeCloseTo(dist(V(0, 1, 0.2), V(-0.3, 1, 0)), 2);
+    expect(dist(cp, p.c!)).toBeCloseTo(dist(V(0, 1, 0.2), V(0.6, 1, 0.3)), 2);
+  });
+
+  it('physicsFormedControlPoints is empty when no sim is active', () => {
+    stopPhysics();
+    expect(physicsFormedControlPoints()).toEqual({});
   });
 
   it('a wrapped pivot stays on the receiver line while simulating (cylindrical joint)', () => {

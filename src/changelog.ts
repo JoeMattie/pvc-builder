@@ -11,6 +11,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.14',
+    date: '2026-07-09',
+    changes: [
+      'Bent pipes now simulate correctly: bend points ride their rigid body during Play instead of staying pinned in mid-air while the endpoints moved (a long-standing bug that solved corners made visible). Stopping the sim eases everything back to the designed pose, bends included.',
+      'Drawing, measuring, and endpoint drags now snap to bent-pipe corners (a "Corner" pill shows) — ends still outrank corners, corners outrank on-pipe.',
+    ],
+  },
+  {
     version: '0.3.13',
     date: '2026-07-09',
     changes: [
