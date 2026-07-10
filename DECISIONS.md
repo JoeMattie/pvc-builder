@@ -4,6 +4,23 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Solve pass 2: junction conflicts become bends or fabricated unions (2026-07-09)
+
+- **`solveIntersections` is two passes.** Pass 1 joins capsule overlaps (crossing clusters). Pass 2
+  visits record-less junction CONFLICTS from `resolveFittings`: a 2-end nonstandard corner merges
+  its two members into ONE formed member with the junction as its bend control point (min heat-form
+  fillet; developed length + schedule flow into the BOM) — physically you bend one pipe, you don't
+  butt two; 3+ ends with no straight run get per-mover fabricated anchor records (brown hub).
+  Standard-angle corners never conflict and stay ordinary fittings. Merge guards (mixed sizes,
+  receiver duty, elastics, cross-group, loop-closing) fall back to a fabricated record.
+- **Solve's contract: zero warnings afterward** for everything it can fix; the amber row shows for
+  overlaps OR unresolved junction conflicts (a doc can have conflicts with zero overlaps — the
+  original repro did) and hides at zero.
+- **`anchorRendersAsHub` gates every anchor visual** (tee, wrap loop/pin, hover/click target,
+  pipeModel pull-back): >3 incident ends, or an end-to-end record at a ≥3-end junction. A 4-end
+  node can never render as a tee or loop — the loop's sprawling hit zone at such nodes was the
+  "hovering a rigid anchor from far away" bug.
+
 ## Solve intersections, fabricated hub rendering, press-time selection (2026-07-09)
 
 - **`solveIntersections` joins crossings as fabricated rigid unions.** Clusters pairwise crossings

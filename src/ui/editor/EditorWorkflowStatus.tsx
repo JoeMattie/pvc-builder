@@ -10,6 +10,7 @@ import {
   Square,
 } from 'lucide-react';
 import { useMemo } from 'react';
+import { resolveFittings } from '../../design/fittings';
 import { intersectingMembers } from '../../design/intersections';
 import { useAppStore } from '../../state/appStore';
 import { solveIntersections } from '../../state/editorActions';
@@ -113,14 +114,30 @@ export function EditorWorkflowStatus({
  * and renders nothing when there is no overlap. */
 export function OverlapSolveRow() {
   const design = useAppStore((s) => s.current);
-  const overlaps = useMemo(() => (design ? intersectingMembers(design).size : 0), [design]);
-  if (!overlaps) return null;
+  // the solver fixes BOTH capsule overlaps (pass 1) and record-less junction
+  // conflicts — nonstandard corners/unions (pass 2) — so the row must show for
+  // either (a doc can have conflicts with zero overlaps)
+  const unresolved = useMemo(() => {
+    if (!design) return { overlaps: 0, conflicts: 0 };
+    return {
+      overlaps: intersectingMembers(design).size,
+      conflicts: resolveFittings(design).conflicts.length,
+    };
+  }, [design]);
+  const total = unresolved.overlaps + unresolved.conflicts;
+  if (!total) return null;
+  const label = [
+    unresolved.overlaps ? `${unresolved.overlaps} overlapping` : '',
+    unresolved.conflicts
+      ? `${unresolved.conflicts} unresolved junction${unresolved.conflicts === 1 ? '' : 's'}`
+      : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
   return (
     <div className="mx-1 mt-1 flex items-center gap-2 rounded-md bg-amber-500/10 px-2 py-1.5 text-xs text-amber-700 dark:text-amber-300">
       <AlertTriangle size={13} className="shrink-0" />
-      <span className="flex-1 tabular-nums">
-        {overlaps} overlapping pipe{overlaps === 1 ? '' : 's'}
-      </span>
+      <span className="flex-1 tabular-nums">{label}</span>
       <button
         type="button"
         onClick={() => solveIntersections()}

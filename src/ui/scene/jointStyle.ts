@@ -37,11 +37,15 @@ export function junctionEndCount(design: Design, nodeId: string): number {
 }
 
 /** True when the rigid (anchor) cluster at this joint's node is beyond any
- * standard fitting — more than 3 pipe ends entering the point (a solved X /
- * 3-way / 4-way crossing). Such a junction draws as ONE brown fabricated-union
- * sphere instead of tee / wrap hardware. */
+ * standard fitting: more than 3 pipe ends entering the point (a solved X /
+ * 3-way / 4-way crossing), or an END-TO-END fabricated record (`onBody` false)
+ * at a 3-end junction — the "three ends, no straight run" union. Such a
+ * junction draws as ONE brown fabricated-union sphere instead of ANY tee /
+ * wrap hardware (this predicate gates every anchor render + its hit target). */
 export function anchorRendersAsHub(design: Design, joint: Joint): boolean {
-  return joint.mode === 'anchor' && junctionEndCount(design, joint.nodeId) > 3;
+  if (joint.mode !== 'anchor') return false;
+  const ends = junctionEndCount(design, joint.nodeId);
+  return ends > 3 || (!joint.onBody && ends >= 3);
 }
 
 /** True when a rigid on-body union is close enough to 90° to be a socket tee.

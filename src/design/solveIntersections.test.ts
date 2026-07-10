@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createEmptyDesign, type Design, type NominalSize, type Vec3 } from '../schema';
 import { nodeById } from './docOps';
 import { resolveFittings } from './fittings';
+import { analyzeFormed } from './formed';
 import { intersectingMembers } from './intersections';
 import { solveIntersections } from './solveIntersections';
 
@@ -152,7 +153,7 @@ describe('solveIntersections', () => {
     expect(again.design).toBe(r.design);
   });
 
-  it('welds two overlapping pipe ENDS into one junction, recording a fabricated union', () => {
+  it('welds two overlapping pipe ENDS at an odd angle and solves the corner as a BEND', () => {
     // two pipe ends overlap tip-to-tip at a non-standard angle (~140°)
     const a40 = (40 * Math.PI) / 180;
     const dir40 = V(Math.cos(a40), 0, Math.sin(a40));
@@ -167,20 +168,86 @@ describe('solveIntersections', () => {
     expect(intersectingMembers(d).size).toBe(2);
 
     const r = solveIntersections(d);
-    expect(r.joined).toBe(1);
-    expect(r.design.members).toHaveLength(2); // no split — the ends welded
-    // the two members now share ONE junction node
-    const p1 = r.design.members.find((m) => m.id === 'p1')!;
-    const p2 = r.design.members.find((m) => m.id === 'p2')!;
-    const shared = [p2.nodeA, p2.nodeB].filter((n) => n === p1.nodeA || n === p1.nodeB);
-    expect(shared).toHaveLength(1);
-    // the odd-angle junction is covered by an explicit fabricated anchor record,
-    // so it is warning-free (no "non-standard angle" conflict)
-    expect(r.design.joints).toHaveLength(1);
-    expect(r.design.joints[0]!.mode).toBe('anchor');
-    expect(r.design.joints[0]!.nodeId).toBe(shared[0]);
+    // pass 1 welds the ends (1); pass 2 merges the odd corner into a bend (1)
+    expect(r.joined).toBe(2);
+    // ONE heat-bent member remains, bent at the old junction
+    expect(r.design.members).toHaveLength(1);
+    const m = r.design.members[0]!;
+    expect(m.kind).toBe('formed');
+    if (m.kind === 'formed') expect(m.controlPoints).toHaveLength(1);
+    expect(r.design.joints).toHaveLength(0); // continuous pipe — no record needed
+    expect(r.design.nodes).toHaveLength(2); // the corner node became the bend
     expect(intersectingMembers(r.design).size).toBe(0);
     expect(resolveFittings(r.design).conflicts).toHaveLength(0);
+  });
+
+  it('solves a nonstandard end-to-end corner (85°) as a heat-bent formed pipe', () => {
+    // leg1 arrives along +X at the shared node n1; leg2 leaves so the two
+    // OUTGOING directions sit at 85° — the "non-standard angle (85°)" conflict
+    const a95 = (95 * Math.PI) / 180;
+    const d = straightDesign([{ id: 'leg1', a: V(-0.4, 0, 0), b: V(0, 0, 0) }]);
+    d.nodes.push({ id: 'nb', position: V(Math.cos(a95) * 0.35, 0, Math.sin(a95) * 0.35) });
+    d.members.push({ id: 'leg2', kind: 'straight', nodeA: 'n1', nodeB: 'nb', size: '3/4"' });
+    const before = resolveFittings(d);
+    expect(before.conflicts).toHaveLength(1);
+    expect(before.conflicts[0]!.reason).toContain('non-standard angle');
+
+    const r = solveIntersections(d);
+    expect(r.joined).toBe(1);
+    expect(r.design.members).toHaveLength(1);
+    const m = r.design.members[0]!;
+    expect(m.kind).toBe('formed');
+    if (m.kind !== 'formed') return;
+    // the corner became the bend control point; its node was pruned
+    expect(m.controlPoints).toHaveLength(1);
+    expect(m.controlPoints[0]!.x).toBeCloseTo(0, 9);
+    expect(m.controlPoints[0]!.z).toBeCloseTo(0, 9);
+    expect(r.design.nodes).toHaveLength(2);
+    // developed length ≈ the two legs' sum (the fillet trims the sharp corner)
+    const analysis = analyzeFormed(r.design, m);
+    expect(analysis).not.toBeNull();
+    const legSum = 0.4 + 0.35;
+    expect(analysis!.developedLengthM).toBeGreaterThan(legSum * 0.9);
+    expect(analysis!.developedLengthM).toBeLessThanOrEqual(legSum);
+    expect(analysis!.hasTightBend).toBe(false); // bent AT the min heat-form radius
+    // warning-free + idempotent
+    expect(resolveFittings(r.design).conflicts).toHaveLength(0);
+    expect(intersectingMembers(r.design).size).toBe(0);
+    const again = solveIntersections(r.design);
+    expect(again.joined).toBe(0);
+    expect(again.design).toBe(r.design);
+  });
+
+  it('covers three ends with NO straight run with a fabricated union — records, no conflicts', () => {
+    // three pipes ENDING at one shared node (n1) at odd angles (0° / 100° / 210°)
+    const dir = (deg: number, t: number): Vec3 => {
+      const a = (deg * Math.PI) / 180;
+      return V(Math.cos(a) * t, 0, Math.sin(a) * t);
+    };
+    const d = straightDesign([{ id: 'a', a: dir(0, 0.4), b: V(0, 0, 0) }]);
+    d.nodes.push({ id: 'fb', position: dir(100, 0.4) }, { id: 'fc', position: dir(210, 0.4) });
+    d.members.push(
+      { id: 'b', kind: 'straight', nodeA: 'n1', nodeB: 'fb', size: '3/4"' },
+      { id: 'c', kind: 'straight', nodeA: 'n1', nodeB: 'fc', size: '3/4"' },
+    );
+    const before = resolveFittings(d);
+    expect(before.conflicts).toHaveLength(1);
+    expect(before.conflicts[0]!.reason).toContain('no straight run');
+
+    const r = solveIntersections(d);
+    expect(r.joined).toBe(1);
+    expect(r.design.members).toHaveLength(3); // geometry untouched
+    // one fabricated anchor record per non-receiver member, all end-to-end
+    expect(r.design.joints).toHaveLength(2);
+    for (const jt of r.design.joints) {
+      expect(jt.nodeId).toBe('n1');
+      expect(jt.mode).toBe('anchor');
+      expect(jt.onBody).toBe(false);
+    }
+    expect(resolveFittings(r.design).conflicts).toHaveLength(0);
+    const again = solveIntersections(r.design);
+    expect(again.joined).toBe(0);
+    expect(again.design).toBe(r.design);
   });
 
   it('is idempotent: a second run joins nothing and returns the design unchanged', () => {

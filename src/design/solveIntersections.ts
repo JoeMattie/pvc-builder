@@ -1,15 +1,34 @@
-// "Solve intersections" — the red-overlap auto-fix. Scans the design for
-// pipe-pipe crossings, CLUSTERS crossings that share one point (three, four, or
-// more pipes through the same spot form ONE junction), and joins every pipe of
-// each cluster to a single node with RIGID unions: physically the user
-// heat-wraps the pipes around each other and screws them — the app's fabricated
-// anchor semantics, so `resolveFittings` never classifies the junction (the
-// joint IS its fitting) and many-way crossings at non-standard angles are
-// first-class and warning-free. STRAIGHT×STRAIGHT only: formed (heat-bent)
-// splines are out of scope and their overlaps stay flagged for manual fixing.
+// "Solve intersections" — the red-warning auto-fix, in two passes.
+//
+// PASS 1 (overlaps): scans for pipe-pipe crossings, CLUSTERS crossings that
+// share one point (three, four, or more pipes through the same spot form ONE
+// junction), and joins every pipe of each cluster to a single node with RIGID
+// unions: physically the user heat-wraps the pipes around each other and screws
+// them — the app's fabricated anchor semantics, so `resolveFittings` never
+// classifies the junction (the joint IS its fitting) and many-way crossings at
+// non-standard angles are first-class and warning-free. STRAIGHT×STRAIGHT only:
+// formed (heat-bent) splines are out of scope and their overlaps stay flagged.
+//
+// PASS 2 (junction conflicts): nodes `resolveFittings` flags because no
+// standard fitting exists there and no joint record covers them — including
+// corners pass 1 itself creates by welding ends. TWO pipe ends meeting at a
+// nonstandard angle merge into ONE formed member bent at the junction (a
+// heat-bent corner: developed length + bend schedule flow into the BOM);
+// THREE+ ends with no standard fitting get explicit fabricated anchor records
+// (the brown hub). Standard-angle corners never conflict and keep resolving as
+// normal fittings.
+//
 // Pure `Design → Design`; applied via `appStore.updateCurrent` by the action.
 import { add, dot, length, scale, sub } from '../geometry/math3';
-import { type Attachment, type Design, type Joint, pipeSpec, type Vec3 } from '../schema';
+import {
+  type Attachment,
+  type Design,
+  type Joint,
+  type MeasurementEnd,
+  type Member,
+  pipeSpec,
+  type Vec3,
+} from '../schema';
 import {
   addBodyJoint,
   addMember,
@@ -17,6 +36,7 @@ import {
   jointsAtNode,
   memberById,
   memberEndpoints,
+  memberGroupKey,
   memberLengthM,
   nodeById,
   ON_BODY_KEEP_TOL_M,
@@ -25,6 +45,7 @@ import {
   weldNodes,
 } from './docOps';
 import { resolveFittings } from './fittings';
+import { MIN_BEND_RADIUS_FACTOR } from './formed';
 import { makeId } from './ids';
 import { intersectingStraightPairs } from './intersections';
 import { closestPointOnSegment } from './snapping';
@@ -251,44 +272,136 @@ function joinCluster(design: Design, cluster: CrossingCluster): { design: Design
     }
   }
 
-  // a junction that ended up with NO joint record (every member welded/split
-  // into shared-node unions) is classified by resolveFittings — if the welded
-  // geometry has no standard fitting, record ONE explicit fabricated anchor
-  // union so the node reads as hardware, never as a conflict
-  if (
-    joined > 0 &&
-    jointsAtNode(d, nodeId).length === 0 &&
-    resolveFittings(d).conflicts.some((c) => c.nodeId === nodeId)
-  ) {
-    const inc = incidentMembers(d, nodeId).sort(
-      (a, b) => memberLengthM(d, b) - memberLengthM(d, a),
-    );
-    if (inc.length >= 2) {
-      const joint: Joint = {
-        id: makeId('jt'),
-        nodeId,
-        receiver: inc[0]!.id,
-        mover: inc[1]!.id,
-        onBody: false,
-        mode: 'anchor',
-      };
-      d = { ...d, joints: [...d.joints, joint] };
-    }
-  }
+  // a recordless junction this cluster produced (e.g. two welded ends at an
+  // odd angle) is left to PASS 2, which turns 2-end corners into heat-bent
+  // pipe and covers many-way ends with fabricated records
   return { design: d, joined };
+}
+
+/** Merge the TWO members meeting end-to-end at `nodeId` into ONE formed
+ * (heat-bent) member whose bend is the junction — the solve for a sharp
+ * NONSTANDARD corner (no standard elbow exists): the corner becomes bent pipe,
+ * so developed length + bend schedule flow into the BOM and the node stops
+ * classifying. Straight and formed members both merge (control points
+ * concatenate through the corner). Returns null when the merge doesn't apply:
+ * sizes differ, a member serves as a joint RECEIVER anywhere (receivers must
+ * stay straight for the on-body machinery), an elastic rides one of them, the
+ * two sit in different groups, or the pair closes a loop. */
+function mergeCornerIntoBend(design: Design, nodeId: string): Design | null {
+  const inc = incidentMembers(design, nodeId);
+  if (inc.length !== 2) return null;
+  const [m1, m2] = inc as [Member, Member];
+  if (m1.size !== m2.size) return null;
+  if (design.joints.some((j) => j.receiver === m1.id || j.receiver === m2.id)) return null;
+  const ridesMember = (att: Attachment) =>
+    'memberId' in att && (att.memberId === m1.id || att.memberId === m2.id);
+  if (design.elastics.some((e) => ridesMember(e.a) || ridesMember(e.b))) return null;
+  if (memberGroupKey(design, m1.id) !== memberGroupKey(design, m2.id)) return null;
+  const nPos = nodeById(design, nodeId)?.position;
+  if (!nPos) return null;
+
+  /** a member's far node + its interior control points/fillets ordered LEAVING
+   * the corner node (node → far). */
+  const legOf = (m: Member) => {
+    const far = m.nodeA === nodeId ? m.nodeB : m.nodeA;
+    if (m.kind !== 'formed') return { far, controls: [] as Vec3[], fillets: [] as number[] };
+    const controls = [...m.controlPoints];
+    const fillets = m.controlPoints.map((_, i) => m.filletRadiiM?.[i] ?? 0);
+    if (m.nodeB === nodeId) {
+      controls.reverse();
+      fillets.reverse();
+    }
+    return { far, controls, fillets };
+  };
+  const leg1 = legOf(m1);
+  const leg2 = legOf(m2);
+  if (leg1.far === leg2.far || leg1.far === nodeId || leg2.far === nodeId) return null;
+  const aPos = nodeById(design, leg1.far)?.position;
+  const bPos = nodeById(design, leg2.far)?.position;
+  if (!aPos || !bPos) return null;
+
+  // the corner's heat-form bend radius: the pipe's minimum, clamped so the
+  // fillet still fits the two legs meeting at the node
+  const near1 = leg1.controls[0] ?? aPos;
+  const near2 = leg2.controls[0] ?? bPos;
+  const legFit = 0.9 * Math.min(length(sub(near1, nPos)), length(sub(near2, nPos)));
+  const fillet = Math.min(MIN_BEND_RADIUS_FACTOR * pipeSpec(m1.size).odM, legFit);
+  if (fillet <= 0) return null;
+
+  // polyline: leg1.far → (leg1 interior, reversed to far→node) → corner → leg2
+  const merged: Member = {
+    id: makeId('m'),
+    kind: 'formed',
+    nodeA: leg1.far,
+    nodeB: leg2.far,
+    size: m1.size,
+    controlPoints: [...[...leg1.controls].reverse(), { ...nPos }, ...leg2.controls],
+    filletRadiiM: [...[...leg1.fillets].reverse(), fillet, ...leg2.fillets],
+  };
+  const members = [...design.members.filter((m) => m.id !== m1.id && m.id !== m2.id), merged];
+  // joints AT the corner vanish with it; movers elsewhere follow the merge
+  // (movers may be formed — receivers can't, guarded above)
+  const joints = design.joints
+    .filter((j) => j.nodeId !== nodeId)
+    .map((j) => (j.mover === m1.id || j.mover === m2.id ? { ...j, mover: merged.id } : j));
+  // the corner node becomes the bend control point — prune it, and drop any
+  // tape measure pinned to it (its anchor no longer exists)
+  const nodes = design.nodes.filter((n) => n.id !== nodeId);
+  const pinsNode = (end: MeasurementEnd) => 'nodeId' in end && end.nodeId === nodeId;
+  const measurements = design.measurements.filter((ms) => !pinsNode(ms.a) && !pinsNode(ms.b));
+  const groups = design.groups.map((g) =>
+    g.memberIds.includes(m1.id) || g.memberIds.includes(m2.id)
+      ? {
+          ...g,
+          memberIds: [...g.memberIds.filter((x) => x !== m1.id && x !== m2.id), merged.id],
+        }
+      : g,
+  );
+  return { ...design, nodes, members, joints, measurements, groups };
+}
+
+/** Cover a junction that has no standard fitting with explicit fabricated
+ * anchor records — one per non-receiver incident member (one record per mover,
+ * like the existing multi-joint nodes), with the longest straight incident as
+ * the shared receiver. The node then reads as rigid fabricated hardware (the
+ * brown hub), never a conflict. Returns null when nothing can be recorded. */
+function recordFabricatedUnion(design: Design, nodeId: string): Design | null {
+  const inc = incidentMembers(design, nodeId);
+  if (inc.length < 2) return null;
+  const straight = inc.filter((m) => m.kind === 'straight');
+  const pool = straight.length ? straight : inc;
+  const receiver = [...pool].sort(
+    (a, b) => memberLengthM(design, b) - memberLengthM(design, a),
+  )[0]!;
+  const taken = new Set(design.joints.filter((j) => j.nodeId === nodeId).map((j) => j.mover));
+  const added: Joint[] = [];
+  for (const m of inc) {
+    if (m.id === receiver.id || taken.has(m.id)) continue;
+    added.push({
+      id: makeId('jt'),
+      nodeId,
+      receiver: receiver.id,
+      mover: m.id,
+      onBody: false,
+      mode: 'anchor',
+    });
+  }
+  if (!added.length) return null;
+  return { ...design, joints: [...design.joints, ...added] };
 }
 
 const clusterKey = (c: CrossingCluster): string => [...c.memberIds].sort().join('|');
 
-/** Join every red pipe-pipe crossing with rigid fabricated unions — the "Solve
- * intersections" action. STRAIGHT×STRAIGHT crossings only; formed splines are
- * out of scope. Crossings are clustered by point FIRST, so three, four, or more
- * pipes through one spot all join at the SAME node. Re-scans after every
- * cluster because splits rename member ids (id remapping is never tracked
- * across iterations); joined clusters are excluded from the next scan and
- * unjoinable ones skipped permanently, so the loop terminates and a second run
- * joins nothing (idempotent). Returns the solved design + how many pipes were
- * newly tied into a junction. */
+/** Solve every red warning the design's junction geometry can absorb — the
+ * "Solve intersections" action. PASS 1: overlap crossings (clustered by point,
+ * so three/four/more pipes through one spot join at the SAME node); pass 1
+ * re-scans after every cluster because splits rename member ids (id remapping
+ * is never tracked across iterations), joined clusters drop out of the scan,
+ * and unjoinable ones are skipped permanently. PASS 2: junction conflicts —
+ * a 2-end nonstandard corner merges into ONE heat-bent (formed) member bent at
+ * the junction; 3+ ends with no standard fitting get fabricated anchor records
+ * (the brown hub). Both passes are idempotent: a second run changes nothing.
+ * Returns the solved design + how many fixes were applied. */
 export function solveIntersections(design: Design): { design: Design; joined: number } {
   let d = design;
   let joined = 0;
@@ -304,6 +417,24 @@ export function solveIntersections(design: Design): { design: Design; joined: nu
       joined += r.joined;
     } else {
       skipped.add(clusterKey(cluster));
+    }
+  }
+
+  // PASS 2: junction conflicts (recordless nodes with no standard fitting) —
+  // re-resolve after every fix because a bend merge renames member ids
+  const skippedNodes = new Set<string>();
+  for (let guard = 0; guard < 1000; guard++) {
+    const conflict = resolveFittings(d).conflicts.find((c) => !skippedNodes.has(c.nodeId));
+    if (!conflict) break;
+    const inc = incidentMembers(d, conflict.nodeId);
+    const fixed =
+      (inc.length === 2 ? mergeCornerIntoBend(d, conflict.nodeId) : null) ??
+      recordFabricatedUnion(d, conflict.nodeId);
+    if (fixed) {
+      d = fixed;
+      joined++;
+    } else {
+      skippedNodes.add(conflict.nodeId);
     }
   }
   return { design: d, joined };

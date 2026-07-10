@@ -146,6 +146,29 @@ describe('anchorRendersAsHub (fabricated many-way union → brown sphere)', () =
     expect(anchorRendersAsHub(d, d.joints[0]!)).toBe(false);
   });
 
+  it('a solved 3-end no-through-run union (end-to-end records) is a hub', () => {
+    // three pipes ENDING at one node at odd angles — no straight run exists;
+    // solveIntersections covers it with end-to-end fabricated anchor records
+    const dir = (deg: number, t: number): Vec3 => {
+      const a = (deg * Math.PI) / 180;
+      return V(Math.cos(a) * t, 0, Math.sin(a) * t);
+    };
+    const base = straightDesign([{ id: 'a', a: dir(0, 0.4), b: V(0, 0, 0) }]);
+    base.nodes.push({ id: 'fb', position: dir(100, 0.4) }, { id: 'fc', position: dir(210, 0.4) });
+    base.members.push(
+      { id: 'b', kind: 'straight', nodeA: 'n1', nodeB: 'fb', size: '3/4"' },
+      { id: 'c', kind: 'straight', nodeA: 'n1', nodeB: 'fc', size: '3/4"' },
+    );
+    const d = solveIntersections(base).design;
+    expect(d.joints.length).toBe(2);
+    expect(junctionEndCount(d, 'n1')).toBe(3);
+    for (const jt of d.joints) {
+      expect(jt.onBody).toBe(false);
+      expect(anchorRendersAsHub(d, jt)).toBe(true); // 3 ends, no run → brown hub
+      expect(anchorRendersAsTee(d, jt)).toBe(false);
+    }
+  });
+
   it('hub pipes run FULL into the sphere — no pull-back gap at the junction', () => {
     const d = solvedX();
     const node = d.joints[0]!.nodeId;

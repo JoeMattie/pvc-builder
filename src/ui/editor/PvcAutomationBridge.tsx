@@ -75,6 +75,7 @@ export function PvcAutomationBridge() {
         selectedJointId: s.selectedJointId,
         drawSize: s.drawSize,
         drawingFromNodeId: s.drawingFromNodeId,
+        hoveredSceneItem: s.hoveredSceneItem,
         rendererEffects: s.rendererEffects,
         toolPaletteLayout: s.toolPaletteLayout,
         snap: s.snap,

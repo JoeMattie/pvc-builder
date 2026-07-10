@@ -46,8 +46,10 @@ Read seams: `getDoc`, `getEditor`, `getFittings` (`{fittings, conflicts}`), `get
 `setDrawSize`, `setProjection`, `setLengthsLocked`, `draw`/`finishPath`, `drawFormed`, `dragNode`,
 `moveMember`, `rotateMember`, `setJoinMode`, `makeManufacturedJoint`, `makeFreeHub`,
 `bendMember` (optional length-ref arg), `setBendLengthLock`, `setPivotAngle`, `importJson`,
-`solveIntersections` (joins every red straight×straight crossing with a rigid on-body anchor
-union; returns the joined count; `getIntersections` reads the flagged member ids),
+`solveIntersections` (joins every red straight×straight crossing with rigid fabricated unions AND
+fixes recordless junction conflicts — nonstandard 2-end corners become heat-bent formed members,
+3+-end no-fitting junctions get anchor records; returns the fix count; `getIntersections` reads
+the flagged member ids; `getEditor` also reports `hoveredSceneItem` for hover probes),
 `setSimulating`, `placeElastic`/`getElastics`/`setElasticTension`/`selectElastic`/`deleteElastic`,
 `setMannequin`/`setJointDamping` (v9-introduced fields in current schema v10), `setWireframe`, `setRendererEffects`, `setToolPaletteLayout` (`getEditor` reports `rendererEffects` + `toolPaletteLayout`), `setSelection`/`openJoinMenu`,
 group seams (`groupSelection`/`ungroupSelection`/`enterGroup`/`exitGroup`/`getEnteredGroup`) (scripted-screenshot/test helpers).

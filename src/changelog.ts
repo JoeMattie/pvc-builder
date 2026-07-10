@@ -11,6 +11,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.10',
+    date: '2026-07-09',
+    changes: [
+      'Solve intersections now fixes bad junctions, not just overlaps: two pipes meeting at a nonstandard angle merge into ONE heat-bent pipe (a sharp bend with real developed length + bend schedule in the cut list), and three-or-more-way junctions without a straight run become rigid fabricated unions (brown hub) — all warning-free, so solving takes a design to zero warnings.',
+      'The amber solve row now appears for unresolved junctions too (not only overlapping pipes), and 4-way junctions always draw as the brown hub — never as a stretched tee or wrap loop whose invisible hit zone stole clicks from nearby pipes.',
+    ],
+  },
+  {
     version: '0.3.9',
     date: '2026-07-09',
     changes: [
