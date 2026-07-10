@@ -569,7 +569,7 @@ export function EditorShell() {
         icon={Box}
         stackId="right"
         stackOrder={0}
-        title="View"
+        title=""
         titleLayout="inline"
       >
         <div className="flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-1">

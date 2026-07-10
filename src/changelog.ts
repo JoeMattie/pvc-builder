@@ -11,6 +11,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.7',
+    date: '2026-07-09',
+    changes: [
+      'Picking a view preset now fully resets the camera — back to the origin at the standard framing distance, looking from the chosen direction — instead of only changing the angle. The view toolbar header is icon-only.',
+    ],
+  },
+  {
     version: '0.3.6',
     date: '2026-07-09',
     changes: [

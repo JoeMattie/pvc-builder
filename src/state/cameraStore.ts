@@ -70,17 +70,17 @@ export const VIEW_PRESETS = {
 } as const satisfies Record<string, V3>;
 export type ViewName = keyof typeof VIEW_PRESETS;
 
-/** Snap the camera to a named view, keeping the current target + distance +
- * zoom (only the direction changes). */
+/** Snap the camera to a named view — a FULL camera reset, not just the angle:
+ * target returns to the origin at the default framing distance and zoom,
+ * looking along the preset direction. */
 export function setView(name: ViewName): void {
   const dir = VIEW_PRESETS[name];
-  const t = pose.target;
-  const dist = distance(pose.position, t) || Math.hypot(...ISO_DIR);
+  const dist = Math.hypot(...ISO_DIR);
   const len = Math.hypot(dir[0], dir[1], dir[2]) || 1;
   requestPose(
-    [t[0] + (dir[0] / len) * dist, t[1] + (dir[1] / len) * dist, t[2] + (dir[2] / len) * dist],
-    [...t],
-    pose.zoom,
+    [(dir[0] / len) * dist, (dir[1] / len) * dist, (dir[2] / len) * dist],
+    [0, 0, 0],
+    DEFAULT_ZOOM,
   );
 }
 

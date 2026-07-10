@@ -782,8 +782,9 @@ export function FloatingIsland({
       {dragButton('top')}
       <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
         {Icon && <Icon size={13} className="shrink-0" />}
-        {/* inline titles go icon-only below lg so single-row islands fit tablet/phone widths */}
-        <span className="hidden lg:inline">{panelTitle}</span>
+        {/* inline titles go icon-only below lg so single-row islands fit tablet/phone
+            widths; title="" renders no label at any width (icon-only island) */}
+        {panelTitle && <span className="hidden lg:inline">{panelTitle}</span>}
       </div>
       {titleActions}
       {collapseButton('top')}
