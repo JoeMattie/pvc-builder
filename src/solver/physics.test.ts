@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { createEmptyDesign, type Design, type Vec3 } from '../schema';
+import { wrapAllowanceM } from '../design/bom';
+import { createEmptyDesign, type Design, pipeSpec, type Vec3 } from '../schema';
 import {
   lowestExtentM,
   physicsFormedControlPoints,
@@ -337,10 +338,14 @@ describe('joint/elastic damping multiplier (schema v9)', () => {
     return g;
   };
 
-  it('the damping multiplier measurably changes the settled pull', () => {
-    const light = gapAfter(0.2, 250);
-    const heavy = gapAfter(5, 250);
-    // both finite/bounded, and the 25× damping change moves the settled gap
+  it('the damping multiplier measurably changes the pull', () => {
+    // Sampled MID-FLIGHT (60 frames): pipes now collide, so by ~90 frames the
+    // lightly-damped rig is contact-clamped tip-to-tip and both variants
+    // converge to the same contact-resting gap — the damping difference shows
+    // in how fast the band closes the gap, not in the final clamped distance.
+    const light = gapAfter(0.2, 60);
+    const heavy = gapAfter(5, 60);
+    // both finite/bounded, and the 25× damping change moves the in-flight gap
     expect(Number.isFinite(light) && Number.isFinite(heavy)).toBe(true);
     for (const g of [light, heavy]) expect(g).toBeLessThan(5);
     expect(Math.abs(heavy - light)).toBeGreaterThan(0.02);
@@ -348,6 +353,173 @@ describe('joint/elastic damping multiplier (schema v9)', () => {
 
   it('is identical at damping 1 vs undefined (no regression)', () => {
     expect(gapAfter(1, 250)).toBeCloseTo(gapAfter(undefined, 250), 3);
+  });
+});
+
+const OD = pipeSpec('3/4"').odM; // 0.02667
+
+/** Two UNJOINED perpendicular pipes, `upper` crossing above `lower`'s midpoint. */
+function crossedPipes(lowerY: number, upperY: number): Design {
+  const d = createEmptyDesign('d', 'stack');
+  d.nodes.push(
+    { id: 'la', position: V(-0.4, lowerY, 0) },
+    { id: 'lb', position: V(0.4, lowerY, 0) },
+    { id: 'ua', position: V(0, upperY, -0.4) },
+    { id: 'ub', position: V(0, upperY, 0.4) },
+  );
+  d.members.push(
+    { id: 'ml', kind: 'straight', nodeA: 'la', nodeB: 'lb', size: '3/4"' },
+    { id: 'mu', kind: 'straight', nodeA: 'ua', nodeB: 'ub', size: '3/4"' },
+  );
+  return d;
+}
+
+describe('pipe-pipe collision (on by default)', () => {
+  const midY = (p: Record<string, Vec3>, a: string, b: string) => (p[a]!.y + p[b]!.y) / 2;
+
+  it('(a) two separate assemblies dropped one above the other settle STACKED', () => {
+    // upper starts well clear of the lower (no build-time overlap → they collide)
+    startPhysics(crossedPipes(0.2, 0.5));
+    for (let i = 0; i < 400; i++) stepPhysics(1 / 60);
+    const p = physicsNodePositions();
+    for (const n of Object.values(p)) {
+      expect(Number.isFinite(n.x) && Number.isFinite(n.y) && Number.isFinite(n.z)).toBe(true);
+      expect(Math.hypot(n.x, n.y, n.z)).toBeLessThan(3); // no explosion
+    }
+    const lower = midY(p, 'la', 'lb');
+    const upper = midY(p, 'ua', 'ub');
+    expect(lower).toBeGreaterThan(0); // lower rests on the floor
+    expect(lower).toBeLessThan(0.05);
+    // upper rests ON the lower: centre-to-centre ≈ one OD (touching cylinders),
+    // neither interpenetrated nor bounced away
+    expect(upper - lower).toBeGreaterThan(0.7 * OD);
+    expect(upper - lower).toBeLessThan(1.6 * OD);
+  });
+
+  it('pipes ALREADY interpenetrating at build coexist (pair snapshot-filtered)', () => {
+    // same crossing but at the SAME height → penetrating by a full OD at build;
+    // the pair is vetoed, so both settle THROUGH each other flat on the floor
+    startPhysics(crossedPipes(0.5, 0.5));
+    for (let i = 0; i < 400; i++) stepPhysics(1 / 60);
+    const p = physicsNodePositions();
+    for (const n of Object.values(p)) {
+      expect(Number.isFinite(n.y)).toBe(true);
+      expect(Math.hypot(n.x, n.y, n.z)).toBeLessThan(3); // no eruption from the overlap
+    }
+    // BOTH rest at floor level (~one radius); a colliding pair would stack one
+    // pipe a full OD higher (see the stacking test above)
+    expect(midY(p, 'la', 'lb')).toBeLessThan(0.025);
+    expect(midY(p, 'ua', 'ub')).toBeLessThan(0.025);
+  });
+
+  it('(c) constraint-connected pairs generate no contacts — an overlapping wrapped mover does not explode', () => {
+    // mover lies almost PARALLEL along its receiver (deep capsule overlap the
+    // whole way): if the pivot pair produced contacts this would erupt instantly
+    const d = createEmptyDesign('d', 'overlap-pivot');
+    d.nodes.push(
+      { id: 'r0', position: V(-1, 0.6, 0) },
+      { id: 'r1', position: V(1, 0.6, 0) },
+      { id: 'w', position: V(0, 0.6, 0) },
+      { id: 'mf', position: V(0.9, 0.62, 0) },
+    );
+    d.members.push(
+      { id: 'recv', kind: 'straight', nodeA: 'r0', nodeB: 'r1', size: '3/4"' },
+      { id: 'mov', kind: 'straight', nodeA: 'w', nodeB: 'mf', size: '3/4"' },
+    );
+    d.joints.push({
+      id: 'j',
+      nodeId: 'w',
+      receiver: 'recv',
+      mover: 'mov',
+      onBody: true,
+      mode: 'wrapped',
+    });
+    startPhysics(d);
+    for (let i = 0; i < 240; i++) stepPhysics(1 / 60);
+    const p = physicsNodePositions();
+    for (const n of Object.values(p)) {
+      expect(Number.isFinite(n.x) && Number.isFinite(n.y) && Number.isFinite(n.z)).toBe(true);
+      expect(Math.hypot(n.x, n.y, n.z)).toBeLessThan(3); // posed near contact, no explosion
+    }
+    // the joint held: the wrap node is still on the receiver segment
+    const a = p.r0!;
+    const b = p.w!;
+    const c = p.r1!;
+    const ab = { x: c.x - a.x, y: c.y - a.y, z: c.z - a.z };
+    const t =
+      ((b.x - a.x) * ab.x + (b.y - a.y) * ab.y + (b.z - a.z) * ab.z) /
+      (ab.x * ab.x + ab.y * ab.y + ab.z * ab.z || 1);
+    const cp = { x: a.x + ab.x * t, y: a.y + ab.y * t, z: a.z + ab.z * t };
+    expect(Math.hypot(b.x - cp.x, b.y - cp.y, b.z - cp.z)).toBeLessThan(0.08);
+  });
+});
+
+/** A sawhorse: a tilted receiver welded onto two floor-standing legs (with feet),
+ * a wrap sliding on the receiver near the HIGH end, and an on-body anchor (a
+ * screwed tee with a branch) mid-run below it. Gravity drags the hanging mover
+ * down-slope toward the tee. */
+function slideStopRig(): Design {
+  const d = createEmptyDesign('d', 'slide-stop');
+  d.nodes.push(
+    { id: 'r0', position: V(0, 1.5, 0) },
+    { id: 'r1', position: V(2, 0.5, 0) },
+    { id: 'w', position: V(0.5, 1.25, 0) }, // wrap at t=0.25 along the receiver
+    { id: 'mf', position: V(0.5, 0.55, 0) }, // mover hangs 0.7 m down
+    { id: 'tee', position: V(1.5, 0.75, 0) }, // on-body anchor at t=0.75
+    { id: 'tb', position: V(1.5, 0.75, 0.4) }, // its branch (horizontal, out of plane)
+    // legs + feet so the frame stands still on the floor
+    { id: 'g0', position: V(0, 0.014, 0) },
+    { id: 'g1', position: V(2, 0.014, 0) },
+    { id: 'f0a', position: V(0, 0.014, -0.3) },
+    { id: 'f0b', position: V(0, 0.014, 0.3) },
+    { id: 'f1a', position: V(2, 0.014, -0.3) },
+    { id: 'f1b', position: V(2, 0.014, 0.3) },
+  );
+  d.members.push(
+    { id: 'recv', kind: 'straight', nodeA: 'r0', nodeB: 'r1', size: '3/4"' },
+    { id: 'mov', kind: 'straight', nodeA: 'w', nodeB: 'mf', size: '3/4"' },
+    { id: 'branch', kind: 'straight', nodeA: 'tee', nodeB: 'tb', size: '3/4"' },
+    { id: 'leg0', kind: 'straight', nodeA: 'r0', nodeB: 'g0', size: '3/4"' },
+    { id: 'leg1', kind: 'straight', nodeA: 'r1', nodeB: 'g1', size: '3/4"' },
+    { id: 'foot0a', kind: 'straight', nodeA: 'g0', nodeB: 'f0a', size: '3/4"' },
+    { id: 'foot0b', kind: 'straight', nodeA: 'g0', nodeB: 'f0b', size: '3/4"' },
+    { id: 'foot1a', kind: 'straight', nodeA: 'g1', nodeB: 'f1a', size: '3/4"' },
+    { id: 'foot1b', kind: 'straight', nodeA: 'g1', nodeB: 'f1b', size: '3/4"' },
+  );
+  d.joints.push(
+    { id: 'jw', nodeId: 'w', receiver: 'recv', mover: 'mov', onBody: true, mode: 'wrapped' },
+    { id: 'jt', nodeId: 'tee', receiver: 'recv', mover: 'branch', onBody: true, mode: 'anchor' },
+  );
+  return d;
+}
+
+describe('(b) sliding wrap stops at obstructions on its receiver', () => {
+  it('slides down-slope and hard-stops one hardware clearance short of the tee', () => {
+    // the same documented-estimate clearance build() uses (mover OD/2 + wrap allowance)
+    const clearance = OD / 2 + wrapAllowanceM('3/4"');
+    startPhysics(slideStopRig());
+    const along = (p: Record<string, Vec3>): number => {
+      // distance of the wrap node from the tee node, along the LIVE receiver axis
+      const ax = p.r1!.x - p.r0!.x;
+      const ay = p.r1!.y - p.r0!.y;
+      const az = p.r1!.z - p.r0!.z;
+      const al = Math.hypot(ax, ay, az) || 1;
+      return ((p.tee!.x - p.w!.x) * ax + (p.tee!.y - p.w!.y) * ay + (p.tee!.z - p.w!.z) * az) / al;
+    };
+    const d0 = along(physicsNodePositions());
+    expect(d0).toBeGreaterThan(1.0); // starts ~1.12 m up-slope of the tee
+    let minAlong = d0;
+    for (let i = 0; i < 400; i++) {
+      stepPhysics(1 / 60);
+      minAlong = Math.min(minAlong, along(physicsNodePositions()));
+    }
+    const dEnd = along(physicsNodePositions());
+    // it slid measurably down-slope…
+    expect(d0 - dEnd).toBeGreaterThan(0.3);
+    // …came to rest AT the stop (gravity keeps pushing it against the limit)…
+    expect(dEnd).toBeLessThan(clearance + 0.15);
+    // …and NEVER passed the clearance stop, at any sampled frame
+    expect(minAlong).toBeGreaterThan(clearance - 0.02);
   });
 });
 

@@ -176,34 +176,38 @@ export function intersectingMembers(design: Design): Set<string> {
   return hits;
 }
 
-/** One straight×straight pipe crossing: the overlapping pair plus its
- * closest-approach geometry (params along each member + the closest points on
- * each centre-line). */
-export interface StraightCrossing {
-  aId: string;
-  bId: string;
-  /** param of the crossing along a (0..1, nodeA→nodeB) */
-  s: number;
-  /** param of the crossing along b (0..1, nodeA→nodeB) */
+/** One side of a pipe-pipe crossing: the closest-approach geometry ON that
+ * member's own centre-line polyline. A straight member is one leg (index 0);
+ * a formed member has one leg per spline segment (nodeA → controls → nodeB). */
+export interface CrossingSide {
+  memberId: string;
+  /** polyline leg index carrying the closest point */
+  leg: number;
+  /** param of the closest point within that leg (0..1) */
   t: number;
-  /** closest point on a's centre-line */
-  pa: Vec3;
-  /** closest point on b's centre-line */
-  pb: Vec3;
+  /** the closest point on this member's centre-line */
+  point: Vec3;
 }
 
-/** Every overlapping STRAIGHT×STRAIGHT member pair with its closest-approach
- * geometry — the crossings `solveIntersections` joins. Formed members are not
- * scanned (their overlaps stay flagged for manual fixing). Same exclusions +
- * tolerance as `intersectingMembers`. */
-export function intersectingStraightPairs(design: Design): StraightCrossing[] {
-  const straight = design.members.filter((m) => m.kind === 'straight');
+/** One overlapping member pair's closest crossing. */
+export interface MemberCrossing {
+  a: CrossingSide;
+  b: CrossingSide;
+}
+
+/** Every overlapping member pair — straight AND formed — with its closest
+ * crossing (the minimum leg-to-leg approach), the junctions
+ * `solveIntersections` joins. Same exclusions + tolerance as
+ * `intersectingMembers`. */
+export function intersectingMemberPairs(design: Design): MemberCrossing[] {
+  const byMember = memberSegments(design);
+  const members = design.members;
   const joined = joinedPairs(design);
-  const out: StraightCrossing[] = [];
-  for (let i = 0; i < straight.length; i++) {
-    for (let j = i + 1; j < straight.length; j++) {
-      const mi = straight[i]!;
-      const mj = straight[j]!;
+  const out: MemberCrossing[] = [];
+  for (let i = 0; i < members.length; i++) {
+    for (let j = i + 1; j < members.length; j++) {
+      const mi = members[i]!;
+      const mj = members[j]!;
       if (
         mi.nodeA === mj.nodeA ||
         mi.nodeA === mj.nodeB ||
@@ -212,15 +216,24 @@ export function intersectingStraightPairs(design: Design): StraightCrossing[] {
       )
         continue;
       if (joined.has(pairKey(mi.id, mj.id))) continue;
-      const a1 = nodeById(design, mi.nodeA)?.position;
-      const a2 = nodeById(design, mi.nodeB)?.position;
-      const b1 = nodeById(design, mj.nodeA)?.position;
-      const b2 = nodeById(design, mj.nodeB)?.position;
-      if (!a1 || !a2 || !b1 || !b2) continue;
-      const reach = pipeSpec(mi.size).odM / 2 + pipeSpec(mj.size).odM / 2 - 1e-4;
-      const c = segmentSegmentClosest(a1, a2, b1, b2);
-      if (c.distSq < reach * reach)
-        out.push({ aId: mi.id, bId: mj.id, s: c.s, t: c.t, pa: c.pa, pb: c.pb });
+      const segsI = byMember.get(mi.id) ?? [];
+      const segsJ = byMember.get(mj.id) ?? [];
+      let best: { distSq: number; li: number; lj: number; c: SegmentClosest } | null = null;
+      for (let li = 0; li < segsI.length; li++) {
+        for (let lj = 0; lj < segsJ.length; lj++) {
+          const si = segsI[li]!;
+          const sj = segsJ[lj]!;
+          const reach = si.radiusM + sj.radiusM - 1e-4;
+          const c = segmentSegmentClosest(si.a, si.b, sj.a, sj.b);
+          if (c.distSq < reach * reach && (!best || c.distSq < best.distSq))
+            best = { distSq: c.distSq, li, lj, c };
+        }
+      }
+      if (best)
+        out.push({
+          a: { memberId: mi.id, leg: best.li, t: best.c.s, point: best.c.pa },
+          b: { memberId: mj.id, leg: best.lj, t: best.c.t, point: best.c.pb },
+        });
     }
   }
   return out;

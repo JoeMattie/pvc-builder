@@ -2,8 +2,11 @@
 // same union-find rigid body the kinematics uses) is ONE dynamic compound body
 // of capsules — so overlapping capsules at a union can't fight a constraint —
 // pivots are cylindrical 6DOF (wrapped: spin + slide along the receiver, with
-// friction) / point (free) constraints, bent pipes are dynamic rigid bodies (one
-// compound each), pipes never collide with each other (only the ground), the ground a static
+// friction, hard-stopped at the fittings/joints it would hit) / point (free)
+// constraints, bent pipes are dynamic rigid bodies (one compound each), pipes
+// COLLIDE with each other (bodies of different assemblies stack and rest on one
+// another) EXCEPT constraint-connected pairs and pairs that already interpenetrate
+// at build (see the exclusion-set machinery in build()), the ground a static
 // box temporarily lowered just below the model so nothing starts penetrating.
 // EXPERIMENT (branch sim-precision-rollback): the fixed-substep + CCD + velocity
 // cap precision (added to stop thin pipes tunnelling the floor) is rolled back to
@@ -19,8 +22,8 @@ import {
   capsule,
   createWorld,
   createWorldSettings,
-  disableCollision,
   enableCollision,
+  type Listener,
   MotionQuality,
   MotionType,
   pointConstraint,
@@ -33,9 +36,17 @@ import {
   type World,
 } from 'crashcat';
 import { vec3 } from 'mathcat';
+import { wrapAllowanceM } from '../design/bom';
 import { mannequinShapes } from '../design/mannequin';
 import { add, cross, dot, length, normalize, rotate, scale, sub } from '../geometry/math3';
-import { type Attachment, type Design, pipeSpec, type Quaternion, type Vec3 } from '../schema';
+import {
+  type Attachment,
+  type Design,
+  type NominalSize,
+  pipeSpec,
+  type Quaternion,
+  type Vec3,
+} from '../schema';
 
 const UP: Vec3 = { x: 0, y: 1, z: 0 };
 const GRAVITY = 9.81;
@@ -65,6 +76,17 @@ const ELASTIC_DAMPING = SCALE * 40;
 // A clamped collar grips the pipe, so it mostly stays put but slides under load /
 // on a steep tilt. TUNING KNOB — raise to grip harder, lower to slide freer.
 const SLIDE_FRICTION_FORCE = 5000;
+// A sliding wrap stops this far (metres) short of any obstruction on its receiver
+// (the receiver's ends, on-body anchors/tees, other wraps): the mover's own radius
+// plus the wrap-hardware allowance (the pipe consumed squishing + wrapping around
+// the receiver — see design/bom.ts). Documented-estimate basis, like the BOM's.
+const slideClearanceM = (moverOdM: number, receiverSize: NominalSize): number =>
+  moverOdM / 2 + wrapAllowanceM(receiverSize);
+// Two UNJOINED bodies whose capsules already overlap deeper than this at build
+// (metres) are a deliberate user overlap — snapshot the pair as non-colliding so
+// pre-existing coexistence doesn't explode. Barely-touching pairs (< this) still
+// collide, so pipes resting on each other keep resting.
+const PRE_OVERLAP_EPS_M = 0.0005;
 // EXPERIMENT (sim-precision-rollback): the three precision mechanisms added in
 // 258c139 to stop thin pipes "tunnelling" the floor, isolated by an 8-way sweep
 // of a settling welded elbow (see DECISIONS). Result: the VELOCITY CAP does
@@ -134,6 +156,49 @@ function quatFromTo(a: Vec3, b: Vec3): Quaternion {
 }
 const conj = (q: Quaternion): Quaternion => ({ x: -q.x, y: -q.y, z: -q.z, w: q.w });
 
+const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
+
+/** Closest distance between segments [p1,q1] and [p2,q2] (Ericson §5.1.9). */
+function segSegDist(p1: Vec3, q1: Vec3, p2: Vec3, q2: Vec3): number {
+  const d1 = sub(q1, p1);
+  const d2 = sub(q2, p2);
+  const r = sub(p1, p2);
+  const a = dot(d1, d1);
+  const e = dot(d2, d2);
+  const f = dot(d2, r);
+  const EPS = 1e-12;
+  let s = 0;
+  let t = 0;
+  if (a > EPS || e > EPS) {
+    if (a <= EPS) {
+      t = clamp01(f / e);
+    } else {
+      const c = dot(d1, r);
+      if (e <= EPS) {
+        s = clamp01(-c / a);
+      } else {
+        const b = dot(d1, d2);
+        const denom = a * e - b * b;
+        s = denom > EPS ? clamp01((b * f - c * e) / denom) : 0;
+        t = (b * s + f) / e;
+        if (t < 0) {
+          t = 0;
+          s = clamp01(-c / a);
+        } else if (t > 1) {
+          t = 1;
+          s = clamp01((b - c) / a);
+        }
+      }
+    }
+  }
+  const c1 = add(p1, scale(d1, s));
+  const c2 = add(p2, scale(d2, t));
+  return length(sub(c1, c2));
+}
+
+/** Symmetric numeric key for an (unordered) body-id pair. */
+const pairKey = (a: number, b: number): number => (a < b ? a * 0x100000 + b : b * 0x100000 + a);
+
 /** A resolved elastic band: each end is a body + the attachment's offset in that
  * body's local frame (scaled space, a mathcat tuple), plus the pre-scaled rest
  * length and spring constant. Built once at world-build; the per-frame force
@@ -162,6 +227,9 @@ interface Sim {
    * elastic axial damping in the per-frame force loop (joint friction is baked
    * into the constraints at build) */
   damping: number;
+  /** per-frame contact listener: vetoes contacts for the excluded body pairs
+   * (constraint-connected pairs + pairs already interpenetrating at build) */
+  listener: Listener;
   topoHash: string;
 }
 
@@ -233,11 +301,14 @@ function build(design: Design): Sim {
   const olMoving = addObjectLayer(settings, bpMoving);
   const olStatic = addObjectLayer(settings, bpStatic);
   enableCollision(settings, olMoving, olStatic);
-  // pipes never collide with each OTHER — only the ground. Members of one rigid
-  // assembly are a single compound body (their capsules overlap at unions by
-  // design), and members across a pivot overlap at the joint node; either way the
-  // joint constraints hold them, so pipe-vs-pipe contacts are only spurious jitter.
-  disableCollision(settings, olMoving, olMoving);
+  // pipes COLLIDE with each other: bodies of different assemblies stack and rest
+  // on one another. Members of one rigid assembly are a single compound body
+  // (their capsules overlap at unions by design, and a compound never
+  // self-collides); pairs that DO interpenetrate by design — the two bodies of a
+  // wrapped/free pivot at their joint node, and unjoined bodies the user drew
+  // overlapping — are vetoed per-pair via the Listener's onBodyPairValidate
+  // (see excludedPairs below), so only real, newly-formed contacts resolve.
+  enableCollision(settings, olMoving, olMoving);
   const world = createWorld(settings);
 
   // global joint/elastic friction-drag multiplier (higher = more settling).
@@ -303,6 +374,19 @@ function build(design: Design): Sim {
   const bodyOfMember = new Map<string, number>();
   const nodeSource = new Map<string, { memberId: string; local: [number, number, number] }>();
   const formedLocals = new Map<string, [number, number, number][]>();
+  // Body pairs whose contacts are vetoed (see the layer comment above): filled
+  // with each pivot constraint's body pair, then with every unjoined pair whose
+  // rest-pose capsules already interpenetrate (snapshot below).
+  const excludedPairs = new Set<number>();
+  // Each moving body's collision capsules at rest (metres) + its loose AABB, for
+  // the pre-existing-overlap snapshot. Formed members use their CHORD, exactly
+  // like the physics shape they get.
+  const bodyCapsules: {
+    bodyId: number;
+    caps: { a: Vec3; b: Vec3; r: number }[];
+    min: Vec3;
+    max: Vec3;
+  }[] = [];
   // per-body rest transform (scaled position + quaternion) — so an elastic
   // attached at a point ALONG a member can be resolved to that body's local frame
   const bodyRest = new Map<number, { pos: Vec3; quat: Quaternion }>();
@@ -424,6 +508,26 @@ function build(design: Design): Sim {
     }
     for (const id of memberIds) bodyOfMember.set(id, body.id);
 
+    // rest-pose capsules (metres) for the pre-existing-overlap snapshot
+    const caps = segs.map((s) => ({
+      a: sub(s.mid, scale(s.dir, s.len / 2)),
+      b: add(s.mid, scale(s.dir, s.len / 2)),
+      r: pipeSpec(s.m.size).odM / 2,
+    }));
+    const min = { x: Infinity, y: Infinity, z: Infinity };
+    const max = { x: -Infinity, y: -Infinity, z: -Infinity };
+    for (const c of caps) {
+      for (const p of [c.a, c.b]) {
+        min.x = Math.min(min.x, p.x - c.r);
+        min.y = Math.min(min.y, p.y - c.r);
+        min.z = Math.min(min.z, p.z - c.r);
+        max.x = Math.max(max.x, p.x + c.r);
+        max.y = Math.max(max.y, p.y + c.r);
+        max.z = Math.max(max.z, p.z + c.r);
+      }
+    }
+    bodyCapsules.push({ bodyId: body.id, caps, min, max });
+
     // each node's offset in the body's local frame, for reading positions back
     const bodyQuatV: Quaternion = {
       x: bodyQuat[0],
@@ -466,6 +570,9 @@ function build(design: Design): Sim {
     const bb = bodyOfMember.get(j.mover);
     const pos = nodePos.get(j.nodeId);
     if (ba === undefined || bb === undefined || !pos || ba === bb) continue;
+    // the two bodies of a pivot interpenetrate at the joint node by design —
+    // never generate contacts between them (the constraint holds them instead)
+    excludedPairs.add(pairKey(ba, bb));
     if (j.mode === 'free') {
       pointConstraint.create(world, { bodyIdA: ba, bodyIdB: bb, pointA: s3(pos), pointB: s3(pos) });
       continue;
@@ -474,8 +581,11 @@ function build(design: Design): Sim {
     let normalA = cross(axis, UP);
     if (length(normalA) < 1e-6) normalA = cross(axis, { x: 1, y: 0, z: 0 });
     normalA = normalize(normalA);
-    // slide bounds: the receiver's own extent (scaled, relative to the node =
-    // slide 0), so the wrap can't slide off the pipe it's wrapped around
+    // slide bounds: the free segment of the receiver this wrap starts in
+    // (scaled, relative to the node = slide 0). Obstructions are the receiver's
+    // own ends plus every OTHER joint on this receiver (on-body anchors/tees,
+    // other wraps, free hubs) — the wrap slides freely between them and
+    // hard-stops slideClearanceM short of each (real hardware has width).
     let sMin = 0;
     let sMax = 0;
     const recv = memberById.get(j.receiver);
@@ -487,10 +597,25 @@ function build(design: Design): Sim {
       sMin = Math.min(da, db);
       sMax = Math.max(da, db);
     }
+    for (const j2 of design.joints) {
+      if (j2.id === j.id || j2.receiver !== j.receiver) continue;
+      const p2 = nodePos.get(j2.nodeId);
+      if (!p2) continue;
+      const so = dot(sub(p2, pos), axis) * SCALE;
+      if (Math.abs(so) < 1e-9) continue; // co-located with this joint (shared hub) — not a wall
+      if (so < 0) sMin = Math.max(sMin, so);
+      else sMax = Math.min(sMax, so);
+    }
+    const mover = memberById.get(j.mover);
+    const clearS = recv && mover ? slideClearanceM(pipeSpec(mover.size).odM, recv.size) * SCALE : 0;
+    sMin = Math.min(sMin + clearS, 0);
+    sMax = Math.max(sMax - clearS, 0);
     // CYLINDRICAL joint (6DOF): free TRANSLATION (idx 0) + ROTATION (idx 3) along
     // the receiver axis, each with friction; the other 4 DOF fixed. So the wrap
-    // SPINS about AND SLIDES along the pipe it wraps, bounded to the pipe's span.
+    // SPINS about AND SLIDES along the pipe it wraps, bounded to its free segment.
+    // A fully-crowded segment (bounds collapse) fixes the translation DOF instead.
     // (limit convention: free = [-∞,+∞], fixed = [+∞,-∞], limited = finite min≤0≤max)
+    const slideFixed = sMax - sMin < 1e-9;
     sixDOFConstraint.create(world, {
       bodyIdA: ba,
       bodyIdB: bb,
@@ -500,10 +625,47 @@ function build(design: Design): Sim {
       axisY1: v3(normalA),
       axisX2: v3(axis),
       axisY2: v3(normalA),
-      limitMin: [sMin, Infinity, Infinity, -Infinity, Infinity, Infinity],
-      limitMax: [sMax, -Infinity, -Infinity, Infinity, -Infinity, -Infinity],
+      limitMin: [slideFixed ? Infinity : sMin, Infinity, Infinity, -Infinity, Infinity, Infinity],
+      limitMax: [
+        slideFixed ? -Infinity : sMax,
+        -Infinity,
+        -Infinity,
+        Infinity,
+        -Infinity,
+        -Infinity,
+      ],
       maxFriction: [SLIDE_FRICTION_FORCE * damping, 0, 0, PIVOT_FRICTION_TORQUE * damping, 0, 0],
     });
+  }
+
+  // ── pre-existing-overlap snapshot: any UNJOINED body pair whose rest-pose
+  // capsules already interpenetrate (deeper than PRE_OVERLAP_EPS_M) is a
+  // deliberate user overlap — veto its contacts so the coexistence doesn't
+  // explode on the first step. Pairs that only touch later still collide.
+  for (let i = 0; i < bodyCapsules.length; i++) {
+    const A = bodyCapsules[i]!;
+    for (let k = i + 1; k < bodyCapsules.length; k++) {
+      const B = bodyCapsules[k]!;
+      const key = pairKey(A.bodyId, B.bodyId);
+      if (excludedPairs.has(key)) continue;
+      if (
+        A.min.x > B.max.x ||
+        B.min.x > A.max.x ||
+        A.min.y > B.max.y ||
+        B.min.y > A.max.y ||
+        A.min.z > B.max.z ||
+        B.min.z > A.max.z
+      )
+        continue;
+      outer: for (const ca of A.caps) {
+        for (const cb of B.caps) {
+          if (segSegDist(ca.a, ca.b, cb.a, cb.b) < ca.r + cb.r - PRE_OVERLAP_EPS_M) {
+            excludedPairs.add(key);
+            break outer;
+          }
+        }
+      }
+    }
   }
 
   // ── elastic bands: resolve each attachment to a body + local offset (scaled),
@@ -557,6 +719,11 @@ function build(design: Design): Sim {
     formedLocals,
     elastics,
     damping,
+    // broadphase-level per-pair veto (cheapest filtering point crashcat offers);
+    // called with the two bodies of every potentially colliding pair each frame
+    listener: {
+      onBodyPairValidate: (a, b) => !excludedPairs.has(pairKey(a.id, b.id)),
+    },
     topoHash: physicsTopoHash(design),
   };
 }
@@ -634,13 +801,13 @@ export function stepPhysics(dt: number): void {
   if (!sim) return;
   applyElasticForces();
   if (!useSubsteps) {
-    updateWorld(sim.world, undefined, Math.min(dt, MAX_DT));
+    updateWorld(sim.world, sim.listener, Math.min(dt, MAX_DT));
     return;
   }
   accumulator = Math.min(accumulator + dt, MAX_SUBSTEPS * FIXED_DT);
   let steps = 0;
   while (accumulator >= FIXED_DT && steps < MAX_SUBSTEPS) {
-    updateWorld(sim.world, undefined, FIXED_DT);
+    updateWorld(sim.world, sim.listener, FIXED_DT);
     accumulator -= FIXED_DT;
     steps++;
   }

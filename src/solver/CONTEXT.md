@@ -18,7 +18,8 @@ There is **no `crashcat/` subdirectory** — `crashcat` is the npm package `cras
 `index.ts` → `../schema` (types only), `./kinematics`. `kinematics.ts` → `../geometry/math3`,
 `../schema`. `physics.ts` → `crashcat`, `crashcat/three` (debug renderer, via `ui/scene/PhysicsDebug`),
 `mathcat` (allocation-free `physicsNodePositions` hot path), `../geometry/math3`, `../schema`,
-`../design/mannequin` (pure shapes for the static mannequin body).
+`../design/mannequin` (pure shapes for the static mannequin body), `../design/bom`
+(`wrapAllowanceM` — the wrap-slide hardware clearance).
 
 ## What solve() actually does
 - **Unlocked (`lengthsLocked:false`) is NOT physics** — returns node positions verbatim (identity).
@@ -38,9 +39,18 @@ There is **no `crashcat/` subdirectory** — `crashcat` is the npm package `cras
   resolved angles/orientations back so sliders track a drag.
 - **`diagnostics.conflicts` is always `[]`** (vestigial placeholder).
 - **`physics.ts` gotchas**: everything simulated at `SCALE=20` (PVC is ~1cm); each welded assembly
-  = one `staticCompound` mirroring the kinematics union-find; pipe-vs-pipe collisions disabled
-  (pipes only hit the ground); floor lowered to `simGroundY` at sim start so nothing erupts;
-  fixed-substep + CCD stops thin pipes tunnelling. Mutable module-level `sim` state.
+  = one `staticCompound` mirroring the kinematics union-find; pipe-vs-pipe collisions ON
+  (bodies of different assemblies stack/rest on each other) EXCEPT an `excludedPairs` veto via the
+  world `Listener.onBodyPairValidate`: (1) the two bodies of every wrapped/free pivot (their
+  capsules interpenetrate at the joint by design) and (2) unjoined body pairs whose rest-pose
+  capsules already interpenetrate >0.5 mm at `build()` (deliberate user overlaps must not erupt —
+  snapshot, so contacts formed later still collide); floor lowered to `simGroundY` at sim start so
+  nothing erupts; fixed-substep + CCD stops thin pipes tunnelling. Mutable module-level `sim` state.
+- **Wrapped-pivot slide limits**: the cylindrical 6DOF's translation DOF is limited at `build()` to
+  the free segment of the receiver the wrap starts in — obstructions are the receiver's two ends
+  plus every OTHER joint on that receiver (on-body anchors/tees, wraps, hubs; a co-located joint at
+  the same spot is skipped) — each pulled in by `slideClearanceM` (mover OD/2 + the BOM's
+  `wrapAllowanceM`, a documented estimate). A fully-crowded segment fixes the slide DOF.
   Formed members' bend `controlPoints` (absolute world coords in the doc) get body-local offsets at
   `build()` (like `nodeSource`) and read back live via `physicsFormedControlPoints()` (memberId →
   world Vec3[]) — so bends ride their rigid body; on stop it returns `{}` and renderers revert to
@@ -66,6 +76,8 @@ There is **no `crashcat/` subdirectory** — `crashcat` is the npm package `cras
 - `solver.test.ts` — analytic acceptance: single pivot arc, drag-on-circle, ball-joint sphere,
   zig-zag chain, closed square loop (mobility −2, over-constrained, lengths held), determinism.
 - `physics.test.ts` — behavioral: free pipe falls & settles on floor, welded L stays rigid, no
-  eruption/tunnelling; `lowestExtentM`/`simGroundY` helpers.
+  eruption/tunnelling; pipe-pipe collision (two assemblies stack; pre-overlapped pairs coexist;
+  an overlapping pivot pair stays contact-free); a sliding wrap hard-stops one clearance short of
+  an on-body tee; `lowestExtentM`/`simGroundY` helpers.
 
 _Update this file if the solve() interface or the physics/kinematics split changes._

@@ -11,6 +11,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.15',
+    date: '2026-07-09',
+    changes: [
+      'Solve intersections now handles bent pipes: a curve crossing another pipe gets cut at the junction and joined as a rigid custom union (straight pipes stay intact as the receiving run; curve-on-curve junctions get fabricated unions and the brown hub). Two curves crossing exactly at their bend corners cut cleanly at the corner; only off-corner cuts inside a fold are refused.',
+      'Pipes now collide with each other in Play — separate assemblies rest and stack on one another — except where they meet at their own joints or already overlapped before you pressed Play. Verified stable and within frame budget on the densest T-rex examples.',
+      'Sliding wrapped pivots now stop when they hit something: the slide is limited to the free stretch of the receiving pipe, halting one hardware-clearance short of pipe ends, tees, and other joints in the way.',
+    ],
+  },
+  {
     version: '0.3.14',
     date: '2026-07-09',
     changes: [

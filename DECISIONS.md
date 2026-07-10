@@ -4,6 +4,23 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Formed-pipe solving, pipe collisions, slide limits (2026-07-09)
+
+- **`solveIntersections` covers formed members.** Detection generalizes to per-leg capsules
+  (`intersectingMemberPairs`); a formed member crossed mid-body is CUT (`splitFormedAt` — pure,
+  refusal-guarded) since formed pipes can never be on-body receivers; straights stay intact as the
+  receiving run. A cut exactly AT a bend corner is clean (the corner becomes the junction node; the
+  fold survives as the halves' meeting angle — two arcs screwed together at their apexes); only
+  off-corner cuts inside the fold window refuse.
+- **Pipe-pipe collisions are ON** (`olMoving↔olMoving`), filtered per-pair via the broadphase
+  pair listener: constraint-connected bodies (pivots interpenetrate at joints by design) and a
+  build-time snapshot of already-interpenetrating unjoined pairs are excluded; everything else
+  collides. Dense T-rex worst case 13.9 ms/frame — inside 60 fps budget; no tuning needed.
+- **Wrapped-pivot slides are LIMITED to their free segment**: obstructions (receiver end nodes +
+  every other joint on the receiver) projected onto the slide axis, pulled in by mover OD/2 +
+  `wrapAllowanceM`. Fully-crowded segments pin the DOF. Verified: stops exactly one clearance
+  short of an on-body tee, never passes.
+
 ## Solve pass 2: junction conflicts become bends or fabricated unions (2026-07-09)
 
 - **`solveIntersections` is two passes.** Pass 1 joins capsule overlaps (crossing clusters). Pass 2

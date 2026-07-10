@@ -43,6 +43,7 @@ import {
   setMemberLengthM,
   setMemberSize,
   setNodePosition,
+  splitFormedAt,
   splitMemberAt,
   startPath,
   subgraphExtent,
@@ -1147,5 +1148,74 @@ describe('elastics', () => {
     const { design: d2 } = addElastic(design, { memberId, t: 0.5 }, { nodeId }, 0.6, 150);
     const out = deleteMember(d2, memberId);
     expect(out.elastics).toHaveLength(0);
+  });
+});
+
+describe('splitFormedAt', () => {
+  /** A formed member (-0.5,0,0) → control (0,0,0.3) → (0.5,0,0). */
+  function formedDesign(fillet = 0.08): Design {
+    const d = createEmptyDesign('d', 'formed');
+    d.nodes.push({ id: 'fa', position: V(-0.5, 0, 0) }, { id: 'fb', position: V(0.5, 0, 0) });
+    d.members.push({
+      id: 'f',
+      kind: 'formed',
+      nodeA: 'fa',
+      nodeB: 'fb',
+      controlPoints: [V(0, 0, 0.3)],
+      size: '3/4"',
+      filletRadiiM: [fillet],
+    });
+    return d;
+  }
+
+  it('splits mid-leg: controls distribute in order and an empty half becomes straight', () => {
+    const d = formedDesign();
+    // mid of leg 0, well clear of the corner and the ends
+    const r = splitFormedAt(d, 'f', V(-0.25, 0, 0.15));
+    expect(r.nodeId).not.toBeNull();
+    expect(r.design.members).toHaveLength(2);
+    const h1 = r.design.members.find((m) => m.nodeA === 'fa')!;
+    const h2 = r.design.members.find((m) => m.nodeB === 'fb')!;
+    expect(h1.kind).toBe('straight'); // no controls left of the cut
+    expect(h2.kind).toBe('formed'); // carries the bend
+    if (h2.kind === 'formed') {
+      expect(h2.controlPoints).toHaveLength(1);
+      expect(h2.filletRadiiM).toEqual([0.08]);
+    }
+    expect(h1.nodeB).toBe(r.nodeId);
+    expect(h2.nodeA).toBe(r.nodeId);
+    const n = nodeById(r.design, r.nodeId!)!;
+    expect(n.position.x).toBeCloseTo(-0.25, 9);
+    expect(n.position.z).toBeCloseTo(0.15, 9);
+  });
+
+  it('reuses an existing node at the split point and STILL cuts the member', () => {
+    let d = formedDesign();
+    d = { ...d, nodes: [...d.nodes, { id: 'shared', position: V(-0.25, 0, 0.15) }] };
+    const r = splitFormedAt(d, 'f', V(-0.25, 0, 0.15));
+    expect(r.nodeId).toBe('shared');
+    expect(r.design.members).toHaveLength(2); // cut happened, halves share `shared`
+  });
+
+  it('refuses a cut inside the fold window (near a bend corner)', () => {
+    const d = formedDesign(0.08);
+    const r = splitFormedAt(d, 'f', V(0.02, 0, 0.28)); // ~3cm from the corner < fillet
+    expect(r.nodeId).toBeNull();
+    expect(r.design).toBe(d);
+  });
+
+  it('refuses when an elastic attachment rides the member', () => {
+    const base = formedDesign();
+    const d = addElastic(base, { memberId: 'f', t: 0.5 }, { nodeId: 'fa' }, 0.3, 150).design;
+    const r = splitFormedAt(d, 'f', V(-0.25, 0, 0.15));
+    expect(r.nodeId).toBeNull();
+    expect(r.design).toBe(d);
+  });
+
+  it('returns the end node (no split) at an endpoint', () => {
+    const d = formedDesign();
+    const r = splitFormedAt(d, 'f', V(-0.5, 0, 0));
+    expect(r.nodeId).toBe('fa');
+    expect(r.design).toBe(d);
   });
 });

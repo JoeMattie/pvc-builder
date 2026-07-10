@@ -1,13 +1,17 @@
 // "Solve intersections" — the red-warning auto-fix, in two passes.
 //
-// PASS 1 (overlaps): scans for pipe-pipe crossings, CLUSTERS crossings that
-// share one point (three, four, or more pipes through the same spot form ONE
-// junction), and joins every pipe of each cluster to a single node with RIGID
-// unions: physically the user heat-wraps the pipes around each other and screws
-// them — the app's fabricated anchor semantics, so `resolveFittings` never
-// classifies the junction (the joint IS its fitting) and many-way crossings at
-// non-standard angles are first-class and warning-free. STRAIGHT×STRAIGHT only:
-// formed (heat-bent) splines are out of scope and their overlaps stay flagged.
+// PASS 1 (overlaps): scans for pipe-pipe crossings — straight AND formed
+// (heat-bent) members — CLUSTERS crossings that share one point (three, four,
+// or more pipes through the same spot form ONE junction), and joins every pipe
+// of each cluster to a single node with RIGID unions: physically the user
+// heat-wraps the pipes around each other and screws them — the app's
+// fabricated anchor semantics, so `resolveFittings` never classifies the
+// junction (the joint IS its fitting) and many-way crossings at non-standard
+// angles are first-class and warning-free. A formed pipe can never be an
+// on-body RECEIVER (that machinery is straight-only), so formed members are
+// CUT at the junction (`splitFormedAt`) and their halves share the node; cuts
+// that would land inside a bend's fold window are refused and that crossing
+// stays flagged instead of mangling the bend.
 //
 // PASS 2 (junction conflicts): nodes `resolveFittings` flags because no
 // standard fitting exists there and no joint record covers them — including
@@ -41,12 +45,13 @@ import {
   nodeById,
   ON_BODY_KEEP_TOL_M,
   setNodePosition,
+  splitFormedAt,
   splitMemberAt,
   weldNodes,
 } from './docOps';
 import { resolveFittings } from './fittings';
 import { makeId } from './ids';
-import { intersectingStraightPairs } from './intersections';
+import { intersectingMemberPairs } from './intersections';
 import { closestPointOnSegment } from './snapping';
 
 /** Clamped param (0..1) of the point on segment a→b closest to `p`. */
@@ -56,7 +61,8 @@ function paramOn(a: Vec3, b: Vec3, p: Vec3): number {
   return len2 > 1e-12 ? Math.max(0, Math.min(1, dot(sub(p, a), ab) / len2)) : 0;
 }
 
-/** One junction-to-be: every straight member crossing at (roughly) `point`. */
+/** One junction-to-be: every member (straight or formed) crossing at (roughly)
+ * `point`. */
 interface CrossingCluster {
   /** representative crossing point (the first crossing's capsule midpoint) */
   point: Vec3;
@@ -71,22 +77,48 @@ interface CrossingCluster {
  * along the same member stay separate clusters. */
 function crossingClusters(design: Design): CrossingCluster[] {
   const clusters: (CrossingCluster & { tol: number })[] = [];
-  for (const c of intersectingStraightPairs(design)) {
-    const mid = scale(add(c.pa, c.pb), 0.5);
-    const a = memberById(design, c.aId);
-    const b = memberById(design, c.bId);
+  for (const c of intersectingMemberPairs(design)) {
+    const mid = scale(add(c.a.point, c.b.point), 0.5);
+    const a = memberById(design, c.a.memberId);
+    const b = memberById(design, c.b.memberId);
     if (!a || !b) continue;
     const reach = pipeSpec(a.size).odM / 2 + pipeSpec(b.size).odM / 2;
     const found = clusters.find((cl) => length(sub(cl.point, mid)) <= Math.max(cl.tol, reach));
     if (found) {
       found.tol = Math.max(found.tol, reach);
-      if (!found.memberIds.includes(c.aId)) found.memberIds.push(c.aId);
-      if (!found.memberIds.includes(c.bId)) found.memberIds.push(c.bId);
+      if (!found.memberIds.includes(c.a.memberId)) found.memberIds.push(c.a.memberId);
+      if (!found.memberIds.includes(c.b.memberId)) found.memberIds.push(c.b.memberId);
     } else {
-      clusters.push({ point: mid, tol: reach, memberIds: [c.aId, c.bId] });
+      clusters.push({ point: mid, tol: reach, memberIds: [c.a.memberId, c.b.memberId] });
     }
   }
   return clusters;
+}
+
+/** Closest approach of `member`'s centre-line polyline to `p`: the point, and
+ * the ARC distance from it to each end (formed legs summed; a straight member
+ * is one leg). */
+function closestOnMember(
+  design: Design,
+  member: Member,
+  p: Vec3,
+): { point: Vec3; arcToA: number; arcToB: number } | null {
+  const a = nodeById(design, member.nodeA)?.position;
+  const b = nodeById(design, member.nodeB)?.position;
+  if (!a || !b) return null;
+  const pts = member.kind === 'formed' ? [a, ...member.controlPoints, b] : [a, b];
+  const legLens: number[] = [];
+  let best = { d: Number.POSITIVE_INFINITY, leg: 0, point: a };
+  for (let i = 0; i < pts.length - 1; i++) {
+    legLens.push(length(sub(pts[i + 1]!, pts[i]!)));
+    const q = closestPointOnSegment(p, pts[i]!, pts[i + 1]!);
+    const dd = length(sub(q, p));
+    if (dd < best.d) best = { d: dd, leg: i, point: q };
+  }
+  let arcToA = length(sub(best.point, pts[best.leg]!));
+  for (let i = 0; i < best.leg; i++) arcToA += legLens[i]!;
+  const total = legLens.reduce((s, x) => s + x, 0);
+  return { point: best.point, arcToA, arcToB: total - arcToA };
 }
 
 /** Can `nodeId` move to `target` without detaching an existing on-body union at
@@ -166,17 +198,21 @@ function splitAtExistingNode(design: Design, memberId: string, nodeId: string): 
 }
 
 /** Join a whole cluster at ONE node. Members ENDING at the point contribute
- * their end node (the first becomes the junction; the rest are welded into it);
- * members passing THROUGH get an on-body anchor record while a free mover
- * exists and the node sits exactly on their centre-line, and are otherwise cut
- * at the node (the halves share it — the rigid default union — and provide
- * fresh movers for the pipes after them). Returns the joined design + how many
- * pipes were newly tied into the junction. */
+ * their end node (the first becomes the junction; the rest are welded into it).
+ * STRAIGHT members passing THROUGH get an on-body anchor record while a free
+ * mover exists and the node sits exactly on their centre-line, and are
+ * otherwise cut at the node; FORMED members passing through are always cut
+ * (`splitFormedAt` — a formed pipe can never be an on-body receiver), their
+ * halves sharing the junction node. Returns the joined design + how many pipes
+ * were newly tied into the junction. */
 function joinCluster(design: Design, cluster: CrossingCluster): { design: Design; joined: number } {
   interface Info {
     id: string;
+    kind: Member['kind'];
     endDist: number;
     endNode: string;
+    /** closest point on this member's own centre-line polyline */
+    point: Vec3;
   }
   const odOf = (id: string): number => {
     const m = memberById(design, id);
@@ -186,14 +222,15 @@ function joinCluster(design: Design, cluster: CrossingCluster): { design: Design
   const infos: Info[] = [];
   for (const id of cluster.memberIds) {
     const m = memberById(design, id);
-    if (m?.kind !== 'straight') continue;
-    const e = memberEndpoints(design, m);
-    if (!e) continue;
-    const t = paramOn(e.a, e.b, cluster.point);
+    if (!m) continue;
+    const c = closestOnMember(design, m, cluster.point);
+    if (!c) continue;
     infos.push({
       id,
-      endDist: Math.min(t, 1 - t) * length(sub(e.b, e.a)),
-      endNode: t < 0.5 ? m.nodeA : m.nodeB,
+      kind: m.kind,
+      endDist: Math.min(c.arcToA, c.arcToB),
+      endNode: c.arcToA <= c.arcToB ? m.nodeA : m.nodeB,
+      point: c.point,
     });
   }
   if (infos.length < 2) return { design, joined: 0 };
@@ -202,37 +239,40 @@ function joinCluster(design: Design, cluster: CrossingCluster): { design: Design
   const isEnder = (i: Info) => i.endDist <= odOf(i.id) / 2 + maxOd / 2;
   const enders = infos.filter(isEnder);
   let throughs = infos.filter((i) => !isEnder(i));
-  /** the junction target position: exactly on `ref`'s centre-line, so on-body
-   * records survive `reconcileBodyJoints` */
-  const targetOn = (d: Design, ref: Info): Vec3 | null => {
-    const m = memberById(d, ref.id);
-    const e = m ? memberEndpoints(d, m) : null;
-    return e ? closestPointOnSegment(cluster.point, e.a, e.b) : null;
-  };
 
   let d = design;
   let joined = 0;
   let nodeId: string;
   if (enders.length) {
-    // T case: a member already ENDS at the crossing — its end node is the junction
+    // T case: a member already ENDS at the crossing — its end node is the
+    // junction, pulled exactly onto a straight through's centre-line when one
+    // exists (the on-body invariant; formed throughs get cut wherever it sits)
     nodeId = enders[0]!.endNode;
-    const target = throughs.length ? targetOn(d, throughs[0]!) : null;
+    const target = throughs.find((x) => x.kind === 'straight')?.point ?? null;
     const cur = nodeById(d, nodeId)?.position;
     if (target && cur && length(sub(target, cur)) > 1e-9 && canMoveJunction(d, nodeId, target))
       d = setNodePosition(d, nodeId, target);
   } else {
-    // X case: split the member whose crossing point is FARTHEST from its ends
-    // (so the stubs stay long); the new node lands on another member's line
-    const s = throughs.reduce((best, x) => (x.endDist > best.endDist ? x : best));
-    throughs = throughs.filter((x) => x !== s);
-    const target = throughs.length ? targetOn(d, throughs[0]!) : null;
-    if (!target) return { design, joined: 0 };
-    const r = splitMemberAt(d, s.id, target);
+    // X case: cut a member and host the junction at its split node. A formed
+    // pipe can never be an on-body receiver, so when formed pipes cross here
+    // one of THEM is cut (straights stay intact as receivers); among
+    // candidates, cut the one whose crossing is FARTHEST from its ends
+    const pick = (list: Info[]) => list.reduce((best, x) => (x.endDist > best.endDist ? x : best));
+    const formedThroughs = throughs.filter((x) => x.kind === 'formed');
+    const host = formedThroughs.length ? pick(formedThroughs) : pick(throughs);
+    throughs = throughs.filter((x) => x !== host);
+    // the junction lands exactly on a straight through's centre-line when one
+    // exists (the on-body invariant); else on the host's own closest point
+    const target = throughs.find((x) => x.kind === 'straight')?.point ?? host.point;
+    const r =
+      host.kind === 'formed'
+        ? splitFormedAt(d, host.id, target)
+        : splitMemberAt(d, host.id, target);
     if (!r.nodeId) return { design, joined: 0 };
     if (r.design === d) {
-      // an existing node was reused — `s` wasn't actually split and still
-      // passes through the junction: join it like the other through pipes
-      throughs.unshift(s);
+      // an existing node was reused without a cut — the host still passes
+      // through the junction: join it like the other through pipes
+      throughs.unshift(host);
     } else {
       d = r.design;
     }
@@ -246,27 +286,47 @@ function joinCluster(design: Design, cluster: CrossingCluster): { design: Design
     joined++;
   }
 
-  // every THROUGH member: an on-body anchor record while the node sits on its
-  // centre-line and a free mover remains; otherwise cut it at the node
+  // every THROUGH member: a straight one gets an on-body anchor record while
+  // the node sits on its centre-line and a free mover remains (else it's cut at
+  // the node); a formed one is always cut, its halves sharing the node
   for (const t of throughs) {
     const m = memberById(d, t.id);
-    if (m?.kind !== 'straight') continue;
+    if (!m) continue;
     if (m.nodeA === nodeId || m.nodeB === nodeId) continue; // already incident
-    const e = memberEndpoints(d, m);
     const nPos = nodeById(d, nodeId)?.position;
-    if (!e || !nPos) continue;
-    const onLine = length(sub(closestPointOnSegment(nPos, e.a, e.b), nPos)) <= ON_BODY_KEEP_TOL_M;
-    if (onLine) {
-      const r = addBodyJoint(d, t.id, nodeId, 'anchor');
-      if (r.jointId) {
+    if (!nPos) continue;
+    if (m.kind === 'straight') {
+      const e = memberEndpoints(d, m);
+      if (!e) continue;
+      const onLine = length(sub(closestPointOnSegment(nPos, e.a, e.b), nPos)) <= ON_BODY_KEEP_TOL_M;
+      if (onLine) {
+        const r = addBodyJoint(d, t.id, nodeId, 'anchor');
+        if (r.jointId) {
+          d = r.design;
+          joined++;
+          continue;
+        }
+      }
+      const next = splitAtExistingNode(d, t.id, nodeId);
+      if (next !== d) {
+        d = next;
+        joined++;
+      }
+      continue;
+    }
+    // formed through: cut it at the junction; a refusal (fold window /
+    // unsupported references) leaves the crossing flagged — the re-scan puts
+    // that residue into the skip set instead of mangling the bend
+    const r = splitFormedAt(d, m.id, nPos);
+    if (!r.nodeId) continue;
+    if (r.nodeId === nodeId) {
+      if (r.design !== d) {
         d = r.design;
         joined++;
-        continue;
       }
-    }
-    const next = splitAtExistingNode(d, t.id, nodeId);
-    if (next !== d) {
-      d = next;
+    } else {
+      // the cut landed on a different (coincident) node — weld it in
+      d = weldNodes(r.design, r.nodeId, nodeId);
       joined++;
     }
   }

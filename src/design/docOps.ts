@@ -4,20 +4,21 @@
 // three.js / UI types here.
 import { add, cross, dot, length, normalize, scale, sub } from '../geometry/math3';
 import { developedLengthM } from '../geometry/pipe';
-import type {
-  Attachment,
-  Design,
-  Elastic,
-  Group,
-  Joint,
-  JointMode,
-  Measurement,
-  MeasurementEnd,
-  Member,
-  Node,
-  NominalSize,
-  Quaternion,
-  Vec3,
+import {
+  type Attachment,
+  type Design,
+  type Elastic,
+  type Group,
+  type Joint,
+  type JointMode,
+  type Measurement,
+  type MeasurementEnd,
+  type Member,
+  type Node,
+  type NominalSize,
+  pipeSpec,
+  type Quaternion,
+  type Vec3,
 } from '../schema';
 import { makeId } from './ids';
 import { closestPointOnSegment } from './snapping';
@@ -572,6 +573,145 @@ export function splitMemberAt(
     design: { ...b.design, members: b.design.members.filter((m) => m.id !== memberId) },
     nodeId: nId,
   };
+}
+
+/** Split a FORMED (heat-bent) member at the point on its polyline closest to
+ * `pos`: replace it with TWO members sharing a node AT `pos`, distributing the
+ * control points + `filletRadiiM` to the halves in polyline order (a half left
+ * with no control points becomes a plain straight member). Unlike
+ * `splitMemberAt`, an existing node within 1e-6 of `pos` is REUSED as the
+ * shared node and the member is still split — the solver cuts formed pipes at
+ * an existing junction this way. Joints referencing the member follow the half
+ * that carries their node; group membership transfers to both halves.
+ *
+ * A cut landing ON a bend corner (within `CORNER_CUT_EPS_M` of a control point)
+ * is CLEAN: the corner becomes the junction node itself, each half keeps its
+ * own side's interior controls, and the fold survives as the halves' meeting
+ * angle — two arcs wrapped + screwed together at their apexes is exactly the
+ * rigid-custom fabrication.
+ *
+ * REFUSED (`nodeId: null`, design unchanged) rather than corrupting when:
+ * `pos` falls inside a bend's fold window but OFF the corner (within the
+ * corner's fillet radius, or ~2 ODs for a sharp 0-fillet crease whose
+ * Catmull-Rom hug points occupy that span — cutting there would strand fold
+ * geometry and deform the bend), the cut would leave a sub-centimetre stub, an
+ * elastic attachment rides the member (its `{memberId, t}` param has no safe
+ * remap), or a joint references the member away from its endpoints. `pos` at
+ * an endpoint returns that node with no split. */
+export const CORNER_CUT_EPS_M = 0.002;
+
+export function splitFormedAt(
+  design: Design,
+  memberId: string,
+  pos: Vec3,
+): { design: Design; nodeId: string | null } {
+  const m = memberById(design, memberId);
+  if (m?.kind !== 'formed') return { design, nodeId: null };
+  const aPos = nodeById(design, m.nodeA)?.position;
+  const bPos = nodeById(design, m.nodeB)?.position;
+  if (!aPos || !bPos) return { design, nodeId: null };
+  // splitting at (or next to) an end is no split — reuse the end node
+  if (length(sub(pos, aPos)) < 1e-6) return { design, nodeId: m.nodeA };
+  if (length(sub(pos, bPos)) < 1e-6) return { design, nodeId: m.nodeB };
+  // an elastic's {memberId, t} attachment can't be remapped safely — refuse
+  const rides = (att: Attachment) => 'memberId' in att && att.memberId === memberId;
+  if (design.elastics.some((e) => rides(e.a) || rides(e.b))) return { design, nodeId: null };
+  // joints may reference the member only at its endpoints (movers / end-to-end
+  // records); anything else can't follow a half — refuse
+  if (
+    design.joints.some(
+      (j) =>
+        (j.receiver === memberId || j.mover === memberId) &&
+        j.nodeId !== m.nodeA &&
+        j.nodeId !== m.nodeB,
+    )
+  )
+    return { design, nodeId: null };
+
+  /** Build the two halves at `nodeId`, giving controls[0..c1) to half 1 and
+   * controls[c2..] to half 2, and remap joints/groups off the original id. */
+  const finishSplit = (
+    d0: Design,
+    cutPos: Vec3,
+    c1: number,
+    c2: number,
+  ): { design: Design; nodeId: string } => {
+    const existing = findNodeAt(d0, cutPos, 1e-6);
+    let d = d0;
+    let nodeId: string;
+    if (existing) {
+      nodeId = existing;
+    } else {
+      const r = addNode(d, cutPos);
+      d = r.design;
+      nodeId = r.nodeId;
+    }
+    const fillets = m.controlPoints.map((_, i) => m.filletRadiiM?.[i] ?? 0);
+    const half = (nodeA: string, nodeB: string, controls: Vec3[], f: number[]): Member =>
+      controls.length
+        ? {
+            id: makeId('m'),
+            kind: 'formed',
+            nodeA,
+            nodeB,
+            controlPoints: controls,
+            size: m.size,
+            filletRadiiM: f,
+          }
+        : { id: makeId('m'), kind: 'straight', nodeA, nodeB, size: m.size };
+    const h1 = half(m.nodeA, nodeId, m.controlPoints.slice(0, c1), fillets.slice(0, c1));
+    const h2 = half(nodeId, m.nodeB, m.controlPoints.slice(c2), fillets.slice(c2));
+    const members = [...d.members.filter((mm) => mm.id !== memberId), h1, h2];
+    const followHalf = (id: string, jNode: string) =>
+      id !== memberId ? id : jNode === m.nodeA ? h1.id : h2.id;
+    const joints = d.joints.map((j) =>
+      j.receiver === memberId || j.mover === memberId
+        ? {
+            ...j,
+            receiver: followHalf(j.receiver, j.nodeId),
+            mover: followHalf(j.mover, j.nodeId),
+          }
+        : j,
+    );
+    const groups = d.groups.map((g) =>
+      g.memberIds.includes(memberId)
+        ? { ...g, memberIds: [...g.memberIds.filter((x) => x !== memberId), h1.id, h2.id] }
+        : g,
+    );
+    return { design: { ...d, members, joints, groups }, nodeId };
+  };
+
+  // a cut AT a corner control point: the corner becomes the junction node and
+  // is CONSUMED (its fillet dropped); each half keeps its own side's controls
+  const cornerIdx = m.controlPoints.findIndex((c) => length(sub(pos, c)) < CORNER_CUT_EPS_M);
+  if (cornerIdx >= 0) {
+    const corner = m.controlPoints[cornerIdx]!;
+    if (length(sub(corner, aPos)) < 0.01 || length(sub(corner, bPos)) < 0.01)
+      return { design, nodeId: null };
+    return finishSplit(design, corner, cornerIdx, cornerIdx + 1);
+  }
+
+  // keep clear of every bend corner's fold window, and of the ends (no stubs)
+  const clear = (i: number) => Math.max(m.filletRadiiM?.[i] ?? 0, 2 * pipeSpec(m.size).odM);
+  for (let i = 0; i < m.controlPoints.length; i++) {
+    if (length(sub(pos, m.controlPoints[i]!)) < clear(i)) return { design, nodeId: null };
+  }
+  if (length(sub(pos, aPos)) < 0.01 || length(sub(pos, bPos)) < 0.01)
+    return { design, nodeId: null };
+
+  // the polyline leg carrying the closest point decides which controls go to
+  // which half
+  const pts = [aPos, ...m.controlPoints, bPos];
+  let cut = 0;
+  let bestD = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const dd = length(sub(closestPointOnSegment(pos, pts[i]!, pts[i + 1]!), pos));
+    if (dd < bestD) {
+      bestD = dd;
+      cut = i;
+    }
+  }
+  return finishSplit(design, pos, cut, cut);
 }
 
 /** Delete a member and prune any node it leaves with no incident members

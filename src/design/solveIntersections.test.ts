@@ -281,3 +281,162 @@ describe('solveIntersections', () => {
     expect(r.design).toBe(d);
   });
 });
+
+describe('solveIntersections — formed (bent) pipe crossings', () => {
+  /** A formed arc (-0.5,0,0) → control (0,0,0.3) → (0.5,0,0). */
+  function withFormed(
+    d: Design,
+    id: string,
+    a: Vec3,
+    b: Vec3,
+    controls: Vec3[],
+    fillet = 0.05,
+  ): Design {
+    const na = `${id}-a`;
+    const nb = `${id}-b`;
+    d.nodes.push({ id: na, position: a }, { id: nb, position: b });
+    d.members.push({
+      id,
+      kind: 'formed',
+      nodeA: na,
+      nodeB: nb,
+      controlPoints: controls,
+      size: '3/4"',
+      filletRadiiM: controls.map(() => fillet),
+    });
+    return d;
+  }
+
+  it('joins a formed×straight X mid-body: the formed pipe is cut, the straight receives', () => {
+    let d = straightDesign([{ id: 's', a: V(-0.25, 0, -0.4), b: V(-0.25, 0, 0.4) }]);
+    d = withFormed(d, 'f', V(-0.5, 0, 0), V(0.5, 0, 0), [V(0, 0, 0.3)]);
+    expect(intersectingMembers(d)).toEqual(new Set(['s', 'f']));
+
+    const r = solveIntersections(d);
+    expect(r.joined).toBe(1);
+    // the formed member split into a straight stub + the bend-carrying half;
+    // the straight run stays INTACT as the on-body receiver
+    expect(r.design.members).toHaveLength(3);
+    const kinds = r.design.members.map((m) => m.kind).sort();
+    expect(kinds).toEqual(['formed', 'straight', 'straight']);
+    expect(r.design.joints).toHaveLength(1);
+    const jt = r.design.joints[0]!;
+    expect(jt.mode).toBe('anchor');
+    expect(jt.onBody).toBe(true);
+    expect(jt.receiver).toBe('s');
+    // the junction sits exactly on the straight receiver's centre-line
+    const n = nodeById(r.design, jt.nodeId)!;
+    expect(n.position.x).toBeCloseTo(-0.25, 9);
+    expect(intersectingMembers(r.design).size).toBe(0);
+    expect(resolveFittings(r.design).conflicts).toHaveLength(0);
+    const again = solveIntersections(r.design);
+    expect(again.joined).toBe(0);
+    expect(again.design).toBe(r.design);
+  });
+
+  it('joins a formed pipe ENDING on a straight body (T) without a cut', () => {
+    let d = straightDesign([{ id: 's', a: V(-0.25, 0, 0), b: V(0.25, 0, 0) }]);
+    // the curve's end stops 6 mm above the run's centre-line
+    d = withFormed(d, 'f', V(0.4, 0, 0.4), V(0, 0, 0.006), [V(0.2, 0, 0.35)]);
+    expect(intersectingMembers(d).size).toBe(2);
+
+    const r = solveIntersections(d);
+    expect(r.joined).toBe(1);
+    expect(r.design.members).toHaveLength(2); // no cut — the end became the branch
+    expect(r.design.joints).toHaveLength(1);
+    const jt = r.design.joints[0]!;
+    expect(jt.mode).toBe('anchor');
+    expect(jt.onBody).toBe(true);
+    expect(jt.receiver).toBe('s');
+    expect(jt.mover).toBe('f');
+    // the curve's end node was pulled exactly onto the run's centre-line
+    const n = nodeById(r.design, jt.nodeId)!;
+    expect(n.position.y).toBeCloseTo(0, 9);
+    expect(n.position.z).toBeCloseTo(0, 9);
+    expect(intersectingMembers(r.design).size).toBe(0);
+    expect(resolveFittings(r.design).conflicts).toHaveLength(0);
+  });
+
+  it('joins a formed×formed crossing: both cut, fabricated records cover the junction', () => {
+    let d = createEmptyDesign('d', 'ff');
+    d = withFormed(d, 'f1', V(-0.5, 0, 0), V(0.5, 0, 0), [V(0, 0, 0.3)]);
+    d = withFormed(d, 'f2', V(-0.25, 0, -0.2), V(-0.24, 0, 0.45), [V(-0.26, 0, -0.05)]);
+    expect(intersectingMembers(d).size).toBe(2);
+
+    const r = solveIntersections(d);
+    expect(r.joined).toBe(2); // one cut welds in + the fabricated union records
+    expect(r.design.members).toHaveLength(4); // both curves cut at the junction
+    // every record is a fabricated end-to-end anchor at the ONE shared node
+    expect(r.design.joints.length).toBeGreaterThan(0);
+    const nodeIds = new Set(r.design.joints.map((j) => j.nodeId));
+    expect(nodeIds.size).toBe(1);
+    for (const jt of r.design.joints) {
+      expect(jt.mode).toBe('anchor');
+      expect(jt.onBody).toBe(false);
+    }
+    // all four halves are tied to the junction node
+    const nodeId = [...nodeIds][0]!;
+    for (const m of r.design.members) expect(m.nodeA === nodeId || m.nodeB === nodeId).toBe(true);
+    expect(intersectingMembers(r.design).size).toBe(0);
+    expect(resolveFittings(r.design).conflicts).toHaveLength(0);
+    const again = solveIntersections(r.design);
+    expect(again.joined).toBe(0);
+    expect(again.design).toBe(r.design);
+  });
+
+  it('refuses a crossing inside a fold window but OFF the corner: skip set, no corruption', () => {
+    // the straight crosses the formed LEG ~3.5 cm from the bend corner — inside
+    // the 0.08 fillet window but not at the corner, so cutting would strand
+    // fold geometry; the solver must leave the crossing alone
+    let d = straightDesign([{ id: 's', a: V(0.03, 0, -0.4), b: V(0.03, 0, 0.4) }]);
+    d = withFormed(d, 'f', V(-0.5, 0, 0), V(0.5, 0, 0), [V(0, 0, 0.3)], 0.08);
+    expect(intersectingMembers(d).size).toBe(2);
+
+    const r = solveIntersections(d);
+    expect(r.joined).toBe(0);
+    expect(r.design).toBe(d); // untouched — nothing mangled
+    expect(intersectingMembers(r.design).size).toBe(2); // still flagged for manual fixing
+  });
+
+  it('a crossing exactly AT a bend corner cuts there: the corner becomes the junction', () => {
+    // the straight passes exactly under the bend corner — a corner-exact cut is
+    // clean (the corner becomes the node; the fold survives as the halves'
+    // meeting angle), so this now joins as a rigid custom union
+    let d = straightDesign([{ id: 's', a: V(0, 0, -0.4), b: V(0, 0, 0.4) }]);
+    d = withFormed(d, 'f', V(-0.5, 0, 0), V(0.5, 0, 0), [V(0, 0, 0.3)], 0.08);
+    expect(intersectingMembers(d).size).toBe(2);
+
+    const r = solveIntersections(d);
+    expect(r.joined).toBeGreaterThanOrEqual(1);
+    // the formed member split at its corner into two halves meeting at a node
+    // there; every member ties into the junction, overlap + conflicts cleared
+    const corner = r.design.nodes.find(
+      (n) => Math.abs(n.position.z - 0.3) < 1e-6 && Math.abs(n.position.x) < 1e-6,
+    );
+    expect(corner).toBeTruthy();
+    expect(intersectingMembers(r.design).size).toBe(0);
+    expect(resolveFittings(r.design).conflicts).toHaveLength(0);
+    const again = solveIntersections(r.design);
+    expect(again.joined).toBe(0);
+  });
+
+  it('two arcs crossing at both their apex corners join at ONE node (user repro shape)', () => {
+    // both formed members' middle corners are the IDENTICAL point — arcs
+    // kissing at their apexes (the downloaded-doc case that returned joined: 0)
+    let d = straightDesign([]);
+    d = withFormed(d, 'f1', V(-0.4, 1.5, 0), V(0.4, 1.5, 0), [V(0, 1.8, 0)], 0);
+    d = withFormed(d, 'f2', V(0, 1.5, -0.4), V(0, 1.5, 0.4), [V(0, 1.8, 0)], 0);
+    expect(intersectingMembers(d).size).toBe(2);
+
+    const r = solveIntersections(d);
+    expect(r.joined).toBeGreaterThanOrEqual(1);
+    // one shared junction at the apex; both members cut there
+    const apexNodes = r.design.nodes.filter(
+      (n) => Math.abs(n.position.y - 1.8) < 1e-6 && Math.abs(n.position.x) < 1e-6,
+    );
+    expect(apexNodes).toHaveLength(1);
+    expect(intersectingMembers(r.design).size).toBe(0);
+    expect(resolveFittings(r.design).conflicts).toHaveLength(0);
+    expect(solveIntersections(r.design).joined).toBe(0);
+  });
+});
