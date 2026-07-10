@@ -36,8 +36,8 @@ export function SizeMenu() {
         data-viewport-occluder
         className="fixed z-50 w-40 rounded-lg border border-border bg-card p-1 shadow-lg"
         style={{
-          left: Math.min(menu.x, window.innerWidth - 180),
-          top: Math.min(menu.y, window.innerHeight - 120),
+          left: Math.max(8, Math.min(menu.x, window.innerWidth - 180)),
+          top: Math.max(8, Math.min(menu.y, window.innerHeight - 140)),
         }}
       >
         <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -48,7 +48,7 @@ export function SizeMenu() {
             key={size}
             type="button"
             onClick={() => pick(size)}
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs tabular-nums text-foreground hover:bg-accent hover:text-accent-foreground"
+            className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs tabular-nums text-foreground hover:bg-accent hover:text-accent-foreground"
           >
             {size}
           </button>

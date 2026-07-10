@@ -41,11 +41,15 @@ the geometry / fitting / physics math kept pure and unit-tested.
   simulation, with a tension slider.
 - **Groups** (G to group, double-click to enter/fade the rest), **copy/cut/paste**, multi-select
   move/rotate gizmos, endpoint drag + length arrows, arrow/numpad nudge.
+- **Real phone and tablet editing** — short phones get a safe-area bottom tool dock; every device
+  gets labeled command sheets, visible Finish/Cancel/exact-length controls, touch multi-select,
+  long-press context actions, and explicit one-finger Edit/Orbit modes. Two fingers always
+  pinch-zoom and pan without editing the design.
 - **BOM / cut list** — centre-to-centre spans minus fitting take-offs, wrapped-union + end-cap
   allowances, manufactured-tee run splitting, CSV export.
 - **Units** pill (mm / cm / decimal & fractional inch), **dark mode** by default, camera view
   presets, JSON export/import, autosave (IndexedDB), and bundled examples (articulated arm, cube
-  frame, T-rex rigid / universal-pivot / random-wrapped).
+  frame, a mannequin-worn Raptor clone, and T-rex rigid / universal-pivot / random-wrapped).
 - **Fast on dense models** — nearly all repeated geometry is instanced, so even the ~3,000-part
   T-rex renders in a handful of draw calls.
 
@@ -80,7 +84,7 @@ npm run preview      # serve the production build
 npm run typecheck    # tsc --noEmit
 npm run lint         # biome check .
 npm run test         # vitest run  (the primary loop)
-npm run e2e          # playwright smoke against the built app
+npm run e2e          # desktop + five-project mobile Playwright matrix against the built app
 ```
 
 **Definition of done for any change:** `typecheck`, `lint`, and `test` green, `build` succeeds and the
@@ -98,7 +102,8 @@ physics logic can be tested without three.js/React/engine types leaking in:
   feeds both rendering and the BOM.
 - **`solve(design, inputs, mode)`** — the kinematics solver boundary (no three/UI/physics types
   cross it); acceptance-tested against closed-form.
-- **`bom(design)`** — pure cut-list math.
+- **`bom(design)`** — pure cut-list math; display formatting comes from neutral `src/units.ts`,
+  never the UI layer.
 - **Rendering** (three.js/R3F) is the impure outer layer; **state** is Zustand + Zundo (undo) +
   Immer, split into a persisted/undoable document store and a transient editor store.
 
@@ -112,6 +117,9 @@ spec lives in `docs/planfiles/`.
 CI deploys `main` to Cloudflare Pages at **[pvc-builder.joemattie.com](https://pvc-builder.joemattie.com)**
 (production mirror at `pvc-builder.pages.dev`). Every push to `main` is versioned (see the in-app
 changelog / `src/changelog.ts`).
+
+Production builds use bounded Rolldown application/vendor chunks; no JavaScript chunk exceeds
+Vite's 500 kB warning threshold. Vitest omits serve/build-only plugins and exits cleanly after tests.
 
 ## Scope
 

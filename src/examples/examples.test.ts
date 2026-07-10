@@ -35,24 +35,16 @@ describe('bundled examples', () => {
     expect(wrapped.joints.length).toBeLessThan(pivots.joints.length);
   });
 
-  it('the five cumulative Raptor phases load, wear the mannequin, and grow monotonically', () => {
-    const ids = ['raptor-torso', 'raptor-tail', 'raptor-legs', 'raptor-neck', 'raptor-head'];
-    const designs = ids.map((id) => EXAMPLES.find((e) => e.id === id)!.load());
-    let prevMembers = 0;
-    designs.forEach((d, i) => {
-      // every phase is a mannequin-wearing, tuned, unlocked doc
-      expect(d.mannequin, ids[i]).toBe(true);
-      expect(d.jointDamping).toBeGreaterThan(0);
-      expect(d.lengthsLocked).toBe(false);
-      // cumulative: each phase adds members to the previous
-      expect(d.members.length, ids[i]).toBeGreaterThanOrEqual(prevMembers);
-      prevMembers = d.members.length;
-    });
-    // the tail/neck/head phases carry flex joints + elastic suspension bands
-    const head = designs[4]!;
-    expect(head.joints.length).toBeGreaterThan(0);
-    expect(head.elastics.length).toBeGreaterThan(0);
-    expect(head.members.length).toBeLessThan(800); // under the render cap
+  it('the Raptor Clone loads, wears the mannequin, and carries flex joints + elastics', () => {
+    const clone = EXAMPLES.find((e) => e.id === 'raptor-clone')!.load();
+    // a mannequin-wearing, tuned, unlocked doc
+    expect(clone.mannequin).toBe(true);
+    expect(clone.jointDamping).toBeGreaterThan(0);
+    expect(clone.lengthsLocked).toBe(false);
+    // wrapped flex joints + elastic suspension bands
+    expect(clone.joints.length).toBeGreaterThan(0);
+    expect(clone.elastics.length).toBeGreaterThan(0);
+    expect(clone.members.length).toBeLessThan(800); // under the render cap
   });
 
   it('the rigid T-rex produces a cut list (BOM stays pure on a large mesh)', () => {

@@ -23,7 +23,7 @@ Durable state in **`persistence`**; samples in **`examples`**.
 | `src/solver/` | `solve()` boundary, closed-form kinematics, CrashCat physics subsystem | [CONTEXT](../src/solver/CONTEXT.md) |
 | `src/state/` | zustand stores (appStore/editorStore) + the ONE action layer + `__pvc` seams | [CONTEXT](../src/state/CONTEXT.md) |
 | `src/persistence/` | Dexie project store, autosave, JSON export/import, prefs | [CONTEXT](../src/persistence/CONTEXT.md) |
-| `src/examples/` | Bundled sample designs (incl. the five cumulative Project Raptor mannequin templates) | [CONTEXT](../src/examples/CONTEXT.md) |
+| `src/examples/` | Bundled sample designs (incl. the in-app-authored Raptor clone) | [CONTEXT](../src/examples/CONTEXT.md) |
 | `src/ui/` | React chrome — panels, toolbars, router, `window.__pvc`, units, theme | [CONTEXT](../src/ui/CONTEXT.md) |
 | `src/ui/scene/` | three.js / R3F rendering layer + pure mesh-builder CAD-swap seams | [CONTEXT](../src/ui/scene/CONTEXT.md) |
 | `src/dev/` | **Dev-only** browser half of the live bridge (drives `window.__pvc` for an external process) | [CONTEXT](../src/dev/CONTEXT.md) |
@@ -36,7 +36,8 @@ The **dev-only live bridge** to a running session also lives outside `src/`: `vi
 front-end + `.mcp.json`) — see `src/dev/CONTEXT.md` and `tools/pvc-mcp/README.md`.
 
 ## Fast facts
-- **Everything stored is SI** (metres/radians); imperial is display-only (`src/ui/units.ts`).
+- **Everything stored is SI** (metres/radians); neutral display conversion lives in `src/units.ts`
+  (`src/ui/units.ts` is a compatibility barrel).
 - **`schemaVersion` is 10**; every schema change bumps it + adds a migration (`src/schema/`).
 - **Pure boundaries that must stay pure**: `resolveFittings`, `bom`, `solve()` — no three/UI/engine types.
 - **`window.__pvc`** (registered in `src/ui/editor/PvcAutomationBridge.tsx`) is the scripted

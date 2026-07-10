@@ -1,7 +1,7 @@
 {
   "name": "pvc-builder",
   "private": true,
-  "version": "0.3.16",
+  "version": "0.3.17",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -26,6 +26,7 @@
     "dexie": "4.4.4",
     "immer": "11.1.11",
     "lucide-react": "1.23.0",
+    "mathcat": "0.0.13",
     "postprocessing": "6.39.2",
     "radix-ui": "1.6.1",
     "react": "19.2.7",

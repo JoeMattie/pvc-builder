@@ -13,7 +13,7 @@ import {
   type NominalSize,
   pipeSpec,
 } from '../schema';
-import { formatLengthDisplay } from '../ui/units';
+import { formatLengthDisplay } from '../units';
 import { memberById, memberLengthM, nodeById } from './docOps';
 import { type FittingType, resolveFittings } from './fittings';
 import { analyzeFormed } from './formed';

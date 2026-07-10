@@ -71,6 +71,8 @@ export type Projection = 'ortho' | 'perspective';
 export type SceneStatus = 'design' | 'fabricate' | 'simulate';
 
 export type ToolPaletteLayout = 'horizontal' | 'vertical';
+export type NavigationMode = 'edit' | 'orbit';
+export type MobileSheet = 'more' | 'commands' | null;
 
 /** Sparse hover target for scene semantic labels. Keep this structural and
  * transient; it should never hold three.js objects or document data copies. */
@@ -135,6 +137,12 @@ export interface EditorState {
   rendererEffects: boolean;
   /** tool palette layout: horizontal bottom bar or vertical palette */
   toolPaletteLayout: ToolPaletteLayout;
+  /** Touch-only interaction choice. One finger edits in edit mode and orbits in orbit mode. */
+  navigationMode: NavigationMode;
+  /** Touch multi-select removes the need to hold Ctrl/Cmd. */
+  mobileMultiSelect: boolean;
+  /** The currently open compact-chrome sheet. */
+  mobileSheet: MobileSheet;
   /** the group currently ENTERED for editing (double-click) — its members are
    * interactive, everything else fades + is inert. null = not inside any group. */
   enteredGroupId: string | null;
@@ -187,6 +195,9 @@ export interface EditorState {
   toggleRendererEffects(): void;
   setToolPaletteLayout(layout: ToolPaletteLayout): void;
   toggleToolPaletteLayout(): void;
+  setNavigationMode(mode: NavigationMode): void;
+  setMobileMultiSelect(on: boolean): void;
+  setMobileSheet(sheet: MobileSheet): void;
   setEnteredGroup(groupId: string | null): void;
   addGuide(guide: Guide): void;
   clearGuides(): void;
@@ -229,6 +240,9 @@ const INITIAL = {
   wireframe: false,
   rendererEffects: getRendererEffectsPref(),
   toolPaletteLayout: 'horizontal' as ToolPaletteLayout,
+  navigationMode: 'edit' as NavigationMode,
+  mobileMultiSelect: false,
+  mobileSheet: null as MobileSheet,
   enteredGroupId: null as string | null,
   guides: [] as Guide[],
   guideDraft: null as { refOrigin: Vec3; dir: Vec3 } | null,
@@ -375,6 +389,15 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     set({
       toolPaletteLayout: get().toolPaletteLayout === 'horizontal' ? 'vertical' : 'horizontal',
     });
+  },
+  setNavigationMode(mode) {
+    set({ navigationMode: mode, marquee: null });
+  },
+  setMobileMultiSelect(on) {
+    set({ mobileMultiSelect: on });
+  },
+  setMobileSheet(sheet) {
+    set({ mobileSheet: sheet });
   },
   setEnteredGroup(groupId) {
     set({ enteredGroupId: groupId });

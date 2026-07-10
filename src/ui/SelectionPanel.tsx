@@ -18,7 +18,7 @@ import {
   JOINT_HARDWARE,
   wrapAllowanceM,
 } from '../design/bom';
-import { memberById, memberLengthM } from '../design/docOps';
+import { incidentMembers, memberById, memberLengthM } from '../design/docOps';
 import { analyzeFormed } from '../design/formed';
 import type { Design, Joint, JointMode, LengthDisplay, Member } from '../schema';
 import { useAppStore } from '../state/appStore';
@@ -28,6 +28,7 @@ import {
   resetPivots,
   setJoinMode,
   setMemberLength,
+  setMembersSize,
   setPivotAngle,
   swapJointReceiver,
 } from '../state/editorActions';
@@ -386,12 +387,32 @@ export function SelectionPanel() {
   // free — plus swap-receiver are configured here)
   const joint = design.joints.find((j) => j.mover === member.id);
   const canFree = !!joint; // free applies end-to-end and on-body (saddle eye bolt)
+  const endpointConnections = [member.nodeA, member.nodeB].filter(
+    (nodeId) => incidentMembers(design, nodeId).length > 1,
+  );
 
   return (
     <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-card px-3 py-2 shadow-sm">
       <span className="text-xs font-medium text-foreground tabular-nums">
         {member.size} {member.kind === 'formed' ? 'Curve' : 'Pipe'}
       </span>
+      <fieldset className="flex items-center gap-1" aria-label="Selected pipe size">
+        {(['1/2"', '3/4"'] as const).map((size) => (
+          <button
+            key={size}
+            type="button"
+            aria-pressed={member.size === size}
+            onClick={() => setMembersSize(selectedIds.length ? selectedIds : [member.id], size)}
+            className={`min-h-10 rounded-md px-2 text-xs font-semibold tabular-nums ${
+              member.size === size
+                ? 'bg-primary text-primary-foreground'
+                : 'border border-border text-muted-foreground hover:bg-accent'
+            }`}
+          >
+            {size}
+          </button>
+        ))}
+      </fieldset>
       <div className="h-5 w-px bg-border" />
 
       {member.kind === 'straight' ? (
@@ -494,6 +515,34 @@ export function SelectionPanel() {
           </div>
         </>
       )}
+
+      {endpointConnections.map((nodeId) => {
+        const end = nodeId === member.nodeA ? 'A' : 'B';
+        const endpointJoint = design.joints.find(
+          (candidate) => candidate.nodeId === nodeId && candidate.mover === member.id,
+        );
+        return (
+          <button
+            key={nodeId}
+            type="button"
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              useEditorStore.getState().openJoinMenu({
+                nodeId,
+                moverId: member.id,
+                x: rect.left,
+                y: rect.bottom + 6,
+              });
+            }}
+            className="flex min-h-10 items-center gap-2 rounded-md border border-border px-2 text-left text-xs hover:bg-accent"
+          >
+            <span className="font-semibold">End {end}</span>
+            <span className="text-muted-foreground">
+              {endpointJoint ? modeLabel(endpointJoint.mode) : 'Manufactured / anchor'}
+            </span>
+          </button>
+        );
+      })}
 
       <button
         type="button"

@@ -13,6 +13,8 @@ import stores/actions, but must not introduce new document write paths.
 | `editorStatus.ts` | Derives editor warning totals from fittings, intersections, and formed-pipe bend checks | Summary only; detailed diagnostics stay in their existing panels |
 | `useEditorHotkeys.ts` | Global keyboard, right-click, and context-menu behavior | Keep in sync with `../HelpPanel.tsx` and `../Pillbox.tsx`. Right button ends an in-progress draw/formed path on RELEASE, gated by `../scene/rightClickGesture.ts` (`wasRightDrag`) — an orbit right-drag must never abort the path |
 | `numericEntryKeys.ts` | THE shared allow-list for NUMERIC scene entries (draw length pill, guide offset pill, rotate typed-angle input) | `classifyNumericEntryKey`: digits `.` `-` `/` `'` `"` and **m/M only** insert; nav/edit keys stay in the entry; ANY other letter + Space = `'hotkey'` (cancel entry/op, then the global hotkey fires); Ctrl/Cmd/Alt combos pass through. `NUMERIC_ENTRY_ATTR`/`_DOM_PROPS` mark a real `<input>` (rotate angle) so the hotkey handler's typing guard doesn't swallow its cancelled-hotkey keys |
+| `MobileControls.tsx` | Compact command/More sheets, short-screen primary dock, Edit/Orbit switch, visible path completion and exact-length controls | Radix Dialog sheets; edits still call stores/actions |
+| `useResponsiveLayout.ts` | Responsive/visual viewport contract | `{ compactWidth, veryNarrow, shortViewport, visualViewport }`; listens to `visualViewport` resize/scroll |
 
 ## Depends on
 

@@ -437,3 +437,19 @@ The right mouse button never opens the browser context menu — it is reserved f
 | A **pipe body / lone end** | Opens the **size switcher** — change this pipe (or the whole multi-selection) between 1/2" and 3/4". |
 | While a **draw / curve path** is open | Ends the path (same as Enter/Esc). |
 | **Drag** with the right button | Orbits the camera. |
+
+---
+
+## Phone and tablet gestures
+
+- On short or very narrow phones, the bottom dock exposes **Select, Draw, Move, Rotate, and More**.
+  Tall phones keep the compact left tool rail. The command button at top-right contains undo/redo,
+  camera, view, snap, units, import/export, reset, help, effects, and theme commands.
+- **Edit** mode reserves one finger for the active CAD tool. **Orbit** mode uses one finger to rotate
+  the camera around the model point under the touch.
+- Two fingers always pinch to zoom and move together to pan. A second touch cancels an edit preview;
+  navigation gestures never add, select, drag, or bend pipe.
+- While drawing, visible **Exact length**, **Finish**, and **Cancel** controls replace the need for
+  Enter, Escape, or right-click.
+- Enable **Select multiple** in More to add/remove objects with taps. Long-pressing a pipe for 450 ms
+  opens its contextual size action; connection choices and pipe size also stay visible in Design.

@@ -1,5 +1,10 @@
 # Project Raptor — Technical Brief for a Loadable Template
 
+> Historical design brief. The five script-generated phase templates were replaced in v0.3.17 by
+> the single in-app-authored `src/examples/raptor-clone.json`. Keep this document as source/design
+> context; it is no longer a generator contract. Refresh the bundled example by editing/exporting it
+> in PVC Builder as described in `src/examples/CONTEXT.md`.
+
 A durable engineering brief for approximating Esmée Kramer's **"Project Raptor"** — a wearable,
 walk‑around raptor dinosaur costume built from a PVC/tube frame with articulated mechanisms — as a
 series of loadable PVC Builder templates the user can pose and simulate.

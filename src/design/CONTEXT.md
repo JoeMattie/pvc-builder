@@ -27,8 +27,8 @@ applied elsewhere via `appStore.updateCurrent` for undo/autosave.
 | `mannequin.ts` | Pure geometry of the static human collision/render body (v9-introduced doc flag, current schema v10) — the SHARED COORDINATE CONTRACT | `mannequinShapes(): MannequinShape[]` (`sphere`\|`capsule`\|`box` union at contract coords), `MANNEQUIN_ANCHORS` (named mount points: shoulder saddles `(±0.23,1.45,0)`, hip pivots `(±0.20,1.00,0)`, neck/tail roots, head center) |
 
 ## Depends on
-`../geometry/math3`, `../geometry/pipe`, `../schema`. **Exception:** `bom.ts` also imports
-`../ui/units` (`formatLength`) — the only design→ui edge; keep it that way.
+`../geometry/math3`, `../geometry/pipe`, `../schema`, and neutral `../units` formatting. There is no
+design→UI edge.
 
 ## Read before editing
 - **`setJoinMode`**: an end-to-end `anchor` is the DEFAULT rigid coupling and stores **no** joint

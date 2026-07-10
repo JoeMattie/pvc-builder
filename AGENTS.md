@@ -11,7 +11,9 @@ inferred and drawn at each joint (`resolveFittings` + procedural meshes) with co
 overlapping members outlined red; **pivots** with a locked-length `solve()` boundary running
 deterministic kinematics (FK + IK) — articulate via sliders + drag-to-rotate, lengths preserved, with a
 mobility readout; a **BOM/cut-list** with socket take-offs + CSV; JSON export/import; bundled examples;
-and a Playwright smoke on the built app. **The solver is closed-form kinematics, not CrashCat** — see
+and desktop/mobile Playwright suites on the built app. Phone editing has explicit Edit/Orbit modes,
+safe-area docks, labeled command sheets, exact-length controls, and two-finger navigation guards.
+**The solver is closed-form kinematics, not CrashCat** — see
 DECISIONS.md. Fitting take-off constants and reducer take-offs are documented estimates to replace with
 manufacturer tables. Future work lives in the planfile's spirit, not a fixed phase list. The
 authoritative spec is
@@ -73,7 +75,7 @@ npm run lint         # biome check .
 npm run lint:fix     # biome check --write .
 npm run test         # vitest run
 npm run test:watch
-npm run e2e          # playwright test (deferred to Phase 5; no e2e tests/config yet)
+npm run e2e          # built-app desktop + phone/tablet Playwright projects
 ```
 
 Run a single Vitest file: `npx vitest run src/path/to/file.test.ts`.
@@ -94,7 +96,8 @@ physics logic can be tested and reasoned about without three.js/React/engine typ
   `members` (a discriminated union of `straight` and heat-bent `formed` splines), and `joints` — one
   unified record per non-default pipe connection: `mode` `anchor` (rigid/welded), `wrapped` (a pivot
   that swivels about the receiving pipe's own axis), or `free` (an eye-bolt + cord ball joint, 3-DOF),
-  with `onBody` marking a branch on an intact run; **schema v5** (folded the old `pivots` + `wraps`).
+  with `onBody` marking a branch on an intact run; **schema v10** (folded the old `pivots` + `wraps`
+  in v5; later versions added viewport, measurements, elastics, mannequin/damping, and groups).
   Fitting dimensions live in a static **`PipeSpec`** constant table (ASTM SCH 40 values), **not** in
   the document.
 
@@ -152,6 +155,7 @@ physics logic can be tested and reasoned about without three.js/React/engine typ
   in a single `page.evaluate` (seams: `getDoc`, `getEditor`, `resolveFittings`, `getSolve`,
   `getConflicts`, `setTool`, `setSize`, `setLengthsLocked`, `setPivotAngle`, `loadExample`).
   Interactive driving only for gesture-feel checks (drag/snap).
-- **No creature-specific identifiers or UI strings** — generic examples only (e.g. "camera tripod",
-  "cube frame", "articulated arm"), carrying riglab's rule.
+- **No new creature-specific structural identifiers or UI strings** — generic examples by default
+  (e.g. "camera tripod", "cube frame", "articulated arm"). The legacy Raptor/T-rex display names
+  are documented exceptions; their structural ids remain generic.
 - Log the already-made architectural decisions in **DECISIONS.md** at Phase 0 (see planfile §10).

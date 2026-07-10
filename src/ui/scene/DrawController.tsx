@@ -34,6 +34,7 @@ import { placeAxis } from './axis';
 import { dominantAxisNormal, rayToGround, rayToPlane } from './ground';
 import { CLICK_SLOP_PX, startWindowPointerDrag } from './interactions';
 import { pickSnapPoint, SNAP_PX, snapDebug } from './pipePick';
+import { activeTouchCount, touchCancellationEpoch, touchCanEdit } from './touchGestures';
 
 const AXIS_COLOR = { x: '#d64545', y: '#3d9950', z: '#2a78d6' } as const;
 const SNAP_GREEN = '#12b886'; // snap indicator (dot / pill / pipe outline)
@@ -248,6 +249,7 @@ export function DrawController() {
 
   // hover preview between clicks (mesh event is fine when no button is down)
   const onMove = (e: ThreeEvent<PointerEvent>) => {
+    if (e.nativeEvent.pointerType === 'touch' && !touchCanEdit(e.nativeEvent)) return;
     if (e.nativeEvent.buttons !== 0) return; // a press drives its own window move
     const g = targetOf(e.ray, e.nativeEvent.clientX, e.nativeEvent.clientY, e.nativeEvent.shiftKey);
     if (!g) return;
@@ -275,8 +277,10 @@ export function DrawController() {
   // reason the handle drags use window listeners (see useGroundDrag).
   const onDown = (e: ThreeEvent<PointerEvent>) => {
     if (e.nativeEvent.button !== 0) return; // left only; middle pans, right rotates
+    if (!touchCanEdit(e.nativeEvent) || activeTouchCount() > 1) return;
     const startX = e.nativeEvent.clientX;
     const startY = e.nativeEvent.clientY;
+    const touchEpoch = touchCancellationEpoch();
     const liveTool = useEditorStore.getState().tool;
     // click+drag: press places the first point; a path already open just waits
     let startedPath = false;
@@ -355,6 +359,7 @@ export function DrawController() {
       liveTool !== 'elastic' &&
       liveTool !== 'guide';
     const move = (ev: PointerEvent) => {
+      if (ev.pointerType === 'touch' && activeTouchCount() > 1) return;
       if (liveTool === 'guide') {
         const g = targetFromClient(ev.clientX, ev.clientY);
         if (g) setGuideCursor(g);
@@ -381,6 +386,14 @@ export function DrawController() {
     };
     const up = (ev: PointerEvent) => {
       if (ev.button !== 0) return;
+      if (ev.pointerType === 'touch' && touchCancellationEpoch() !== touchEpoch) {
+        useEditorStore.getState().setMarquee(null);
+        return;
+      }
+      if (ev.pointerType === 'touch' && activeTouchCount() > 1) {
+        useEditorStore.getState().setMarquee(null);
+        return;
+      }
       const moved = Math.hypot(ev.clientX - startX, ev.clientY - startY);
       if (liveTool === 'guide') {
         // a click while positioning commits the guide; the pick-click doesn't

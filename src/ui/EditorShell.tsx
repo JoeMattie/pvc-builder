@@ -36,9 +36,11 @@ import {
   EditorWorkflowStatus,
   OverlapSolveRow,
 } from './editor/EditorWorkflowStatus';
+import { MobileControls } from './editor/MobileControls';
 import { PvcAutomationBridge } from './editor/PvcAutomationBridge';
 import { SimulationPanel } from './editor/SimulationPanel';
 import { useEditorHotkeys } from './editor/useEditorHotkeys';
+import { useResponsiveLayout } from './editor/useResponsiveLayout';
 import { HelpPanel } from './HelpPanel';
 import { JoinMenu } from './JoinMenu';
 import { downloadFile } from './lib/download';
@@ -57,21 +59,6 @@ const OBJECT_TREE_COMPACT_SIZE = { width: 304, height: 150 };
 const OBJECT_TREE_MIN_SIZE = { width: 224, height: 150 };
 const OBJECT_TREE_DOCKED_MAX_SIZE = { width: 350, height: 1000 };
 const OBJECT_TREE_COMPACT_MAX_SIZE = { width: 330, height: 220 };
-
-function useCompactChrome() {
-  const [compact, setCompact] = useState(() =>
-    typeof window === 'undefined' ? false : window.innerWidth < 640,
-  );
-
-  useEffect(() => {
-    const sync = () => setCompact(window.innerWidth < 640);
-    sync();
-    window.addEventListener('resize', sync);
-    return () => window.removeEventListener('resize', sync);
-  }, []);
-
-  return compact;
-}
 
 /** Autosave + warnings chips, positioned just right of the pinned document
  * island (outside its card). The island is `draggable={false}`, so only its
@@ -278,7 +265,9 @@ export function EditorShell() {
 
   const night = useThemeStore((s) => s.night);
   const toggleNight = useThemeStore((s) => s.toggleNight);
-  const compactChrome = useCompactChrome();
+  const responsive = useResponsiveLayout();
+  const compactChrome = responsive.compactWidth;
+  const bottomTools = compactChrome && (responsive.veryNarrow || responsive.shortViewport);
 
   useEditorHotkeys({ undo, redo });
 
@@ -446,7 +435,7 @@ export function EditorShell() {
 
       {/* autosave + warnings chips float free, directly right of the pinned
           document panel (not inside its box) */}
-      <DocumentSideChips />
+      {!compactChrome && <DocumentSideChips />}
 
       <FloatingIsland
         id="object-tree"
@@ -455,7 +444,8 @@ export function EditorShell() {
         defaultSize={compactChrome ? OBJECT_TREE_COMPACT_SIZE : OBJECT_TREE_SIZE}
         maxSize={objectTreeMaxSize}
         minSize={OBJECT_TREE_MIN_SIZE}
-        resizable
+        resizable={!compactChrome}
+        draggable={!compactChrome}
         handleLabel="Move objects panel"
         resizeLabel="Resize objects panel"
         icon={ListTree}
@@ -475,12 +465,14 @@ export function EditorShell() {
       <FloatingIsland
         id="workflow-panel"
         placement={compactChrome ? 'bottom-right' : 'right-stack'}
+        offset={bottomTools ? { y: -58 } : undefined}
         handleLabel="Move workflow panel"
         icon={Waypoints}
         stackId={compactChrome ? undefined : 'right'}
         stackOrder={1}
         title="Workflow"
         titleLayout="top"
+        draggable={!compactChrome}
         titleActions={
           workflow === 'fabricate' ? (
             <button
@@ -493,7 +485,14 @@ export function EditorShell() {
           ) : undefined
         }
       >
-        <div className="flex w-[min(92vw,24rem)] flex-col gap-1.5">
+        <div
+          className="flex w-[min(92vw,24rem)] flex-col gap-1.5"
+          style={
+            compactChrome
+              ? { maxHeight: Math.max(180, responsive.visualViewport.height - 190) }
+              : undefined
+          }
+        >
           <EditorWorkflowStatus activeWorkflow={workflow} onWorkflowChange={changeWorkflow} />
           <div className="h-px w-full bg-border/70" />
           {workflow === 'design' && (
@@ -530,18 +529,21 @@ export function EditorShell() {
       {/* tool pillbox — sizes to its content so every button is always visible;
           no resize, no scroll. Compact chrome docks it into the left measured
           stack as an icons-only vertical rail instead of floating bottom-center. */}
-      <FloatingIsland
-        id="tool-pillbox"
-        placement={compactChrome ? 'left-stack' : 'bottom-center'}
-        handleLabel="Move tool palette"
-        icon={Waypoints}
-        stackId={compactChrome ? 'left' : undefined}
-        stackOrder={compactChrome ? 4 : undefined}
-        title="Tools"
-        titleLayout={toolbarVertical ? 'top' : 'inline'}
-      >
-        <Pillbox layout={toolbarVertical ? 'vertical' : 'horizontal'} compact={compactChrome} />
-      </FloatingIsland>
+      {!bottomTools && (
+        <FloatingIsland
+          id="tool-pillbox"
+          placement={compactChrome ? 'left-stack' : 'bottom-center'}
+          draggable={!compactChrome}
+          handleLabel="Move tool palette"
+          icon={Waypoints}
+          stackId={compactChrome ? 'left' : undefined}
+          stackOrder={compactChrome ? 4 : undefined}
+          title="Tools"
+          titleLayout={toolbarVertical ? 'top' : 'inline'}
+        >
+          <Pillbox layout={toolbarVertical ? 'vertical' : 'horizontal'} compact={compactChrome} />
+        </FloatingIsland>
+      )}
 
       {/* snapping settings + display-units — bottom of the left stack */}
       <FloatingIsland
@@ -664,6 +666,15 @@ export function EditorShell() {
       </FloatingIsland>
 
       <HelpPanel open={helpOpen} onClose={() => setHelpOpen(false)} />
+      {compactChrome && (
+        <MobileControls
+          showBottomStrip={bottomTools}
+          onExportJson={exportJson}
+          onImportJson={() => fileInputRef.current?.click()}
+          onResetWorkspace={resetFloatingLayout}
+          onHelp={() => setHelpOpen(true)}
+        />
+      )}
     </div>
   );
 }

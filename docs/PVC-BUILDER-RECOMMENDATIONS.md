@@ -1,4 +1,9 @@
-# PVC Builder Recommendation Review
+# PVC Builder Recommendation Review (historical)
+
+> Status: retained as a dated audit, not a list of current gaps. Workflow tabs, persistent
+> semantics, stock planning, revision UI, interaction tests, context refreshes, and much of the
+> shell extraction described below have since shipped. Current mobile/runtime work is tracked in
+> `docs/planfiles/PLANFILE-mobile-and-hardening.md`.
 
 Date: 2026-07-09  
 Scope reviewed: product docs, schema/design core, state/action layer, React chrome, R3F scene, persistence, examples, and tests.  

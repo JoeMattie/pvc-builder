@@ -39,7 +39,7 @@ export function JoinMenu() {
     <button
       type="button"
       onClick={() => pick(onClick)}
-      className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs ${
+      className={`flex min-h-10 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs ${
         active
           ? 'bg-primary text-primary-foreground'
           : 'text-foreground hover:bg-accent hover:text-accent-foreground'
@@ -72,8 +72,8 @@ export function JoinMenu() {
         data-viewport-occluder
         className="fixed z-50 w-52 rounded-lg border border-border bg-card p-1 shadow-lg"
         style={{
-          left: Math.min(menu.x, window.innerWidth - 220),
-          top: Math.min(menu.y, window.innerHeight - 200),
+          left: Math.max(8, Math.min(menu.x, window.innerWidth - 220)),
+          top: Math.max(8, Math.min(menu.y, window.innerHeight - 240)),
         }}
       >
         <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
