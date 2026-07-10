@@ -38,6 +38,7 @@ import { CLICK_SLOP_PX, startWindowPointerDrag } from './interactions';
 import { buildPipeModel } from './pipeModel';
 import { pickSnapPoint, SNAP_PX } from './pipePick';
 import { canOpenRightClickMenu, recordPointerDebug } from './rightClickGesture';
+import { activeTouchCount, touchCancellationEpoch, touchCanEdit } from './touchGestures';
 
 const RADIAL_SEGMENTS = 20;
 const SELECT_BLUE = '#2a78d6';
@@ -160,6 +161,7 @@ function InstancedPipes() {
   const onSelectDown = editing // bend has its own pointerdown; it is not in `editing`
     ? (ev: ThreeEvent<PointerEvent>) => {
         if (ev.nativeEvent.button !== 0) return;
+        if (!touchCanEdit(ev.nativeEvent) || activeTouchCount() > 1) return;
         const id = memberOf(ev);
         if (!id || inactive(id)) return; // faded (non-entered-group) pipes are inert
         // the ground plane must not see this press — its window-up would
@@ -167,13 +169,43 @@ function InstancedPipes() {
         ev.stopPropagation();
         const startX = ev.nativeEvent.clientX;
         const startY = ev.nativeEvent.clientY;
-        const toggle = ev.nativeEvent.ctrlKey || ev.nativeEvent.metaKey;
+        const touchEpoch = touchCancellationEpoch();
+        const touch = ev.nativeEvent.pointerType === 'touch';
+        const toggle =
+          ev.nativeEvent.ctrlKey ||
+          ev.nativeEvent.metaKey ||
+          (touch && useEditorStore.getState().mobileMultiSelect);
+        let longPressed = false;
+        const timer = touch
+          ? window.setTimeout(() => {
+              if (touchCancellationEpoch() !== touchEpoch) return;
+              longPressed = true;
+              const store = useEditorStore.getState();
+              const ids =
+                store.selectedIds.includes(id) && store.selectedIds.length > 1
+                  ? store.selectedIds
+                  : [id];
+              store.openSizeMenu({ memberIds: ids, x: startX, y: startY });
+            }, 450)
+          : null;
+        const cancelTimer = () => {
+          if (timer !== null) window.clearTimeout(timer);
+        };
         const up = (ne: PointerEvent) => {
+          cancelTimer();
           if (ne.button !== 0) return;
+          if (ne.pointerType === 'touch' && touchCancellationEpoch() !== touchEpoch) return;
+          if (longPressed) return;
           if (Math.hypot(ne.clientX - startX, ne.clientY - startY) > CLICK_SLOP_PX) return;
           selectMember(id, { toggle });
         };
-        startWindowPointerDrag({ onMove: () => {}, onUp: up, onCancel: () => {} });
+        startWindowPointerDrag({
+          onMove: (ne) => {
+            if (Math.hypot(ne.clientX - startX, ne.clientY - startY) > 8) cancelTimer();
+          },
+          onUp: up,
+          onCancel: cancelTimer,
+        });
       }
     : undefined;
 

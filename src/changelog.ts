@@ -11,6 +11,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.17',
+    date: '2026-07-10',
+    changes: [
+      'Phone editing is now first-class: short and very narrow screens get a safe-area bottom tool dock, while every phone gets labeled command sheets, visible Finish/Cancel/exact-length controls, touch multi-select, long-press context actions, and pipe-size/connection controls in the inspector.',
+      'Touch navigation is explicit and conflict-free: Edit reserves one finger for CAD, Orbit rotates around the model under your finger, and two fingers always pinch/pan. A second touch cancels the active edit gesture and restores its pre-gesture document state.',
+      'Production hardening: direct mathcat dependency, neutral unit formatting (the BOM no longer imports UI), supported variance shadows, clean Vitest shutdown, and bounded Rolldown chunks below Vite’s 500 kB warning threshold.',
+      'Added desktop plus five phone/tablet Playwright projects with layout, touch, exact-length, command-sheet, and navigation-mutation protection. The old five phased Raptor templates are replaced by one in-app-authored Raptor Clone example.',
+    ],
+  },
+  {
     version: '0.3.16',
     date: '2026-07-10',
     changes: [

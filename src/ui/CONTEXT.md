@@ -15,7 +15,7 @@ chrome in draggable `chrome/FloatingIsland` wrappers.
 | File | Responsibility | Notes |
 |---|---|---|
 | `App.tsx` (15) | Top-level router (projects vs editor) | runs `refreshProjects()` on mount |
-| `EditorShell.tsx` | Editor screen — hosts viewport + all floating chrome, restores/persists doc viewport state | **narrow field subscriptions on purpose**; masks camera restore (and the renderer-effects toggle) with a short blurred overlay; Simulate-specific controls live in `editor/SimulationPanel.tsx`; Document panel (pinned top-left, `draggable`/`collapsible` false) holds back/name/export/import + workspace-reset + `EditorStatusChips`; `useCompactChrome()` (<640) reflows for phones — see "Compact chrome" below |
+| `EditorShell.tsx` | Editor screen — hosts viewport + all floating chrome, restores/persists doc viewport state | **narrow field subscriptions on purpose**; `useResponsiveLayout()` derives compact/short/very-narrow chrome and visual viewport sizing |
 | `chrome/` | Shared editor chrome wrappers | `FloatingIsland` provides top/inline title chrome, collapse, title-bar drag/resize, saved positions/sizes/collapse (sizes only apply when `resizable`), magnetic edge snapping (`snapFloatingPos` — panels MAY overlap; no overlap avoidance), workspace reset, viewport clamping, `draggable={false}` pinning (no handle, no saved pos), measured default stacks (`stackId`+`stackOrder` place non-user-moved panels under lower-order peers; mount + reset run a double rAF "settle" pass), a `bottom-right` placement, and `defaultCollapsed` (start collapsed when no collapse state is saved — reset restores it). Inline title text is icon-only below `lg`. Pure helpers tested in `FloatingIsland.test.ts` |
 | `editor/` | Extracted editor-shell helpers | workflow/status chrome, simulation panel, global hotkeys, and `PvcAutomationBridge` for `window.__pvc`; read `editor/CONTEXT.md` before editing |
 | `BomPanel.tsx` | Cut-list / BOM panel + CSV download | lengths via `formatLength(m, units)`; cut rows dominate — assumptions/sources are a collapsed-by-default `<details>` disclosure at the bottom |
@@ -31,7 +31,7 @@ chrome in draggable `chrome/FloatingIsland` wrappers.
 | `SnapPill.tsx` (133) | Bottom-left snap settings (grid + toggles) | Radix portal-backed menu so it is not clipped by floating chrome; grid options are unit-dependent |
 | `ProjectList.tsx` (103) | Landing screen — create/open/delete + grouped examples + a "Guide" (help) button | examples are display-grouped Basic/Raptor/T-Rex; changelog shows two newest versions until "Show older versions" is opened |
 | `ViewMenu.tsx` | Camera view preset dropdown | Radix portal-backed so it is not clipped by floating chrome overflow |
-| `units.ts` (168) | **Display-only** length/mass conversion + `formatLengthDisplay`/`parseLength` (mm/cm/in/in-frac, schema v6) | ⚠ everything stored is SI; `parseLength` reads `10mm`/`1/2"`/`10ft`… |
+| `units.ts` | Compatibility barrel for neutral `../units.ts` conversion + `formatLengthDisplay`/`parseLength` | ⚠ everything stored is SI; pure cores import the neutral module, never UI |
 | `UnitsPill.tsx` (—) | Display-units picker → writes `design.lengthDisplay` | display-only; default decimal inches; Radix portal-backed dropdown so island overflow can't clip it |
 | `theme.ts` (40) | Day/night — toggles `.dark` + supplies **literal three.js scene colors** | three.js can't read CSS vars; edit scene colors HERE |
 | `lib/download.ts` (—) | Client-side file download (no network) | `downloadFile(name, content, mime)` |
@@ -58,12 +58,15 @@ chrome in draggable `chrome/FloatingIsland` wrappers.
   above the inspector (`SelectionPanel`/`BendPill`/`ElasticPanel`, or a select-something
   hint), Fabricate → `BomPanel` (CSV in `titleActions`), Simulate → `SimulationPanel`+`PivotPanel`.
   There are NO separate inspector/cut-list/simulate islands anymore.
-- **Compact chrome (<640, `useCompactChrome`)** is responsive-only, no settings: the document row is
+- **Compact chrome (<640, `useResponsiveLayout`)** is responsive-only, no settings: the document row is
   a single line (export/import/reset hidden <`lg`, save chip icon-only <`lg`, narrower name); the
   tool palette docks into the left measured stack (order 4) as an icons-only vertical rail
   (`Pillbox compact`); Objects mounts `defaultCollapsed`; the workflow panel moves to `bottom-right`
   (no `stackId`); Snap + View stay `hidden sm:block`. Top/inline island titles and the grip-dot drag
   handle are hidden <`lg` (the title bar itself drags). Desktop ≥`lg` is visually unchanged.
+- Short visual viewports (`<720`) or very narrow phones (`<360`) replace the rail with the safe-area
+  bottom primary dock. `MobileControls` owns the command/More sheets and visual-viewport-aware draw
+  controls; compact panels ignore saved desktop drag/resize coordinates.
 - **Right mouse button is globally hijacked** by `editor/useEditorHotkeys.ts` to end a path + suppress
   the native context menu; scene pipe/joint menus open on right-button up through
   `scene/rightClickGesture.ts` only when a rotate drag did not happen. Keyboard shortcuts (V/D/P/C/M/R/B/T/Q/E/W/G, space,

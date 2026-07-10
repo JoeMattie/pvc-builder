@@ -4,6 +4,7 @@ import { type Ray, Raycaster, Vector2, Vector3 } from 'three';
 import type { Vec3 } from '../../schema';
 import { useAppStore } from '../../state/appStore';
 import { dominantAxisNormal, rayToGround, rayToPlane } from './ground';
+import { activeTouchCount, touchCancellationEpoch, touchCanEdit } from './touchGestures';
 
 // A click and an orbit-drag both start with a pointerdown on the ground; only
 // treat a pointerup as a "click" if the pointer barely moved.
@@ -78,9 +79,13 @@ export function useGroundDrag(
   const fwd = useMemo(() => new Vector3(), []);
 
   const start = (e: ThreeEvent<PointerEvent>) => {
+    if (!touchCanEdit(e.nativeEvent) || activeTouchCount() > 1) return;
     e.stopPropagation();
     if (controls) controls.enabled = false;
-    useAppStore.getState().beginGesture();
+    const app = useAppStore.getState();
+    const preGestureDoc = app.current;
+    const touchEpoch = touchCancellationEpoch();
+    app.beginGesture();
     setDragging(true);
     const el = gl.domElement;
 
@@ -97,6 +102,7 @@ export function useGroundDrag(
     let lastEv: PointerEvent | null = null;
 
     const move = (ev: PointerEvent) => {
+      if (ev.pointerType === 'touch' && touchCancellationEpoch() !== touchEpoch) return;
       const rect = el.getBoundingClientRect();
       ndc.set(
         ((ev.clientX - rect.left) / rect.width) * 2 - 1,
@@ -133,7 +139,10 @@ export function useGroundDrag(
     const onKeyUp = (ev: KeyboardEvent) => setMod(ev, false);
     const finish = () => {
       if (controls) controls.enabled = true;
-      opts?.onEnd?.();
+      const cancelled =
+        e.nativeEvent.pointerType === 'touch' && touchCancellationEpoch() !== touchEpoch;
+      if (cancelled && preGestureDoc) useAppStore.getState().updateCurrent(() => preGestureDoc);
+      else opts?.onEnd?.();
       useAppStore.getState().endGesture();
       setDragging(false);
     };

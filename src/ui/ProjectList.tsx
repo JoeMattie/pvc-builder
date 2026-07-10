@@ -199,32 +199,12 @@ const EXAMPLE_MENU: {
   {
     title: 'Raptor',
     description: 'Rough first pass for balance and motion sketching; not build-ready CAD.',
-    ids: ['raptor-torso', 'raptor-tail', 'raptor-legs', 'raptor-neck', 'raptor-head'],
+    ids: ['raptor-clone'],
     items: {
-      'raptor-torso': {
-        name: 'Frame',
-        stats: '18N · 26P',
-        description: 'P1 harness',
-      },
-      'raptor-tail': {
-        name: 'Tail',
-        stats: '23N · 31P · 2J',
-        description: 'P2 counterweight',
-      },
-      'raptor-legs': {
-        name: 'Legs',
-        stats: '29N · 37P · 8J',
-        description: 'P3 appendages',
-      },
-      'raptor-neck': {
-        name: 'Neck',
-        stats: '36N · 44P · 12J',
-        description: 'P4 front mass',
-      },
-      'raptor-head': {
-        name: 'Full',
-        stats: '42N · 51P · 13J',
-        description: 'P5 head + jaw',
+      'raptor-clone': {
+        name: 'Clone',
+        stats: '83N · 67P · 57J',
+        description: 'Mannequin-worn frame',
       },
     },
   },

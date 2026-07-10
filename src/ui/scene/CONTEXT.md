@@ -16,6 +16,7 @@ glide on snaps — never raw doc positions.
 | `ground.ts` | Raycasting helpers | `rayToGround`, `rayToPlane`, `dominantAxisNormal` |
 | `pipePick.ts` | Screen-space snap: nearest node / formed-bend CORNER / pipe under the cursor (draw + endpoint drag, any height) | `pickSnapPoint` (kinds `node`\|`corner`\|`pipe`; corners gate with the ends toggle), `SNAP_PX`, `snapDebug` |
 | `rightClickGesture.ts` | Shared right-button gesture gate + debug event ring | lets orbit win over pipe/joint menus AND the draw/formed right-click path-end (`wasRightDrag`, consumed by `ui/editor/useEditorHotkeys.ts`) after drag slop; `getPointerDebugEvents()` |
+| `touchGestures.ts` | Shared active-touch tracker and edit guard | second touch clears previews/menus; Edit vs Orbit arbitration stays transient |
 | `axis.ts` | Place a unit-Y primitive along a segment (from riglab) | `placeAxis(a,b)`, `orientY(dir)`, `orientZ(dir)` |
 | `instancing.ts` | Compose per-instance matrices for `InstancedMesh` from UNIT base geometry (radius/height 1); per-instance GHOST alpha for entered-group dimming | `cylinderMatrix(out,a,b,r)`, `sphereMatrix`, `ringMatrix`, `coneMatrix`, `wrapFrameMatrix` (joint-local basis), `hideMatrix`, `GROUP_DIM_ALPHA`, `instanceAlphaPatch`, `setInstanceAlphas` |
 

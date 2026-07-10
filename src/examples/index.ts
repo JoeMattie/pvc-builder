@@ -1,10 +1,6 @@
 import { type Design, migrateToLatest } from '../schema';
 import { articulatedArm, cubeFrame } from './generators';
-import raptorHead from './raptor-head.json';
-import raptorLegs from './raptor-legs.json';
-import raptorNeck from './raptor-neck.json';
-import raptorTail from './raptor-tail.json';
-import raptorTorso from './raptor-torso.json';
+import raptorClone from './raptor-clone.json';
 import trexPivots from './trex-pivots.json';
 import trexRigid from './trex-rigid.json';
 import trexWrapped from './trex-wrapped.json';
@@ -33,36 +29,10 @@ export const EXAMPLES: Example[] = [
     load: () => cubeFrame(),
   },
   {
-    id: 'raptor-torso',
-    name: 'Raptor · harness frame',
-    description:
-      'Phase 1 — hip/shoulder PVC frame that hangs on the mannequin (turn it on in Play)',
-    load: () => migrateToLatest(raptorTorso),
-  },
-  {
-    id: 'raptor-tail',
-    name: 'Raptor · + tail',
-    description:
-      'Phase 2 — adds a segmented counterweight tail with wrapped flex joints + elastics',
-    load: () => migrateToLatest(raptorTail),
-  },
-  {
-    id: 'raptor-legs',
-    name: 'Raptor · + legs',
-    description: 'Phase 3 — adds two decorative digitigrade legs hung at the hips',
-    load: () => migrateToLatest(raptorLegs),
-  },
-  {
-    id: 'raptor-neck',
-    name: 'Raptor · + neck',
-    description: 'Phase 4 — adds a forward neck (front counterweight) with head-up elastics + arms',
-    load: () => migrateToLatest(raptorNeck),
-  },
-  {
-    id: 'raptor-head',
-    name: 'Raptor · full costume',
-    description: 'Phase 5 — the balance-tuned raptor: head + jaw; hangs ~level on the mannequin',
-    load: () => migrateToLatest(raptorHead),
+    id: 'raptor-clone',
+    name: 'Raptor Clone',
+    description: 'Full mannequin-worn raptor frame with wrapped flex joints + elastic suspension',
+    load: () => migrateToLatest(raptorClone),
   },
   {
     id: 'trex-rigid',

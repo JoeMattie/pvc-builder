@@ -4,6 +4,30 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Mobile gesture and responsive-chrome contract (2026-07-10)
+
+- **Compact layout is derived, never stored:** `<640px` compact, `<360px` very narrow, and a
+  `visualViewport` height below 720px short. Short/very-narrow phones use a safe-area bottom tool
+  dock; tall phones retain the left rail. Compact panels ignore desktop drag/resize persistence.
+- **Touch navigation is explicit transient editor state:** Edit reserves one finger for CAD; Orbit
+  reserves one finger for cursor-anchored camera rotation; two touches always belong to camera
+  zoom/pan and cancel edit previews. `navigationMode`, `mobileMultiSelect`, and sheet visibility are
+  never persisted or undone.
+- **Mobile commands are visible paths, not gesture-only secrets:** labeled Radix sheets expose the
+  desktop command surface, drawing gets Finish/Cancel/exact-length controls, and pipe size plus
+  endpoint connection actions live in the inspector. Long-press is only a convenience shortcut.
+- **Pure BOM formatting no longer imports UI:** shared conversion lives at `src/units.ts`, with the
+  old UI path retained as a compatibility barrel. Direct imports require direct exact dependencies,
+  so `mathcat@0.0.13` is pinned alongside CrashCat.
+- **The Three.js Clock warning is dependency-owned:** `three-stdlib`'s EffectComposer/Water helpers
+  still instantiate deprecated `Clock`; the app does not. `three@0.185.1`, drei `10.7.7`, and the
+  postprocessing pins were already the latest compatible releases on 2026-07-10, so the warning is
+  documented until an upstream release removes it rather than suppressed or patched.
+- **Vitest does not load app serve/build plugins:** the hanging-process reporter traced shutdown to
+  native Vite plugin resources, not an app timer. Pure TS/TSX tests need none of React/Tailwind/the
+  dev bridge plugins; omitting them under `VITEST` removes the ten-second FILEHANDLE shutdown wait
+  while all 448 tests continue to pass.
+
 ## Formed-pipe solving, pipe collisions, slide limits (2026-07-09)
 
 - **`solveIntersections` covers formed members.** Detection generalizes to per-leg capsules

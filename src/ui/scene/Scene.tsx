@@ -8,7 +8,7 @@ import {
 } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
 import { lazy, Suspense, useEffect, useRef } from 'react';
-import { MOUSE, Quaternion, Vector3 } from 'three';
+import { MOUSE, Quaternion, TOUCH, Vector3 } from 'three';
 import { nodeById } from '../../design/docOps';
 import { marqueeFromDrag, memberSelectedBy, type Pt } from '../../design/marquee';
 import type { Vec3 } from '../../schema';
@@ -68,6 +68,7 @@ import {
 } from './rightClickGesture';
 import { SceneLabels } from './SceneLabels';
 import { MoveGizmo, RotateGizmo, SelectionHandles } from './SelectionHandles';
+import { activeTouchCount } from './touchGestures';
 import { WireframeLayer } from './WireframeLayer';
 
 /** The infinite reference grid. Sits at the design ground (y=0) normally; during
@@ -217,6 +218,7 @@ export function Scene() {
         zoomToCursor
         target={getCameraPose().target}
         mouseButtons={{ MIDDLE: MOUSE.PAN }}
+        touches={{ ONE: -1 as TOUCH, TWO: TOUCH.DOLLY_PAN }}
       />
       <CursorAnchorOrbit />
       <CameraPoseSync />
@@ -282,10 +284,14 @@ function CursorAnchorOrbit() {
     };
 
     const onDown = (e: PointerEvent) => {
-      if (e.button !== 2) return;
+      const touchOrbit =
+        e.pointerType === 'touch' &&
+        useEditorStore.getState().navigationMode === 'orbit' &&
+        activeTouchCount() === 1;
+      if (e.button !== 2 && !touchOrbit) return;
       const anchor = anchorAt(e.clientX, e.clientY);
       if (!anchor) return;
-      beginRightClickGesture(e.pointerId, e.clientX, e.clientY, 'orbit');
+      if (!touchOrbit) beginRightClickGesture(e.pointerId, e.clientX, e.clientY, 'orbit');
       drag.current = {
         pointerId: e.pointerId,
         anchor,
@@ -296,10 +302,16 @@ function CursorAnchorOrbit() {
     };
     const onMove = (e: PointerEvent) => {
       const d = drag.current;
-      if (!d || d.pointerId !== e.pointerId || (e.buttons & 2) === 0) return;
+      if (!d || d.pointerId !== e.pointerId) return;
+      const touchOrbit = e.pointerType === 'touch';
+      if (!touchOrbit && (e.buttons & 2) === 0) return;
+      if (touchOrbit && activeTouchCount() !== 1) {
+        drag.current = null;
+        return;
+      }
       const dx = e.clientX - d.lastX;
       const dy = e.clientY - d.lastY;
-      const orbiting = updateRightClickGesture(e.pointerId, e.clientX, e.clientY);
+      const orbiting = touchOrbit || updateRightClickGesture(e.pointerId, e.clientX, e.clientY);
       if (orbiting && !d.moved) {
         d.moved = true;
         recordPointerDebug('right-orbit-start', {
@@ -318,7 +330,7 @@ function CursorAnchorOrbit() {
     };
     const onUp = (e: PointerEvent) => {
       if (!drag.current || drag.current.pointerId !== e.pointerId) return;
-      finishRightClickGesture(e.pointerId);
+      if (e.pointerType !== 'touch') finishRightClickGesture(e.pointerId);
       drag.current = null;
     };
     const onContext = (e: MouseEvent) => {

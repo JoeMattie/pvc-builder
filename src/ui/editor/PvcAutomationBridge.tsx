@@ -61,6 +61,7 @@ import {
 } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
+import { readResponsiveLayout } from './useResponsiveLayout';
 
 /** Registers the public browser automation API used by smoke tests, scripted
  * checks, and the dev bridge. Methods are merged onto any existing hook object. */
@@ -83,6 +84,9 @@ export function PvcAutomationBridge() {
         hoveredSceneItem: s.hoveredSceneItem,
         rendererEffects: s.rendererEffects,
         toolPaletteLayout: s.toolPaletteLayout,
+        navigationMode: s.navigationMode,
+        mobileMultiSelect: s.mobileMultiSelect,
+        mobileSheet: s.mobileSheet,
         snap: s.snap,
         night: useThemeStore.getState().night,
       };
@@ -118,6 +122,10 @@ export function PvcAutomationBridge() {
         | 'guide',
     ) => useEditorStore.getState().setTool(tool);
     hook.setProjection = (p: 'ortho' | 'perspective') => useEditorStore.getState().setProjection(p);
+    hook.setNavigationMode = (mode: 'edit' | 'orbit') =>
+      useEditorStore.getState().setNavigationMode(mode);
+    hook.setMobileMultiSelect = (on: boolean) => useEditorStore.getState().setMobileMultiSelect(on);
+    hook.getResponsiveLayout = () => readResponsiveLayout();
     hook.setView = (name: ViewName) => setView(name);
     hook.setDrawSize = (size: '1/2"' | '3/4"') => useEditorStore.getState().setDrawSize(size);
     hook.setLengthsLocked = (locked: boolean) =>
