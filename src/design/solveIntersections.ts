@@ -45,7 +45,6 @@ import {
   weldNodes,
 } from './docOps';
 import { resolveFittings } from './fittings';
-import { MIN_BEND_RADIUS_FACTOR } from './formed';
 import { makeId } from './ids';
 import { intersectingStraightPairs } from './intersections';
 import { closestPointOnSegment } from './snapping';
@@ -320,23 +319,33 @@ function mergeCornerIntoBend(design: Design, nodeId: string): Design | null {
   const bPos = nodeById(design, leg2.far)?.position;
   if (!aPos || !bPos) return null;
 
-  // the corner's heat-form bend radius: the pipe's minimum, clamped so the
-  // fillet still fits the two legs meeting at the node
+  // A solved corner is a FOLD — heated and creased sharp, the way the user
+  // actually fabricates. Fillet 0 = a deliberate crease (exempt from the
+  // tight-bend warning by definition: `belowMin` requires a positive radius).
+  // The rendered spline is Catmull-Rom, so sharpness needs HUG points pinning
+  // the curve to the legs just before/after the corner — otherwise the fold
+  // renders as a wide arc regardless of fillet. Hug points sit ~1 OD out and
+  // carry ~0° deflection, which analyzeFormed ignores (below its bend epsilon).
   const near1 = leg1.controls[0] ?? aPos;
   const near2 = leg2.controls[0] ?? bPos;
-  const legFit = 0.9 * Math.min(length(sub(near1, nPos)), length(sub(near2, nPos)));
-  const fillet = Math.min(MIN_BEND_RADIUS_FACTOR * pipeSpec(m1.size).odM, legFit);
-  if (fillet <= 0) return null;
+  const len1 = length(sub(near1, nPos));
+  const len2 = length(sub(near2, nPos));
+  if (len1 <= 0 || len2 <= 0) return null;
+  const hug = Math.min(pipeSpec(m1.size).odM, 0.35 * len1, 0.35 * len2);
+  const hugPt = (toward: Vec3, legLen: number): Vec3 =>
+    add(nPos, scale(sub(toward, nPos), hug / legLen));
+  const fold: Vec3[] = [hugPt(near1, len1), { ...nPos }, hugPt(near2, len2)];
 
-  // polyline: leg1.far → (leg1 interior, reversed to far→node) → corner → leg2
+  // polyline: leg1.far → (leg1 interior, reversed to far→node) → hug → corner
+  // → hug → leg2 interior → leg2.far
   const merged: Member = {
     id: makeId('m'),
     kind: 'formed',
     nodeA: leg1.far,
     nodeB: leg2.far,
     size: m1.size,
-    controlPoints: [...[...leg1.controls].reverse(), { ...nPos }, ...leg2.controls],
-    filletRadiiM: [...[...leg1.fillets].reverse(), fillet, ...leg2.fillets],
+    controlPoints: [...[...leg1.controls].reverse(), ...fold, ...leg2.controls],
+    filletRadiiM: [...[...leg1.fillets].reverse(), 0, 0, 0, ...leg2.fillets],
   };
   const members = [...design.members.filter((m) => m.id !== m1.id && m.id !== m2.id), merged];
   // joints AT the corner vanish with it; movers elsewhere follow the merge

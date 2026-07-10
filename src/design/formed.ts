@@ -46,6 +46,11 @@ export interface FormedAnalysis {
   hasTightBend: boolean;
 }
 
+/** Control points deflecting less than this are spline-shaping guides (e.g.
+ * the hug points pinning a solved fold), not fabrication bends — the schedule
+ * skips them. ~1.5°. */
+const BEND_DEFLECTION_EPS_RAD = 0.026;
+
 export function analyzeFormed(design: Design, member: FormedMember): FormedAnalysis | null {
   const points = formedPoints(design, member);
   if (!points) return null;
@@ -55,9 +60,11 @@ export function analyzeFormed(design: Design, member: FormedMember): FormedAnaly
   const bends: BendInfo[] = [];
   for (let i = 1; i < points.length - 1; i++) {
     const filletRadiusM = fillets[i - 1] ?? 0;
+    const deflectionRad = deflectionAngleRad(points[i - 1]!, points[i]!, points[i + 1]!);
+    if (deflectionRad < BEND_DEFLECTION_EPS_RAD) continue; // guide point, not a bend
     bends.push({
       index: i - 1,
-      deflectionRad: deflectionAngleRad(points[i - 1]!, points[i]!, points[i + 1]!),
+      deflectionRad,
       dihedralRad: dihedrals[i - 1] ?? 0,
       filletRadiusM,
       belowMin: filletRadiusM > 0 && filletRadiusM < minBendRadiusM,

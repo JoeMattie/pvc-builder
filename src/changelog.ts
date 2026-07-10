@@ -11,6 +11,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.11',
+    date: '2026-07-09',
+    changes: [
+      'Solved corners now fold TIGHT: the bend creases within about one pipe diameter (a deliberate heat-and-fold, exempt from the tight-bend warning) instead of sweeping a wide arc, and the bend schedule still lists it as a single bend.',
+    ],
+  },
+  {
     version: '0.3.10',
     date: '2026-07-09',
     changes: [

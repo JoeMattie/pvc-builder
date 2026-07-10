@@ -174,7 +174,8 @@ describe('solveIntersections', () => {
     expect(r.design.members).toHaveLength(1);
     const m = r.design.members[0]!;
     expect(m.kind).toBe('formed');
-    if (m.kind === 'formed') expect(m.controlPoints).toHaveLength(1);
+    // a tight FOLD: hug point → corner → hug point (hugs pin the spline)
+    if (m.kind === 'formed') expect(m.controlPoints).toHaveLength(3);
     expect(r.design.joints).toHaveLength(0); // continuous pipe — no record needed
     expect(r.design.nodes).toHaveLength(2); // the corner node became the bend
     expect(intersectingMembers(r.design).size).toBe(0);
@@ -198,18 +199,23 @@ describe('solveIntersections', () => {
     const m = r.design.members[0]!;
     expect(m.kind).toBe('formed');
     if (m.kind !== 'formed') return;
-    // the corner became the bend control point; its node was pruned
-    expect(m.controlPoints).toHaveLength(1);
-    expect(m.controlPoints[0]!.x).toBeCloseTo(0, 9);
-    expect(m.controlPoints[0]!.z).toBeCloseTo(0, 9);
+    // the corner became a tight FOLD: hug → corner → hug; the node was pruned
+    expect(m.controlPoints).toHaveLength(3);
+    expect(m.controlPoints[1]!.x).toBeCloseTo(0, 9);
+    expect(m.controlPoints[1]!.z).toBeCloseTo(0, 9);
     expect(r.design.nodes).toHaveLength(2);
-    // developed length ≈ the two legs' sum (the fillet trims the sharp corner)
+    // developed length ≈ the two legs' sum (a crease loses almost nothing)
     const analysis = analyzeFormed(r.design, m);
     expect(analysis).not.toBeNull();
     const legSum = 0.4 + 0.35;
-    expect(analysis!.developedLengthM).toBeGreaterThan(legSum * 0.9);
-    expect(analysis!.developedLengthM).toBeLessThanOrEqual(legSum);
-    expect(analysis!.hasTightBend).toBe(false); // bent AT the min heat-form radius
+    expect(analysis!.developedLengthM).toBeGreaterThan(legSum * 0.98);
+    expect(analysis!.developedLengthM).toBeLessThanOrEqual(legSum + 1e-9);
+    // the schedule shows exactly ONE bend — the hug points are guide points
+    // (sub-epsilon deflection), and a zero-fillet crease is deliberate, not
+    // a tight-bend warning
+    expect(analysis!.bends).toHaveLength(1);
+    expect(analysis!.bends[0]!.filletRadiusM).toBe(0);
+    expect(analysis!.hasTightBend).toBe(false);
     // warning-free + idempotent
     expect(resolveFittings(r.design).conflicts).toHaveLength(0);
     expect(intersectingMembers(r.design).size).toBe(0);
