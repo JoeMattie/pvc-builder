@@ -1040,9 +1040,13 @@ export function setJoinMode(
 }
 
 /** Create an on-body joint at draw time: the branch ending at `branchNode` wraps
- * the intact straight `receiver`. Rigid/screwed (`anchor`) by default. Ignored
- * (returns `jointId: null`) if the geometry is invalid, `mode` is `free`, or
- * that branch already carries a joint. */
+ * the intact straight `receiver`. Rigid/screwed (`anchor`) by default. The mover
+ * is the first member incident to `branchNode` that doesn't already carry a
+ * joint there — so a further pipe joined at the same junction (a multi-way
+ * heat-wrap, e.g. from `solveIntersections`) records its union on a free mover.
+ * Ignored (returns `jointId: null`) if the geometry is invalid, `mode` is
+ * `free`, `receiver` is already tied into a joint at that node, or no free
+ * mover remains. */
 export function addBodyJoint(
   design: Design,
   receiver: string,
@@ -1053,18 +1057,15 @@ export function addBodyJoint(
   const run = memberById(design, receiver);
   if (run?.kind !== 'straight') return { design, jointId: null };
   if (!nodeById(design, branchNode)) return { design, jointId: null };
-  const branch = incidentMembers(design, branchNode).find((m) => m.id !== receiver);
-  if (!branch) return { design, jointId: null };
-  // refuse a duplicate for this branch: an existing record with the same mover,
-  // OR one describing the same UNORDERED pair with receiver/mover swapped
-  if (
-    design.joints.some(
-      (j) =>
-        j.nodeId === branchNode &&
-        (j.mover === branch.id || (j.receiver === branch.id && j.mover === receiver)),
-    )
-  )
+  const atNode = design.joints.filter((j) => j.nodeId === branchNode);
+  // refuse a duplicate: the receiver already participates in a joint at this
+  // junction (as either side), so the union it describes is already recorded
+  if (atNode.some((j) => j.receiver === receiver || j.mover === receiver))
     return { design, jointId: null };
+  const branch = incidentMembers(design, branchNode).find(
+    (m) => m.id !== receiver && !atNode.some((j) => j.mover === m.id),
+  );
+  if (!branch) return { design, jointId: null };
   const joint: Joint = { id, nodeId: branchNode, receiver, mover: branch.id, onBody: true, mode };
   return { design: { ...design, joints: [...design.joints, joint] }, jointId: id };
 }
@@ -1137,8 +1138,9 @@ export function healBodyJoints(design: Design): Design {
 
 /** How close a branch endpoint must stay to its receiver's centre-line to keep
  * an on-body union alive after an edit (drags snap exactly onto the run, so this
- * only forgives sub-0.1 mm float drift). */
-const ON_BODY_KEEP_TOL_M = 1e-4;
+ * only forgives sub-0.1 mm float drift). Exported so `solveIntersections` can
+ * guarantee the junctions it creates survive the next reconcile. */
+export const ON_BODY_KEEP_TOL_M = 1e-4;
 
 /** Keep on-body unions in sync with geometry after a live edit (a drag or a
  * length change): drop any union whose branch endpoint has moved off its

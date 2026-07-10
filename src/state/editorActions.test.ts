@@ -167,6 +167,21 @@ describe('select + edit integration', () => {
     clearSelection();
     expect(useEditorStore.getState().selectedIds).toEqual([]);
   });
+
+  it('Ctrl-toggle adds and removes members from the selection', () => {
+    placeDrawPoint(V(0, 0, 0));
+    placeDrawPoint(V(0.3048, 0, 0));
+    placeDrawPoint(V(0.3048, 0, 0.254));
+    finishPath();
+    const [a, b] = design().members.map((m) => m.id);
+    selectMember(a!);
+    selectMember(b!, { toggle: true });
+    expect(new Set(useEditorStore.getState().selectedIds)).toEqual(new Set([a, b]));
+    selectMember(a!, { toggle: true }); // toggle OFF
+    expect(useEditorStore.getState().selectedIds).toEqual([b]);
+    selectMember(b!); // plain click replaces
+    expect(useEditorStore.getState().selectedIds).toEqual([b]);
+  });
 });
 
 describe('snap settings + Shift-draw-lock', () => {

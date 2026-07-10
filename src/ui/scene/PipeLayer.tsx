@@ -34,7 +34,7 @@ import {
   ringMatrix,
   setInstanceAlphas,
 } from './instancing';
-import { startWindowPointerDrag } from './interactions';
+import { CLICK_SLOP_PX, startWindowPointerDrag } from './interactions';
 import { buildPipeModel } from './pipeModel';
 import { pickSnapPoint, SNAP_PX } from './pipePick';
 import { canOpenRightClickMenu, recordPointerDebug } from './rightClickGesture';
@@ -151,13 +151,29 @@ function InstancedPipes() {
     hoverClear.current = null;
   };
 
-  // click-to-select in select / move / rotate (pick a pipe without leaving the gizmo)
-  const onClick = editing
-    ? (ev: ThreeEvent<MouseEvent>) => {
+  // click-to-select in select / move / rotate / extend. Selection commits on
+  // pointerUP with a slop test against the PRESS-time hit: r3f's synthetic
+  // click requires the release ray to still hit the same instance, which fails
+  // on thin pipes whenever the camera drifts between press and release (orbit
+  // damping, grazing sky-facing views). The press is what the user aimed at.
+  // Ctrl/Cmd+click toggles the pipe (or its whole group) in the selection.
+  const onSelectDown = editing // bend has its own pointerdown; it is not in `editing`
+    ? (ev: ThreeEvent<PointerEvent>) => {
+        if (ev.nativeEvent.button !== 0) return;
         const id = memberOf(ev);
         if (!id || inactive(id)) return; // faded (non-entered-group) pipes are inert
+        // the ground plane must not see this press — its window-up would
+        // clear the selection we're about to make
         ev.stopPropagation();
-        selectMember(id);
+        const startX = ev.nativeEvent.clientX;
+        const startY = ev.nativeEvent.clientY;
+        const toggle = ev.nativeEvent.ctrlKey || ev.nativeEvent.metaKey;
+        const up = (ne: PointerEvent) => {
+          if (ne.button !== 0) return;
+          if (Math.hypot(ne.clientX - startX, ne.clientY - startY) > CLICK_SLOP_PX) return;
+          selectMember(id, { toggle });
+        };
+        startWindowPointerDrag({ onMove: () => {}, onUp: up, onCancel: () => {} });
       }
     : undefined;
 
@@ -266,7 +282,7 @@ function InstancedPipes() {
 
   // Bend tool: press+drag a pipe to bend it (rides a view-facing plane through
   // the grab point; window listeners keep the drag alive off the mesh)
-  const onPointerDown =
+  const onBendDown =
     tool === 'bend'
       ? (ev: ThreeEvent<PointerEvent>) => {
           if (ev.nativeEvent.button !== 0) return;
@@ -342,10 +358,9 @@ function InstancedPipes() {
       frustumCulled={false}
       castShadow
       receiveShadow
-      onClick={onClick}
       onPointerUp={onMenuPointerUp}
       onDoubleClick={onDoubleClick}
-      onPointerDown={onPointerDown}
+      onPointerDown={tool === 'bend' ? onBendDown : onSelectDown}
       onPointerMove={onPointerMove}
       onPointerOut={onPointerOut}
     >

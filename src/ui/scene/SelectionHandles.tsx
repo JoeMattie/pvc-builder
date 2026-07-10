@@ -21,6 +21,7 @@ import {
 } from '../../state/editorActions';
 import { useEditorStore } from '../../state/editorStore';
 import { useThemeStore } from '../../state/themeStore';
+import { classifyNumericEntryKey, NUMERIC_ENTRY_DOM_PROPS } from '../editor/numericEntryKeys';
 import { formatLengthDisplay } from '../units';
 import { orientY, orientZ } from './axis';
 import { rayToPlane } from './ground';
@@ -593,12 +594,28 @@ function RotateAngleInput({
           size={6}
           inputMode="decimal"
           onChange={(e) => apply(e.target.value)}
+          {...NUMERIC_ENTRY_DOM_PROPS}
           onKeyDown={(e) => {
-            // never let keystrokes reach the global hotkey handler (tool keys,
-            // undo/redo) while the gesture is open
+            // Numeric-entry allow-list (shared with the draw/guide pills):
+            // digits, `.`, `-`, `/`, `'`, `"`, and the letter m edit the field;
+            // editing/navigation keys stay in it. Any OTHER letter — and
+            // Space — cancels (reverts) the entry and is NOT stopped, so the
+            // global hotkey handler (which recognizes data-numeric-entry)
+            // runs it exactly as if no entry were active (V→select, D→draw…).
+            const action = classifyNumericEntryKey(e);
+            if (action === 'hotkey') {
+              e.preventDefault(); // block the character from the field
+              finish(false); // revert-and-close before the hotkey lands
+              return; // do NOT stopPropagation — let the hotkey fire
+            }
+            // everything else stays private to the entry (tool keys, undo/redo
+            // must not fire from the keys we keep)
             e.stopPropagation();
-            if (e.key === 'Enter') finish(true);
-            else if (e.key === 'Escape') finish(false);
+            if (action === 'commit') finish(true);
+            else if (action === 'cancel') finish(false);
+            else if (action === 'ignore') e.preventDefault();
+            else if (action === 'edit' && e.key === 'Tab') e.preventDefault();
+            // 'insert' / other 'edit' / 'pass' → default input behavior
           }}
           onBlur={() => finish(false)}
           style={{

@@ -4,6 +4,27 @@ Running log of decisions with lasting consequences for PVC Builder. Newest
 first. See `docs/planfiles/PLANFILE-pvc-builder.md` for the full plan and
 `CLAUDE.md` for conventions.
 
+## Solve intersections, fabricated hub rendering, press-time selection (2026-07-09)
+
+- **`solveIntersections` joins crossings as fabricated rigid unions.** Clusters pairwise crossings
+  by proximity BEFORE splitting (a 4-way junction is ONE cluster, not three pairs — on-body records
+  each need a unique incident mover, so pair-at-a-time processing starves the 4th pipe), then joins
+  the whole cluster at one node: enders weld in, one member splits if nobody ends there,
+  through-pipes get on-body anchor records while movers remain and are cut at the node otherwise.
+  Idempotent via re-scan (never id-tracking); solved clusters are excluded from overlap flagging.
+- **Beyond-tee anchor junctions render as ONE brown sphere** (`FabricatedHub`, `anchorRendersAsHub`
+  in jointStyle: anchor mode + >3 incident ends) — never a socket tee, at any angle; clickable and
+  group-ghosted like other joint hardware; hub-node pipes get no end pull-back.
+- **Scene selection commits on pointer-UP against the PRESS-time hit** (slop-tested): r3f's
+  synthetic click requires the release ray to re-hit the same thin cylinder, which camera drift
+  (orbit damping, grazing views) breaks. Pipe presses stopPropagation so the ground plane's
+  empty-click clear can't race a pipe click. Ctrl/Cmd+click toggles the member/group in the
+  selection (`selectMember(id, {toggle})`); Ctrl+empty-click preserves the selection.
+- **Numeric scene entries accept only length characters** (digits, `.`, `-`, `/`, `'`, `"`, `m`);
+  every other letter and Space cancels the entry and fires its hotkey (shared allow-list in
+  `numericEntryKeys.ts`, `data-numeric-entry` exempts these inputs from the global typing guard).
+  Consequence: `in`/`ft`/`cm` suffixes are no longer typeable — units come from `'`/`"`/`m`.
+
 ## Interaction semantics: extend, guides, orbit-safe right-click (2026-07-09)
 
 - **A push (Extend) is ONE segment and strictly stub-initiated.** Placing the point (click-drag,

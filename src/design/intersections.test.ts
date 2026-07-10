@@ -106,4 +106,34 @@ describe('intersectingMembers', () => {
     });
     expect(intersectingMembers(d).size).toBe(0);
   });
+
+  it('does not flag any member of the cluster wrapped at a joint junction', () => {
+    // a run split into two halves at N, with a through pipe joined there: the
+    // joint records only (through, half1), but half2 legitimately touches the
+    // through pipe at the same junction — the whole cluster is exempt
+    const d = createEmptyDesign('d', 'cluster');
+    d.nodes.push(
+      { id: 'nL', position: V(-0.5, 0, 0) },
+      { id: 'nMid', position: V(0, 0, 0) },
+      { id: 'nR', position: V(0.5, 0, 0) },
+      { id: 'tA', position: V(0, 0, -0.5) },
+      { id: 'tB', position: V(0, 0, 0.5) },
+    );
+    d.members.push(
+      { id: 'half1', kind: 'straight', nodeA: 'nL', nodeB: 'nMid', size: '3/4"' },
+      { id: 'half2', kind: 'straight', nodeA: 'nMid', nodeB: 'nR', size: '3/4"' },
+      { id: 'through', kind: 'straight', nodeA: 'tA', nodeB: 'tB', size: '3/4"' },
+    );
+    // without the joint, both halves are flagged against the through pipe
+    expect(intersectingMembers(d)).toEqual(new Set(['half1', 'half2', 'through']));
+    d.joints.push({
+      id: 'jt1',
+      nodeId: 'nMid',
+      receiver: 'through',
+      mover: 'half1',
+      onBody: true,
+      mode: 'anchor',
+    });
+    expect(intersectingMembers(d).size).toBe(0);
+  });
 });

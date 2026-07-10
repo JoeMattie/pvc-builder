@@ -18,7 +18,8 @@ applied elsewhere via `appStore.updateCurrent` for undo/autosave.
 | `formed.ts` (74) | Heat-bent pipe analysis — developed length, bend schedule, min-bend-radius | `formedPoints`, `analyzeFormed`, `MIN_BEND_RADIUS_FACTOR=3` |
 | `snapping.ts` (150) | SketchUp-style draw inference + snapping (node → on-pipe → axis → grid → free priority) | `snapPoint(raw, ctx)`, `closestPointOnSegment`, `planeCardinalFromCursor` (draw-on-plane wall angle: world + pipe-relative cardinals), `DEFAULT_GRID_M` (¼") |
 | `dragMath.ts` (138) | Direct-manipulation drag math — axial length resize, axis-locked moves | `projectLengthOnAxis`, `lengthFromGrabDrag`, `closestAxisPointToRay`, `lockToNearestDirection` |
-| `intersections.ts` (137) | Flag overlapping pipe volumes (capsule-vs-capsule) | `intersectingMembers(design): Set<string>`, `segmentSegmentDistSq` |
+| `intersections.ts` | Flag overlapping pipe volumes (capsule-vs-capsule) | `intersectingMembers(design): Set<string>`, `intersectingStraightPairs` (straight×straight crossings + closest-approach params/points), `segmentSegmentClosest`/`segmentSegmentDistSq`, `pairKey` |
+| `solveIntersections.ts` | Auto-fix red overlaps: crossings are CLUSTERED by point first, then every pipe of a cluster joins ONE node — ends weld in, throughs take on-body `anchor` records while free movers last, the rest are cut at the node (heat-wrap + screw fabrication). Many-way (4+) crossings at odd angles come out warning-free (a record always covers the node). Formed splines out of scope. Idempotent | `solveIntersections(design): {design, joined}` |
 | `extend.ts` | Extend (push) tool geometry — the directions you can draw a new pipe out of an end | `extendDirections(design, nodeId)` (6 axes + continuations opposite incident pipes, minus dirs along an existing pipe), `incidentDirsAt`, `endSizeAt` |
 | `guides.ts` | Construction guide-line geometry (transient Q-tool aids, NOT in the doc) | `Guide`/`GuideSegment`, `snapDirToAxis`, `guideIntersections` (line∩segment), `perpOffsetM`/`perpUnit`, `guideDrawSpan` |
 | `marquee.ts` (93) | Screen-space rubber-band hit-testing (window/crossing CAD semantics) | `marqueeFromDrag`, `memberSelectedBy`, `segmentsIntersect` |
@@ -45,7 +46,14 @@ applied elsewhere via `appStore.updateCurrent` for undo/autosave.
 - **BOM take-off constants (`CENTRE_TO_FACE_FACTOR`, `EYE_BOLT_TAKEOFF_M`) are documented
   estimates** to replace with manufacturer tables. Math is exact for whatever constants are set.
 - **`snapping.ts` priority order is UX** — changing node→on-pipe→axis→grid order changes feel.
-- **`intersections.ts` `segmentSegmentDistSq`** is the Ericson RTCD closest-segment algorithm —
-  subtle branch logic; don't refactor casually. Pairs sharing a node or joined by a joint are excluded.
+- **`intersections.ts` `segmentSegmentClosest`** is the Ericson RTCD closest-segment algorithm —
+  subtle branch logic; don't refactor casually. Pairs sharing a node are excluded, and so is the
+  whole CLUSTER at a joint's node (the joint's mover + receiver + every member incident to that
+  node — e.g. both halves of a split run vs the through pipe).
+- **`addBodyJoint` picks the first incident member WITHOUT a joint at the node as mover** (so a
+  further pipe joined at the same junction records on a free mover) and refuses when the receiver
+  already participates in any joint at that node. `solveIntersections` relies on both, and places
+  every junction node EXACTLY on the receiver's centre-line (within the exported
+  `ON_BODY_KEEP_TOL_M`) so `reconcileBodyJoints` keeps its unions.
 
 _Update this file when you add/rename a file here or change a joint/fitting invariant._

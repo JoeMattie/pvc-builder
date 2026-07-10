@@ -38,7 +38,9 @@ test('draws a pipe with real pointer flow and commits a typed exact length', asy
   await page.mouse.click(start.x, start.y);
   await page.waitForFunction(() => !!(window as any).__pvc.getEditor().drawingFromNodeId);
   await page.mouse.move(aim.x, aim.y, { steps: 8 });
-  await page.keyboard.type('12in');
+  // NOTE: unit letters other than m are hotkeys now — inches are typed as `"`
+  // (or a bare number in the default display unit), never as "in"/"ft".
+  await page.keyboard.type('12"');
   await page.keyboard.press('Enter');
 
   await page.waitForFunction(() => (window as any).__pvc.getMembers().length === 1);
@@ -297,6 +299,91 @@ test('rotate tool: Escape reverts a typed angle preview exactly', async ({ page 
 
   await input.press('Escape');
   await expect(input).toBeHidden();
+  // the pre-typed doc is restored verbatim — positions match EXACTLY
+  const after = await memberNodePositions(page);
+  expect(after).toEqual(before);
+  expect(errors).toEqual([]);
+});
+
+// --- Numeric-entry allow-list: while a typed scene entry is capturing, only m
+// --- (mm) is an accepted letter; any other letter, and Space, cancels the
+// --- entry/operation AND fires the hotkey it is bound to.
+
+test('typed draw-length entry: V cancels the entry AND switches to the select tool', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await openNewDesign(page, 'Interaction entry letter hotkey');
+
+  await page.keyboard.press('D');
+  await page.waitForFunction(() => (window as any).__pvc.getEditor().tool === 'draw');
+  const start = await screenOf(page, { x: 0, y: 0, z: 0 });
+  const aim = await screenOf(page, { x: 0.35, y: 0, z: 0 });
+  await page.mouse.click(start.x, start.y);
+  await page.waitForFunction(() => !!(window as any).__pvc.getEditor().drawingFromNodeId);
+  await page.mouse.move(aim.x, aim.y, { steps: 8 });
+
+  // "1" starts the typed buffer; "m" (the mm unit) is the ONE letter that stays
+  await page.keyboard.type('1m');
+  await expect(page.getByText('1m▏')).toBeVisible();
+
+  // any other letter cancels the entry + draw path and fires its hotkey
+  await page.keyboard.press('v');
+  await page.waitForFunction(() => {
+    const ed = (window as any).__pvc.getEditor();
+    return ed.tool === 'select' && !ed.drawingFromNodeId;
+  });
+  await expect(page.getByText('1m▏')).toBeHidden(); // typed buffer gone
+  // nothing was committed by the cancelled entry
+  expect(await page.evaluate(() => (window as any).__pvc.getMembers().length)).toBe(0);
+  expect(errors).toEqual([]);
+});
+
+test('typed draw-length entry: Space cancels the entry and fires the Space hotkey (select tool)', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await openNewDesign(page, 'Interaction entry space hotkey');
+
+  await page.keyboard.press('D');
+  await page.waitForFunction(() => (window as any).__pvc.getEditor().tool === 'draw');
+  const start = await screenOf(page, { x: 0, y: 0, z: 0 });
+  const aim = await screenOf(page, { x: 0.35, y: 0, z: 0 });
+  await page.mouse.click(start.x, start.y);
+  await page.waitForFunction(() => !!(window as any).__pvc.getEditor().drawingFromNodeId);
+  await page.mouse.move(aim.x, aim.y, { steps: 8 });
+
+  await page.keyboard.type('12');
+  await expect(page.getByText('12▏')).toBeVisible();
+
+  // Space is bound to "back to the select tool" — it must fire, not type a space
+  await page.keyboard.press(' ');
+  await page.waitForFunction(() => {
+    const ed = (window as any).__pvc.getEditor();
+    return ed.tool === 'select' && !ed.drawingFromNodeId;
+  });
+  expect(await page.evaluate(() => (window as any).__pvc.getMembers().length)).toBe(0);
+  expect(errors).toEqual([]);
+});
+
+test('rotate typed-angle input: D reverts the preview AND switches to the draw tool', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await openNewDesign(page, 'Interaction entry rotate letter');
+  const { nodes: before, ringPoint } = await setupRotateSelection(page);
+
+  const input = await openTypedAngle(page, ringPoint);
+  await input.pressSequentially('4');
+  // the 4° live preview must be applied before we cancel it
+  await expect
+    .poll(async () => angleBetweenDeg(before, await memberNodePositions(page)))
+    .toBeCloseTo(4, 1);
+
+  // a disallowed letter closes+reverts the entry and its hotkey fires
+  await input.press('d');
+  await expect(input).toBeHidden();
+  await page.waitForFunction(() => (window as any).__pvc.getEditor().tool === 'draw');
   // the pre-typed doc is restored verbatim — positions match EXACTLY
   const after = await memberNodePositions(page);
   expect(after).toEqual(before);

@@ -8,7 +8,7 @@ import { nodeDegrees, nodeMap } from '../../design/docOps';
 import { add, length, normalize, scale, sub } from '../../geometry/math3';
 import type { Design, NominalSize, Vec3 } from '../../schema';
 import { pipeSpec } from '../../schema';
-import { anchorRendersAsTee } from './jointStyle';
+import { anchorRendersAsHub, anchorRendersAsTee } from './jointStyle';
 
 /** Gap each pipe end is pulled back at a FREE (ball) pivot so the knotted cord +
  * ball read between the two eye-bolted ends (planfile §4). Shared with JointLayer. */
@@ -64,9 +64,12 @@ export function buildPipeModel(
     return L <= dist ? p : add(p, scale(d, dist / L));
   };
   // rigid 90° unions render as a standard socket tee (the branch sockets in full
-  // and the hub sleeves over it) — no pull-back, no open bore
+  // and the hub sleeves over it), and MANY-WAY anchor clusters render as one
+  // fabricated hub sphere the pipes run full into — no pull-back, no open bore
   const teeNodes = new Set(
-    design.joints.filter((j) => anchorRendersAsTee(design, j)).map((j) => j.nodeId),
+    design.joints
+      .filter((j) => anchorRendersAsTee(design, j) || anchorRendersAsHub(design, j))
+      .map((j) => j.nodeId),
   );
   // wrapped / off-angle rigid branches stop ~1" short of the run's surface, keyed
   // by `${moverId}|${nodeId}` so only the branch end is pulled back (not a run

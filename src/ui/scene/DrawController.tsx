@@ -399,9 +399,10 @@ export function DrawController() {
               .map((m) => m.id);
             setSelectionGroupAware(hits);
           }
-        } else {
-          // a plain click on empty space clears the selection (a pipe click
-          // re-selects afterwards — its onClick fires after this window up)
+        } else if (!ev.ctrlKey && !ev.metaKey) {
+          // a plain click on GENUINE empty space clears the selection (pipe
+          // presses stopPropagation on pointerdown, so this never arms for
+          // them); Ctrl/Cmd+click on empty keeps the multi-selection intact
           clearSelection();
         }
         useEditorStore.getState().setMarquee(null);

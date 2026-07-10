@@ -21,6 +21,7 @@ import { useThemeStore } from '../../state/themeStore';
 import { scenePalette } from '../theme';
 import { dominantAxisNormal, rayToPlane } from './ground';
 import { GROUP_DIM_ALPHA } from './instancing';
+import { startWindowPointerDrag } from './interactions';
 
 const toV3 = (p: Vec3) => new Vector3(p.x, p.y, p.z);
 const CLICK_SLOP_PX = 6; // press-move below this reads as a click, not a bend drag
@@ -99,7 +100,7 @@ function FormedTube({
   dimmed,
   color,
   tool,
-  onSelect,
+  selectable,
   at,
 }: {
   member: FormedMember;
@@ -110,7 +111,7 @@ function FormedTube({
   dimmed: boolean;
   color: string;
   tool: string;
-  onSelect: ((id: string) => void) | undefined;
+  selectable: boolean;
   at: (id: string) => Vec3 | undefined;
 }) {
   const camera = useThree((s) => s.camera);
@@ -174,22 +175,28 @@ function FormedTube({
 
   const inBend = tool === 'bend';
   // outside an entered group the tube GHOSTS (semi-transparent, colour kept —
-  // matching the instanced pipes) and is inert
-  const click =
-    !inBend && !dimmed && onSelect
-      ? (e: ThreeEvent<MouseEvent>) => {
-          e.stopPropagation();
-          onSelect(member.id);
+  // matching the instanced pipes) and is inert.
+  // Selection commits on pointerUP with a slop test against the PRESS-time hit
+  // (matching InstancedPipes — r3f's synthetic click dies when the camera
+  // drifts between press and release); Ctrl/Cmd toggles in the selection.
+  const selectDown =
+    !inBend && !dimmed && selectable
+      ? (e: ThreeEvent<PointerEvent>) => {
+          if (e.nativeEvent.button !== 0) return;
+          e.stopPropagation(); // keep the ground plane's clear from arming
+          const startX = e.nativeEvent.clientX;
+          const startY = e.nativeEvent.clientY;
+          const toggle = e.nativeEvent.ctrlKey || e.nativeEvent.metaKey;
+          const up = (ne: PointerEvent) => {
+            if (ne.button !== 0) return;
+            if (Math.hypot(ne.clientX - startX, ne.clientY - startY) > CLICK_SLOP_PX) return;
+            selectMember(member.id, { toggle });
+          };
+          startWindowPointerDrag({ onMove: () => {}, onUp: up, onCancel: () => {} });
         }
       : undefined;
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: r3f <mesh> is a scene node
-    <mesh
-      onClick={click}
-      onPointerDown={inBend && !dimmed ? startBend : undefined}
-      castShadow
-      receiveShadow
-    >
+    <mesh onPointerDown={inBend && !dimmed ? startBend : selectDown} castShadow receiveShadow>
       <tubeGeometry args={[curve, segs, r, 14, false]} />
       <meshPhysicalMaterial
         // key: remount the material when the dim flag flips — three bakes an
@@ -228,8 +235,7 @@ export function FormedLayer() {
     : undefined;
   const activeSet = enteredGroup ? new Set(enteredGroup.memberIds) : null;
   // click-select in the same tools straight pipes allow (select / move / rotate)
-  const onSelect =
-    tool === 'select' || tool === 'move' || tool === 'rotate' ? selectMember : undefined;
+  const selectable = tool === 'select' || tool === 'move' || tool === 'rotate';
   const at = (id: string): Vec3 | undefined => easedPos(id) ?? nodeById(design, id)?.position;
   // the Bend tool shows draggable control-point handles so bends can be tweaked
   const showHandles = tool === 'bend';
@@ -252,7 +258,7 @@ export function FormedLayer() {
               dimmed={!!activeSet && !activeSet.has(m.id)}
               color={color}
               tool={tool}
-              onSelect={onSelect}
+              selectable={selectable}
               at={at}
             />
             {showHandles &&

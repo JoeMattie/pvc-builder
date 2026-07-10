@@ -48,6 +48,7 @@ import {
   setMembersSize,
   setPivotAngle,
   snapDrawPoint,
+  solveIntersections,
   swapJointReceiver,
   translateMemberBy,
   ungroupSelection,
@@ -174,6 +175,7 @@ export function PvcAutomationBridge() {
       const d = useAppStore.getState().current;
       return d ? [...intersectingMembers(d)] : [];
     };
+    hook.solveIntersections = () => solveIntersections();
     hook.getFormed = (id: string) => {
       const d = useAppStore.getState().current;
       const m = d ? memberById(d, id) : undefined;

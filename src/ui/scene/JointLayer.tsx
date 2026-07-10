@@ -25,7 +25,7 @@ import { scenePalette } from '../theme';
 import { orientY, orientZ, placeAxis } from './axis';
 import { buildFittingMesh, type FittingCyl } from './fittingMesh';
 import { GROUP_DIM_ALPHA } from './instancing';
-import { anchorRendersAsTee } from './jointStyle';
+import { anchorRendersAsHub, anchorRendersAsTee } from './jointStyle';
 import { FREE_JOINT_GAP_M, WRAP_END_GAP_M } from './pipeModel';
 import { canOpenRightClickMenu, recordPointerDebug } from './rightClickGesture';
 import { buildWrapArrow } from './wrapArrow';
@@ -38,6 +38,7 @@ const RIGID_STEEL = '#8b9099'; // rigid loop (locked)
 const PIN_HEAD = '#d64545'; // locking pin head
 const PIN_SHAFT = '#b9bec6';
 const SELECT_BLUE = '#2a78d6';
+const HUB_BROWN = '#8a5a33'; // fabricated many-way union (heat-wrapped + screwed)
 
 /** A rigid on-body union at ~90°: a standard socket TEE sleeving the run + branch
  * (the branch pipe runs full into the hub — see pipeModel). White PVC, matching
@@ -153,6 +154,81 @@ function TeeCyl({ c, color, dimmed }: { c: FittingCyl; color: string; dimmed: bo
         opacity={dimmed ? GROUP_DIM_ALPHA : 1}
       />
     </mesh>
+  );
+}
+
+/** A fabricated MANY-WAY union: more pipe ends enter the point than any
+ * standard fitting has sockets (a solved X / 3-way / 4-way crossing), so the
+ * whole anchor cluster at the node draws as ONE brown wrap ball — heat-wrapped
+ * and screwed on site. Clickable like any joint hardware: click selects the
+ * cluster's primary joint; right-click opens its join menu. */
+function FabricatedHub({
+  joints,
+  selectable,
+  selected,
+  dimmed,
+  onMenuPointerUp,
+  onHover,
+  onHoverOut,
+}: {
+  /** every anchor joint at this node (the first is the primary/selected one) */
+  joints: Joint[];
+  selectable: boolean;
+  selected: boolean;
+  dimmed: boolean;
+  onMenuPointerUp?: (e: ThreeEvent<PointerEvent>) => void;
+  onHover?: (e: ThreeEvent<PointerEvent>) => void;
+  onHoverOut?: () => void;
+}) {
+  const design = useAppStore.getState().current;
+  const primary = joints[0];
+  if (!design || !primary) return null;
+  const node = easedPos(primary.nodeId) ??
+    nodeById(design, primary.nodeId)?.position ?? { x: 0, y: 0, z: 0 };
+
+  // the largest pipe OD entering the junction sizes the wrap ball
+  let odMax = 0;
+  for (const m of design.members) {
+    if (m.nodeA === primary.nodeId || m.nodeB === primary.nodeId)
+      odMax = Math.max(odMax, pipeSpec(m.size).odM);
+  }
+  for (const j of joints) {
+    const recv = memberById(design, j.receiver);
+    if (recv) odMax = Math.max(odMax, pipeSpec(recv.size).odM);
+  }
+  if (odMax <= 0) return null;
+  const radius = odMax * 0.75;
+
+  const color = selected && !dimmed ? SELECT_BLUE : HUB_BROWN;
+  const onSelect =
+    selectable && !dimmed
+      ? (e: ThreeEvent<MouseEvent>) => {
+          e.stopPropagation();
+          useEditorStore.getState().selectJoint(primary.id);
+        }
+      : undefined;
+
+  return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: r3f group is a scene node
+    <group
+      onClick={onSelect}
+      onPointerUp={dimmed ? undefined : onMenuPointerUp}
+      onPointerMove={dimmed ? undefined : onHover}
+      onPointerOut={dimmed ? undefined : onHoverOut}
+    >
+      <mesh position={[node.x, node.y, node.z]} castShadow>
+        <sphereGeometry args={[radius, 24, 18]} />
+        <meshPhysicalMaterial
+          key={dimmed ? 'dim' : 'solid'} // remount on flip: OPAQUE define, see AnchorTee
+          color={color}
+          roughness={0.55}
+          metalness={0}
+          clearcoat={0.35}
+          transparent={dimmed}
+          opacity={dimmed ? GROUP_DIM_ALPHA : 1}
+        />
+      </mesh>
+    </group>
   );
 }
 
@@ -468,12 +544,39 @@ export function JointLayer() {
     if (store.hoveredSceneItem?.kind === 'joint') store.setHoveredSceneItem(null);
   };
 
+  // anchor joints at a many-way junction (>3 pipe ends — beyond any standard
+  // fitting) collapse into ONE brown fabricated-union sphere per NODE
+  const hubAnchors = new Map<string, Joint[]>();
+  for (const j of design.joints) {
+    if (j.mode !== 'anchor' || !anchorRendersAsHub(design, j)) continue;
+    const list = hubAnchors.get(j.nodeId);
+    if (list) list.push(j);
+    else hubAnchors.set(j.nodeId, [j]);
+  }
+
   return (
     <>
       {design.joints.map((j) => {
         // end-to-end frees → InstancedFreeHubs; wrapped (swivel) → InstancedWrapJoints
         if (j.mode === 'free' && !j.onBody) return null;
         if (j.mode === 'wrapped') return null;
+        // a many-way anchor cluster renders once, as the fabricated hub sphere
+        const hub = j.mode === 'anchor' ? hubAnchors.get(j.nodeId) : undefined;
+        if (hub) {
+          if (hub[0]!.id !== j.id) return null; // one sphere per node
+          return (
+            <FabricatedHub
+              key={j.id}
+              joints={hub}
+              selectable={selectable}
+              selected={hub.some(isSelected)}
+              dimmed={hub.every(isDimmed)}
+              onMenuPointerUp={onMenuPointerUp(j)}
+              onHover={onHover(j)}
+              onHoverOut={onHoverOut}
+            />
+          );
+        }
         if (j.mode === 'free')
           return (
             <FreeJoint

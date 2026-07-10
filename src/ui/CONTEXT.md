@@ -54,7 +54,8 @@ chrome in draggable `chrome/FloatingIsland` wrappers.
   pinned (`draggable={false}`); Document, Snap, and View islands are `collapsible={false}`.
 - **The workflow panel is the single mode container** (right stack, under View): the
   `EditorWorkflowStatus` tab strip (Design/Fabricate/Simulate + always-visible Play/Stop) selects the
-  panel body — Design → inspector (`SelectionPanel`/`BendPill`/`ElasticPanel`, or a select-something
+  panel body — Design → `OverlapSolveRow` (amber "Solve intersections" row, hidden at zero overlaps)
+  above the inspector (`SelectionPanel`/`BendPill`/`ElasticPanel`, or a select-something
   hint), Fabricate → `BomPanel` (CSV in `titleActions`), Simulate → `SimulationPanel`+`PivotPanel`.
   There are NO separate inspector/cut-list/simulate islands anymore.
 - **Compact chrome (<640, `useCompactChrome`)** is responsive-only, no settings: the document row is

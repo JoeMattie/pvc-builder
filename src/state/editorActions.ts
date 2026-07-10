@@ -74,6 +74,7 @@ import {
   type SnapResult,
   snapPoint,
 } from '../design/snapping';
+import { solveIntersections as solveIntersectionsOp } from '../design/solveIntersections';
 import { add, dot, length, normalize, scale, sub } from '../geometry/math3';
 import type {
   Attachment,
@@ -498,13 +499,24 @@ function updateReconciled(mutate: (d: Design) => Design): void {
 
 /** Group-aware member selection: clicking a member that belongs to a group —
  * when you're NOT inside that group — selects the WHOLE group; otherwise just
- * the clicked member. */
-export function selectMember(memberId: string): void {
+ * the clicked member. `toggle` (Ctrl/Cmd+click) adds/removes that unit from the
+ * current selection instead of replacing it. */
+export function selectMember(memberId: string, opts?: { toggle?: boolean }): void {
   const design = useAppStore.getState().current;
-  const entered = useEditorStore.getState().enteredGroupId;
+  const ed = useEditorStore.getState();
   const g = design ? groupOfMember(design, memberId) : undefined;
-  if (g && g.id !== entered) useEditorStore.getState().setSelection(g.memberIds);
-  else useEditorStore.getState().setSelection([memberId]);
+  const unit = g && g.id !== ed.enteredGroupId ? g.memberIds : [memberId];
+  if (opts?.toggle) {
+    const cur = new Set(ed.selectedIds);
+    const allIn = unit.every((id) => cur.has(id));
+    for (const id of unit) {
+      if (allIn) cur.delete(id);
+      else cur.add(id);
+    }
+    ed.setSelection([...cur]);
+  } else {
+    ed.setSelection(unit);
+  }
 }
 
 export function clearSelection(): void {
@@ -1094,6 +1106,21 @@ export function makeManufacturedJoint(nodeId: string, moverId: string): void {
  * pivots about the one point (the join menu's "Free hub" / multi-pipe "Free"). */
 export function makeFreeHub(nodeId: string): void {
   updateReconciled((d) => makeFreeHubOp(d, nodeId));
+}
+
+/** Join every red pipe-pipe crossing with a rigid on-body (heat-wrapped +
+ * screwed) anchor union — the Design tab's "Solve intersections" button and the
+ * `__pvc.solveIntersections` seam. Straight×straight crossings only (formed
+ * splines stay flagged). ONE `updateCurrent` → one undo entry. Returns how many
+ * crossings were joined. */
+export function solveIntersections(): number {
+  let joined = 0;
+  useAppStore.getState().updateCurrent((d) => {
+    const r = solveIntersectionsOp(d);
+    joined = r.joined;
+    return r.design;
+  });
+  return joined;
 }
 
 /** Set a wrapped pivot's angle (the angle slider). In a locked mechanism with

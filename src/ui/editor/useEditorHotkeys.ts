@@ -24,6 +24,7 @@ import {
 import { useEditorStore } from '../../state/editorStore';
 import { recordPointerDebug, wasRightDrag } from '../scene/rightClickGesture';
 import { parseLength } from '../units';
+import { classifyNumericEntryKey, isNumericEntryTarget } from './numericEntryKeys';
 
 interface EditorHotkeyActions {
   undo(): void;
@@ -36,8 +37,14 @@ export function useEditorHotkeys({ undo, redo }: EditorHotkeyActions) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const editor = useEditorStore.getState();
+      // NUMERIC scene entries (e.g. the rotate typed-angle <input>, marked
+      // data-numeric-entry) are NOT "typing" targets: they stopPropagation the
+      // keys they keep and deliberately let cancelled-hotkey keys (Space,
+      // letters other than m) through so this handler runs them as hotkeys.
+      // Normal text fields (rename, search, …) stay fully protected.
       const typing =
-        e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+        (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) &&
+        !isNumericEntryTarget(e.target);
       const mod = e.metaKey || e.ctrlKey;
 
       if (mod && e.key.toLowerCase() === 'z') {
@@ -99,29 +106,42 @@ export function useEditorHotkeys({ undo, redo }: EditorHotkeyActions) {
         }
       }
 
-      // Typed-length entry: while a draw path is open, digits/units type into
-      // the length pill; Enter commits the segment at that distance (must run
-      // before tool hotkeys so e.g. "10cm" does not trigger the Curve tool).
+      // Typed-length entry: while a draw path is open, digits / m / '/" type
+      // into the length pill; Enter commits the segment at that distance (must
+      // run before tool hotkeys so e.g. "10mm" does not trigger the Move tool).
+      // Any OTHER letter — and Space — cancels the entry AND the draw path,
+      // then falls through so its hotkey fires as if no entry were active
+      // (allow-list shared via classifyNumericEntryKey).
       if (editor.tool === 'draw' && editor.drawingFromNodeId) {
-        if (e.key === 'Enter' && editor.drawLength) {
+        const action = classifyNumericEntryKey(e);
+        if (action === 'commit' && editor.drawLength) {
           const doc = useAppStore.getState().current;
           const m = doc ? parseLength(editor.drawLength, doc.lengthDisplay) : null;
           if (m && m > 0 && placeDrawAtDistance(m)) {
             e.preventDefault();
             return;
           }
-        } else if (e.key === 'Backspace' && editor.drawLength) {
-          editor.setDrawLength(editor.drawLength.slice(0, -1));
-          e.preventDefault();
-          return;
-        } else if (e.key === 'Escape' && editor.drawLength) {
-          editor.setDrawLength('');
-          e.preventDefault();
-          return;
-        } else if (e.key.length === 1 && /[0-9./'" a-z]/i.test(e.key)) {
+        } else if (action === 'insert') {
           editor.setDrawLength(editor.drawLength + e.key);
           e.preventDefault();
           return;
+        } else if (action === 'cancel' && editor.drawLength) {
+          editor.setDrawLength('');
+          e.preventDefault();
+          return;
+        } else if (action === 'edit' && editor.drawLength) {
+          // Backspace edits the buffer; the rest (Delete/arrows/Home/End/Tab)
+          // stay in the entry as no-ops instead of nudging/deleting members.
+          if (e.key === 'Backspace') editor.setDrawLength(editor.drawLength.slice(0, -1));
+          e.preventDefault();
+          return;
+        } else if (action === 'ignore') {
+          e.preventDefault();
+          return;
+        } else if (action === 'hotkey') {
+          // cancel the typed entry AND the operation, then fall through so the
+          // key runs its global hotkey (V→select, D→draw, Space→select, …).
+          finishPath();
         }
       }
 
@@ -131,11 +151,14 @@ export function useEditorHotkeys({ undo, redo }: EditorHotkeyActions) {
         e.preventDefault();
         return;
       }
-      // Guide tool typed-offset entry: digits/units type into the guide length
-      // pill; Enter commits the guide at that perpendicular offset.
+      // Guide tool typed-offset entry: digits / m / '/" type into the guide
+      // length pill; Enter commits the guide at that perpendicular offset.
+      // Same allow-list as the draw pill: any other letter or Space cancels
+      // the draft and falls through to its hotkey.
       if (editor.tool === 'guide' && editor.guideDraft) {
         const cursor = editor.guideCursor;
-        if (e.key === 'Enter' && cursor) {
+        const action = classifyNumericEntryKey(e);
+        if (action === 'commit' && cursor) {
           if (editor.guideLength) {
             const doc = useAppStore.getState().current;
             const m = doc ? parseLength(editor.guideLength, doc.lengthDisplay) : null;
@@ -148,18 +171,24 @@ export function useEditorHotkeys({ undo, redo }: EditorHotkeyActions) {
             e.preventDefault();
             return;
           }
-        } else if (e.key === 'Backspace' && editor.guideLength) {
-          editor.setGuideLength(editor.guideLength.slice(0, -1));
-          e.preventDefault();
-          return;
-        } else if (e.key === 'Escape') {
-          cancelGuideDraft();
-          e.preventDefault();
-          return;
-        } else if (e.key.length === 1 && /[0-9./'" a-z]/i.test(e.key)) {
+        } else if (action === 'insert') {
           editor.setGuideLength(editor.guideLength + e.key);
           e.preventDefault();
           return;
+        } else if (action === 'cancel') {
+          cancelGuideDraft();
+          e.preventDefault();
+          return;
+        } else if (action === 'edit' && editor.guideLength) {
+          if (e.key === 'Backspace') editor.setGuideLength(editor.guideLength.slice(0, -1));
+          e.preventDefault();
+          return;
+        } else if (action === 'ignore') {
+          e.preventDefault();
+          return;
+        } else if (action === 'hotkey') {
+          // cancel the guide draft/entry, then fall through to the hotkey.
+          cancelGuideDraft();
         }
       }
 

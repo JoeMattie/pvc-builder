@@ -1,10 +1,58 @@
 import { describe, expect, it } from 'vitest';
+import { solveIntersections } from '../../design/solveIntersections';
 import { length, sub } from '../../geometry/math3';
-import { createEmptyDesign, type Design, pipeSpec, type Vec3 } from '../../schema';
-import { anchorRendersAsTee } from './jointStyle';
+import {
+  createEmptyDesign,
+  type Design,
+  type NominalSize,
+  pipeSpec,
+  type Vec3,
+} from '../../schema';
+import { anchorRendersAsHub, anchorRendersAsTee, junctionEndCount } from './jointStyle';
 import { buildPipeModel } from './pipeModel';
 
 const V = (x: number, y: number, z: number): Vec3 => ({ x, y, z });
+
+/** Build a design from explicit straight members given as endpoint pairs. */
+function straightDesign(
+  members: Array<{ id: string; a: Vec3; b: Vec3; size?: NominalSize }>,
+): Design {
+  const d = createEmptyDesign('d', 'x');
+  let n = 0;
+  for (const m of members) {
+    const na = `n${n++}`;
+    const nb = `n${n++}`;
+    d.nodes.push({ id: na, position: m.a }, { id: nb, position: m.b });
+    d.members.push({ id: m.id, kind: 'straight', nodeA: na, nodeB: nb, size: m.size ?? '3/4"' });
+  }
+  return d;
+}
+
+/** Two pipes crossing at the origin, joined by `solveIntersections` (an X). */
+function solvedX(): Design {
+  return solveIntersections(
+    straightDesign([
+      { id: 'h', a: V(-0.5, 0, 0), b: V(0.5, 0, 0) },
+      { id: 'v', a: V(0, 0, -0.5), b: V(0, 0, 0.5) },
+    ]),
+  ).design;
+}
+
+/** Four pipes through the origin at non-standard angles, solved. */
+function solvedFourWay(): Design {
+  const along = (deg: number, t: number): Vec3 => {
+    const a = (deg * Math.PI) / 180;
+    return V(Math.cos(a) * t, 0, Math.sin(a) * t);
+  };
+  return solveIntersections(
+    straightDesign([
+      { id: 'a', a: along(0, -0.5), b: along(0, 0.5) },
+      { id: 'b', a: along(45, -0.5), b: along(45, 0.5) },
+      { id: 'c', a: along(105, -0.5), b: along(105, 0.5) },
+      { id: 'e', a: along(150, -0.5), b: along(150, 0.5) },
+    ]),
+  ).design;
+}
 
 /** A run along +X plus a branch that ends on the run at the origin, tee'd off
  * as an on-body ANCHOR. `branchFar` sets the branch angle. */
@@ -51,6 +99,69 @@ describe('anchorRendersAsTee', () => {
     expect(anchorRendersAsTee(wrapped, wrapped.joints[0]!)).toBe(false);
     const endToEnd = onBodyAnchor(V(0, 0, 0.3), false);
     expect(anchorRendersAsTee(endToEnd, endToEnd.joints[0]!)).toBe(false);
+  });
+});
+
+describe('junctionEndCount', () => {
+  it('counts a lone on-body tee as exactly 3 ends (branch + through run)', () => {
+    const d = onBodyAnchor(V(0, 0, 0.3));
+    expect(junctionEndCount(d, 'bn')).toBe(3);
+  });
+
+  it('counts a solved X crossing as 4 ends and a solved 4-way as 8', () => {
+    const x = solvedX();
+    expect(junctionEndCount(x, x.joints[0]!.nodeId)).toBe(4);
+    const four = solvedFourWay();
+    expect(junctionEndCount(four, four.joints[0]!.nodeId)).toBe(8);
+  });
+});
+
+describe('anchorRendersAsHub (fabricated many-way union → brown sphere)', () => {
+  it('a lone 90° on-body union stays a tee, not a hub', () => {
+    const d = onBodyAnchor(V(0, 0, 0.3));
+    expect(anchorRendersAsHub(d, d.joints[0]!)).toBe(false);
+    expect(anchorRendersAsTee(d, d.joints[0]!)).toBe(true);
+  });
+
+  it('a solved X crossing (4 ends) is a hub, never a tee — even at 90°', () => {
+    const d = solvedX();
+    const jt = d.joints[0]!;
+    expect(anchorRendersAsHub(d, jt)).toBe(true);
+    expect(anchorRendersAsTee(d, jt)).toBe(false);
+  });
+
+  it('every anchor of a solved many-way crossing is a hub (one sphere per node)', () => {
+    const d = solvedFourWay();
+    expect(d.joints.length).toBeGreaterThan(0);
+    for (const jt of d.joints) {
+      expect(jt.mode).toBe('anchor');
+      expect(anchorRendersAsHub(d, jt)).toBe(true);
+      expect(anchorRendersAsTee(d, jt)).toBe(false);
+    }
+  });
+
+  it('a wrapped pivot is never a hub (anchor clusters only)', () => {
+    const d = solvedX();
+    d.joints[0] = { ...d.joints[0]!, mode: 'wrapped' };
+    expect(anchorRendersAsHub(d, d.joints[0]!)).toBe(false);
+  });
+
+  it('hub pipes run FULL into the sphere — no pull-back gap at the junction', () => {
+    const d = solvedX();
+    const node = d.joints[0]!.nodeId;
+    const nodePos = d.nodes.find((n) => n.id === node)!.position;
+    // the intact receiver passes through; every incident stub reaches the node
+    const model = buildPipeModel(d);
+    for (const m of d.members) {
+      for (const [nid, end] of [
+        [m.nodeA, 'a'],
+        [m.nodeB, 'b'],
+      ] as const) {
+        if (nid !== node) continue;
+        const cyl = model.cylinders.find((c) => c.memberId === m.id)!;
+        expect(length(sub(cyl[end], nodePos))).toBeLessThan(1e-9);
+      }
+    }
   });
 });
 

@@ -11,6 +11,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.9',
+    date: '2026-07-09',
+    changes: [
+      '"Solve intersections": when pipes overlap, an amber row appears in the Design tab — one click joins every crossing with rigid heat-wrapped unions (your wrap-and-screw fabrication), splitting pipes where needed. Handles T, X, and many-way junctions at any angle, warning-free, as one undo step.',
+      'Junctions beyond a standard tee (four or more pipe ends, any angles) render as a clickable brown sphere — a fabricated union — instead of pretending to be a socket fitting. Pipes run fully into it.',
+      'Ctrl/Cmd+click toggles pipes (or whole groups) in and out of the selection; Ctrl+clicking empty space keeps your selection.',
+      'Clicking a pipe now always selects it — selection uses where you pressed, so camera drift between press and release (orbit glide, sky-facing views) can no longer eat the click.',
+      'Length and angle boxes only accept length characters (digits, . - / \' " and m for mm) — every other letter and Space cancels the entry and fires its hotkey, so V, D, and Space work mid-entry.',
+    ],
+  },
+  {
     version: '0.3.8',
     date: '2026-07-09',
     changes: [

@@ -31,7 +31,11 @@ import { BendPill } from './BendPill';
 import { BomPanel } from './BomPanel';
 import { FloatingIsland, resetFloatingLayout } from './chrome/FloatingIsland';
 import { ElasticPanel } from './ElasticPanel';
-import { EditorStatusChips, EditorWorkflowStatus } from './editor/EditorWorkflowStatus';
+import {
+  EditorStatusChips,
+  EditorWorkflowStatus,
+  OverlapSolveRow,
+} from './editor/EditorWorkflowStatus';
 import { PvcAutomationBridge } from './editor/PvcAutomationBridge';
 import { SimulationPanel } from './editor/SimulationPanel';
 import { useEditorHotkeys } from './editor/useEditorHotkeys';
@@ -492,18 +496,23 @@ export function EditorShell() {
         <div className="flex w-[min(92vw,24rem)] flex-col gap-1.5">
           <EditorWorkflowStatus activeWorkflow={workflow} onWorkflowChange={changeWorkflow} />
           <div className="h-px w-full bg-border/70" />
-          {workflow === 'design' &&
-            (showInspector ? (
-              <div className="flex flex-col items-stretch gap-2 p-1">
-                <SelectionPanel />
-                <BendPill />
-                <ElasticPanel />
-              </div>
-            ) : (
-              <p className="px-2 py-3 text-center text-xs text-muted-foreground">
-                Select a pipe, joint, or band to inspect it.
-              </p>
-            ))}
+          {workflow === 'design' && (
+            <>
+              {/* amber overlap row — self-subscribing, hidden at zero overlaps */}
+              <OverlapSolveRow />
+              {showInspector ? (
+                <div className="flex flex-col items-stretch gap-2 p-1">
+                  <SelectionPanel />
+                  <BendPill />
+                  <ElasticPanel />
+                </div>
+              ) : (
+                <p className="px-2 py-3 text-center text-xs text-muted-foreground">
+                  Select a pipe, joint, or band to inspect it.
+                </p>
+              )}
+            </>
+          )}
           {workflow === 'fabricate' && (
             <div className="scrollbar-minimal h-[min(55vh,30rem)] overflow-y-auto">
               <BomPanel hideHeader />

@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   CheckCircle2,
+  Combine,
   DraftingCompass,
   Hammer,
   Play,
@@ -9,7 +10,9 @@ import {
   Square,
 } from 'lucide-react';
 import { useMemo } from 'react';
+import { intersectingMembers } from '../../design/intersections';
 import { useAppStore } from '../../state/appStore';
+import { solveIntersections } from '../../state/editorActions';
 import { type SceneStatus, useEditorStore } from '../../state/editorStore';
 import { summarizeEditorWarnings } from './editorStatus';
 
@@ -98,6 +101,34 @@ export function EditorWorkflowStatus({
         }`}
       >
         {simulating ? <Square size={13} /> : <Play size={13} />}
+      </button>
+    </div>
+  );
+}
+
+/** Compact amber call-to-action shown in the workflow panel's Design tab while
+ * pipe volumes overlap (the red shells): one click joins every crossing with a
+ * rigid on-body union (heat-wrapped + screwed — the fabricated anchor tee).
+ * Self-subscribes to the document (the shell keeps its narrow subscriptions)
+ * and renders nothing when there is no overlap. */
+export function OverlapSolveRow() {
+  const design = useAppStore((s) => s.current);
+  const overlaps = useMemo(() => (design ? intersectingMembers(design).size : 0), [design]);
+  if (!overlaps) return null;
+  return (
+    <div className="mx-1 mt-1 flex items-center gap-2 rounded-md bg-amber-500/10 px-2 py-1.5 text-xs text-amber-700 dark:text-amber-300">
+      <AlertTriangle size={13} className="shrink-0" />
+      <span className="flex-1 tabular-nums">
+        {overlaps} overlapping pipe{overlaps === 1 ? '' : 's'}
+      </span>
+      <button
+        type="button"
+        onClick={() => solveIntersections()}
+        title="Join each crossing with a rigid heat-wrapped union"
+        className="flex shrink-0 items-center gap-1 rounded-md bg-amber-500/15 px-2 py-1 font-medium hover:bg-amber-500/25"
+      >
+        <Combine size={13} />
+        Solve intersections
       </button>
     </div>
   );
