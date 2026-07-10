@@ -14,7 +14,12 @@ import type { Design } from '../schema';
 // Project lifecycle + the single document-mutation path (updateCurrent).
 // Undo/redo: zundo temporal history over the document only (planfile §2),
 // limit 100; history pauses during drag gestures so a drag is one undo step,
-// and clears when switching projects.
+// and clears when switching projects. When the temporal past is exhausted,
+// undo keeps going: it steps backward through the project's PERSISTED
+// revision history (the Dexie revisions the autosaver mints), one saved
+// revision per press; redo walks forward through the visited revisions before
+// resuming temporal redo. Revision steps never enter temporal history and
+// never mint new revisions.
 
 export type SaveState = 'saved' | 'saving';
 
@@ -52,11 +57,51 @@ export interface AppState {
   endGesture(): void;
 }
 
+/** Structural equality ignoring `viewport` (camera churn is not an edit) —
+ * used to skip revision snapshots identical to what's already on screen. */
+function sameDesign(a: Design, b: Design): boolean {
+  return deepEqual({ ...a, viewport: undefined }, { ...b, viewport: undefined });
+}
+
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a).filter((k) => (a as Record<string, unknown>)[k] !== undefined);
+  const kb = Object.keys(b).filter((k) => (b as Record<string, unknown>)[k] !== undefined);
+  if (ka.length !== kb.length) return false;
+  return ka.every(
+    (k) =>
+      k in b && deepEqual((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]),
+  );
+}
+
 export function createAppStore(store: ProjectStore = new ProjectStore()) {
   const useStore = create<AppState>()(
     temporal(
       (set, get) => {
         let gestureStart: Design | null = null;
+
+        // —— undo past the temporal floor: persisted-revision walk ——
+        // Only revisions minted BEFORE the project opened are walkable; the
+        // session's own autosaves are duplicates of states temporal covers.
+        let sessionBaseRevId: number | undefined;
+        // revId `current` is showing (null = the live, non-historical doc)
+        let revCursor: number | null = null;
+        // docs replaced by back-steps, for redo (with the cursor to restore)
+        let revForward: Array<{ doc: Design; cursor: number | null }> = [];
+        // a revision load is in flight — undo/redo presses are ignored
+        let revBusy = false;
+
+        const resetRevisionWalk = () => {
+          revCursor = null;
+          revForward = [];
+        };
+
+        const beginRevisionSession = async (projectId: string) => {
+          resetRevisionWalk();
+          sessionBaseRevId = await store.latestRevisionId(projectId);
+        };
 
         const autosaver = createAutosaver(async (doc) => {
           await store.saveProject(doc);
@@ -66,6 +111,69 @@ export function createAppStore(store: ProjectStore = new ProjectStore()) {
             void get().refreshProjects();
           }
         });
+
+        // Persists revision-walk resting states WITHOUT minting a revision
+        // (the doc already IS one) — stepping through history must not write
+        // history. Debounced like the autosaver, so rapid steps coalesce.
+        const revisionSaver = createAutosaver(async (doc) => {
+          await store.putProject(doc);
+          if (!revisionSaver.hasPending() && !autosaver.isDirty()) {
+            set({ saveState: 'saved' });
+            void get().refreshProjects();
+          }
+        });
+
+        /** Set `current` with temporal PAUSED — a revision step must not
+         * create a temporal past entry (the next undo would bounce forward)
+         * and must not clear the temporal future (undone session edits stay
+         * redoable after walking forward out of the revisions). */
+        const setCurrentSilently = (doc: Design) => {
+          const t = useStore.temporal.getState();
+          const wasTracking = t.isTracking;
+          t.pause();
+          set({ current: doc, saveState: 'saving' });
+          if (wasTracking) t.resume();
+        };
+
+        /** Undo has exhausted the temporal past: load the next-older persisted
+         * revision and show it. Async (Dexie) while undo() is sync — guarded
+         * by revBusy; presses during a load are dropped, never interleaved. */
+        const stepRevisionBack = async () => {
+          const cur = get().current;
+          const base = sessionBaseRevId;
+          if (!cur || base === undefined || revBusy || get().gestureActive) return;
+          revBusy = true;
+          try {
+            const revs = (await store.listRevisions(cur.id)).filter((r) => r.revId <= base);
+            let idx: number;
+            if (revCursor === null) {
+              idx = 0;
+            } else {
+              const at = revs.findIndex((r) => r.revId === revCursor);
+              if (at < 0) return; // cursor revision trimmed away — treat as exhausted
+              idx = at + 1;
+            }
+            for (; idx < revs.length; idx++) {
+              const rev = revs[idx];
+              if (!rev) continue;
+              const doc = await store.loadRevisionDoc(cur.id, rev.revId);
+              if (!doc) continue;
+              const live = get().current;
+              if (!live || live.id !== cur.id) return; // project switched mid-load
+              if (sameDesign(doc, live)) continue; // duplicate snapshot — keep walking
+              revForward.push({ doc: live, cursor: revCursor });
+              revCursor = rev.revId;
+              // keep the user's camera; the historical doc supplies the design
+              const next: Design = { ...doc, viewport: live.viewport };
+              setCurrentSilently(next);
+              revisionSaver.schedule(next);
+              return;
+            }
+            // nothing older that differs — bottom of history, no-op
+          } finally {
+            revBusy = false;
+          }
+        };
 
         return {
           projects: [],
@@ -83,6 +191,7 @@ export function createAppStore(store: ProjectStore = new ProjectStore()) {
             setLastProjectId(doc.id);
             set({ current: doc, saveState: 'saved' });
             useStore.temporal.getState().clear();
+            await beginRevisionSession(doc.id);
             await get().refreshProjects();
           },
 
@@ -95,6 +204,7 @@ export function createAppStore(store: ProjectStore = new ProjectStore()) {
             setLastProjectId(doc.id);
             set({ current: doc, saveState: 'saved' });
             useStore.temporal.getState().clear();
+            await beginRevisionSession(doc.id);
             await get().refreshProjects();
           },
 
@@ -104,13 +214,17 @@ export function createAppStore(store: ProjectStore = new ProjectStore()) {
             setLastProjectId(id);
             set({ current: doc, saveState: 'saved' });
             useStore.temporal.getState().clear();
+            await beginRevisionSession(id);
           },
 
           async closeProject() {
             await autosaver.flush();
+            await revisionSaver.flush();
             setLastProjectId(null);
             set({ current: null, saveState: 'saved' });
             useStore.temporal.getState().clear();
+            resetRevisionWalk();
+            sessionBaseRevId = undefined;
             await get().refreshProjects();
           },
 
@@ -135,6 +249,9 @@ export function createAppStore(store: ProjectStore = new ProjectStore()) {
             if (get().current?.id === projectId) {
               set({ current: doc, saveState: 'saved' });
               useStore.temporal.getState().clear();
+              // sessionBaseRevId stays as-of-open: the restore just minted a
+              // NEW revision (excluded), duplicating a walkable old one
+              resetRevisionWalk();
             }
             await get().refreshProjects();
           },
@@ -142,13 +259,21 @@ export function createAppStore(store: ProjectStore = new ProjectStore()) {
           async deleteProject(id) {
             await store.deleteProject(id);
             const cur = get().current;
-            if (cur?.id === id) set({ current: null });
+            if (cur?.id === id) {
+              set({ current: null });
+              resetRevisionWalk();
+              sessionBaseRevId = undefined;
+            }
             await get().refreshProjects();
           },
 
           updateCurrent(update) {
             const cur = get().current;
             if (!cur) return;
+            // a real edit branches off any revision walk — forward history is
+            // gone, and this doc persists via the normal (minting) autosaver
+            resetRevisionWalk();
+            revisionSaver.cancel();
             const next = update(cur);
             set({ current: next, saveState: 'saving' });
             autosaver.schedule(next);
@@ -179,19 +304,40 @@ export function createAppStore(store: ProjectStore = new ProjectStore()) {
             setLastProjectId(doc.id);
             set({ current: doc, saveState: 'saved' });
             useStore.temporal.getState().clear();
+            await beginRevisionSession(doc.id);
             await get().refreshProjects();
           },
 
           undo() {
-            useStore.temporal.getState().undo();
-            const cur = get().current;
-            if (cur) {
-              set({ saveState: 'saving' });
-              autosaver.schedule(cur);
+            if (revBusy) return; // a revision load is in flight — drop the press
+            const t = useStore.temporal.getState();
+            if (t.pastStates.length > 0) {
+              t.undo();
+              const cur = get().current;
+              if (cur) {
+                set({ saveState: 'saving' });
+                autosaver.schedule(cur);
+              }
+              return;
             }
+            // in-session history exhausted — step back one persisted revision
+            void stepRevisionBack();
           },
 
           redo() {
+            if (revBusy) return; // a revision load is in flight — drop the press
+            // Walking forward through visited revisions takes priority over
+            // temporal redo. (Both CAN coexist: back-stepping starts only once
+            // the temporal PAST is empty, but the temporal FUTURE may still
+            // hold undone session edits — the forward stack returns to the
+            // temporal floor first, then temporal redo resumes from there.)
+            const entry = revForward.pop();
+            if (entry) {
+              revCursor = entry.cursor;
+              setCurrentSilently(entry.doc);
+              revisionSaver.schedule(entry.doc);
+              return;
+            }
             useStore.temporal.getState().redo();
             const cur = get().current;
             if (cur) {

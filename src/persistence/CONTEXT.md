@@ -8,7 +8,7 @@ re-runs `migrateToLatest`, exactly like an imported file.
 
 | File | Responsibility | Key exports |
 |---|---|---|
-| `projectStore.ts` (69) | `ProjectStore` class over a `PvcDb` (injectable for tests) | `listProjects`, `createProject`, `loadProject` (migrates), `saveProject` (put + revision + trim), `renameProject`, `deleteProject`, `close`; `ProjectSummary` |
+| `projectStore.ts` (135) | `ProjectStore` class over a `PvcDb` (injectable for tests) | `listProjects`, `createProject`, `loadProject` (migrates), `saveProject` (put + revision + trim), `putProject` (put WITHOUT minting a revision — undo's revision-walk resting states), `latestRevisionId`, `loadRevisionDoc` (read-only revision load, no save side-effects), `listRevisions`, `restoreRevision` (load + re-save, mints), `renameProject`, `deleteProject`, `close`; `ProjectSummary`, `ProjectRevisionSummary` |
 | `db.ts` (32) | Dexie schema | `PvcDb` — tables `projects` (`id, updatedAt`) + `revisions` (`++revId, projectId, savedAt`), `REVISION_LIMIT=20`, `ProjectRow`/`RevisionRow` (embed full `Design`) |
 | `autosave.ts` (59) | Pure debounced saver factory (no Dexie coupling) | `createAutosaver(save, delayMs=1000)` → `Autosaver` (`schedule`, `flush`, `cancel`, `isDirty`, `hasPending`) |
 | `exportImport.ts` (27) | JSON export/import + filename | `exportDesignJson` (validates on the way out), `importDesignJson` (parse → migrate), `suggestedFileName` → `<slug>.pvc.json` |
@@ -28,6 +28,9 @@ re-runs `migrateToLatest`, exactly like an imported file.
   opaque origins have working storage). Renderer effects default OFF until explicitly enabled.
   `SnapPref.snapToPoints` is a legacy flag read for migration.
 - **`saveProject` uses `as never`** casts for Dexie's auto-increment `revId` typing — intentional.
+- **`saveProject` mints a revision on EVERY save** (trimmed to `REVISION_LIMIT=20`). Anything that
+  re-persists an EXISTING revision doc (appStore's undo-into-history walk) must use `putProject`
+  instead, or stepping through history would roll real history off the window.
 
 ## Tests
 `projectStore.test.ts` — vitest + `fake-indexeddb/auto`, fresh uniquely-named DB per test. CRUD,

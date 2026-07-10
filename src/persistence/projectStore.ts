@@ -42,6 +42,25 @@ export class ProjectStore {
     return migrateToLatest(row.doc);
   }
 
+  /** Newest revId for a project (undefined if it has no revisions). Captured
+   * by the app when a project opens, so undo-into-history can walk only the
+   * revisions that predate the session. */
+  async latestRevisionId(projectId: string): Promise<number | undefined> {
+    const keys = (await this.db.revisions
+      .where('projectId')
+      .equals(projectId)
+      .primaryKeys()) as number[];
+    return keys.length > 0 ? Math.max(...keys) : undefined;
+  }
+
+  /** Read-only load of one revision's document (migrated, id normalized to the
+   * project) — no save side-effects, unlike restoreRevision. */
+  async loadRevisionDoc(projectId: string, revId: number): Promise<Design | undefined> {
+    const row = await this.db.revisions.get(revId);
+    if (!row || row.projectId !== projectId) return undefined;
+    return { ...migrateToLatest(row.doc), id: projectId };
+  }
+
   async listRevisions(projectId: string): Promise<ProjectRevisionSummary[]> {
     const rows = await this.db.revisions.where('projectId').equals(projectId).toArray();
     rows.sort((a, b) => (b.revId ?? 0) - (a.revId ?? 0));
@@ -74,6 +93,14 @@ export class ProjectStore {
     });
   }
 
+  /** Persist the project row WITHOUT appending a revision. Used when the doc
+   * being persisted IS an existing revision (undo stepping through history) —
+   * minting a copy per step would spam and roll real history off the
+   * REVISION_LIMIT window. */
+  async putProject(doc: Design): Promise<void> {
+    await this.db.projects.put({ id: doc.id, name: doc.name, updatedAt: Date.now(), doc });
+  }
+
   async renameProject(id: string, name: string): Promise<void> {
     const doc = await this.loadProject(id);
     if (!doc) throw new Error(`no project ${id}`);
@@ -89,9 +116,8 @@ export class ProjectStore {
   }
 
   async restoreRevision(projectId: string, revId: number): Promise<Design> {
-    const row = await this.db.revisions.get(revId);
-    if (!row || row.projectId !== projectId) throw new Error(`no revision ${revId}`);
-    const doc = { ...migrateToLatest(row.doc), id: projectId };
+    const doc = await this.loadRevisionDoc(projectId, revId);
+    if (!doc) throw new Error(`no revision ${revId}`);
     await this.saveProject(doc);
     return doc;
   }

@@ -11,6 +11,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.16',
+    date: '2026-07-10',
+    changes: [
+      'Ctrl+Z now reaches back through your saved version history: once in-session undo is exhausted, each press steps to the previous saved revision (camera stays put, duplicates are skipped), and Ctrl+Shift+Z walks forward again. Editing anywhere branches you off from there — and browsing history never pollutes the history itself.',
+    ],
+  },
+  {
     version: '0.3.15',
     date: '2026-07-09',
     changes: [
