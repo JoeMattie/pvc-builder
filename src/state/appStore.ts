@@ -22,6 +22,9 @@ export interface AppState {
   projects: ProjectSummary[];
   current: Design | null;
   saveState: SaveState;
+  /** true while a drag gesture (endpoint/move/rotate) is batching updates —
+   * chrome can suppress hover popups etc. during the drag */
+  gestureActive: boolean;
   refreshProjects(): Promise<void>;
   createProject(name: string): Promise<void>;
   /** Create a new project seeded from a bundled example, then open it. */
@@ -68,6 +71,7 @@ export function createAppStore(store: ProjectStore = new ProjectStore()) {
           projects: [],
           current: null,
           saveState: 'saved',
+          gestureActive: false,
 
           async refreshProjects() {
             set({ projects: await store.listProjects() });
@@ -199,6 +203,7 @@ export function createAppStore(store: ProjectStore = new ProjectStore()) {
           beginGesture() {
             gestureStart = get().current;
             useStore.temporal.getState().pause();
+            set({ gestureActive: true });
           },
 
           endGesture() {
@@ -216,6 +221,7 @@ export function createAppStore(store: ProjectStore = new ProjectStore()) {
               temporal.resume();
             }
             gestureStart = null;
+            set({ gestureActive: false });
           },
         };
       },

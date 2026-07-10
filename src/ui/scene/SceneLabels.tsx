@@ -21,7 +21,8 @@ type LabelTone = 'cut' | 'member' | 'joint' | 'fitting' | 'warning';
 
 type LabelAnchor =
   | { kind: 'member'; memberId: string; t0?: number; t1?: number }
-  | { kind: 'node'; nodeId: string };
+  | { kind: 'node'; nodeId: string }
+  | { kind: 'point'; position: Vec3 };
 
 interface LabelSpec {
   key: string;
@@ -171,18 +172,43 @@ function hoverLabel(design: Design, hovered: HoveredSceneItem, cutIds: Map<strin
     : null;
 }
 
+/** One pill for a multi-selection: object count + total length, anchored just
+ * above the selection's centroid (a popup per selected pipe reads as noise). */
+function selectionSummaryLabel(design: Design, selectedIds: string[]): LabelSpec | null {
+  const members = selectedIds.map((id) => memberById(design, id)).filter((m): m is Member => !!m);
+  if (members.length < 2) return null;
+  const totalM = members.reduce((sum, m) => sum + memberLengthM(design, m), 0);
+  const positions = members.map((m) => memberPosition(design, m.id)).filter((p): p is Vec3 => !!p);
+  const centroid = positions.length
+    ? scale(
+        positions.reduce((acc, p) => add(acc, p), { x: 0, y: 0, z: 0 }),
+        1 / positions.length,
+      )
+    : { x: 0, y: 0, z: 0 };
+  const sizes = [...new Set(members.map((m) => m.size))].join(', ');
+  return {
+    key: 'selection-summary',
+    tone: 'member',
+    anchor: { kind: 'point', position: { ...centroid, y: centroid.y + 0.05 } },
+    main: `${members.length} objects — ${sizes}`,
+    sub: `total ${formatLengthDisplay(totalM, design.lengthDisplay)}`,
+  };
+}
+
 function buildLabels({
   design,
   showCutIds,
   selectedIds,
   selectedJointId,
   hovered,
+  gestureActive,
 }: {
   design: Design;
   showCutIds: boolean;
   selectedIds: string[];
   selectedJointId: string | null;
   hovered: HoveredSceneItem;
+  gestureActive: boolean;
 }): LabelSpec[] {
   const labels = new Map<string, LabelSpec>();
   const b = bom(design);
@@ -190,19 +216,25 @@ function buildLabels({
   const semanticMembers = new Set(selectedIds);
   if (hovered?.kind === 'member') semanticMembers.add(hovered.id);
 
-  for (const id of selectedIds) {
-    const member = memberById(design, id);
-    if (member)
-      labels.set(
-        `member-${member.id}`,
-        memberLabel(design, member, cuts.get(id) ?? [], 'selected'),
-      );
+  if (selectedIds.length > 1) {
+    const summary = selectionSummaryLabel(design, selectedIds);
+    if (summary) labels.set(summary.key, summary);
+  } else {
+    for (const id of selectedIds) {
+      const member = memberById(design, id);
+      if (member)
+        labels.set(
+          `member-${member.id}`,
+          memberLabel(design, member, cuts.get(id) ?? [], 'selected'),
+        );
+    }
   }
   if (selectedJointId) {
     const joint = design.joints.find((j) => j.id === selectedJointId);
     if (joint) labels.set(`joint-${joint.id}`, jointLabel(joint, 'selected'));
   }
-  const hover = hoverLabel(design, hovered, cuts);
+  // no hover popups mid-drag — the pill chases the cursor and hides the work
+  const hover = gestureActive ? null : hoverLabel(design, hovered, cuts);
   const duplicateHover =
     (hovered?.kind === 'member' && selectedIds.includes(hovered.id)) ||
     (hovered?.kind === 'joint' && hovered.id === selectedJointId);
@@ -229,6 +261,7 @@ function memberPosition(design: Design, memberId: string, t0?: number, t1?: numb
 }
 
 function labelPosition(design: Design, anchor: LabelAnchor): Vec3 | null {
+  if (anchor.kind === 'point') return anchor.position;
   if (anchor.kind === 'node') {
     return easedPos(anchor.nodeId) ?? nodeById(design, anchor.nodeId)?.position ?? null;
   }
@@ -359,6 +392,7 @@ export function SceneLabels() {
   const selectedIds = useEditorStore((s) => s.selectedIds);
   const selectedJointId = useEditorStore((s) => s.selectedJointId);
   const hovered = useEditorStore((s) => s.hoveredSceneItem);
+  const gestureActive = useAppStore((s) => s.gestureActive);
   const night = useThemeStore((s) => s.night);
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
@@ -375,9 +409,10 @@ export function SceneLabels() {
             selectedIds,
             selectedJointId,
             hovered,
+            gestureActive,
           })
         : [],
-    [design, sceneStatus, selectedIds, selectedJointId, hovered],
+    [design, sceneStatus, selectedIds, selectedJointId, hovered, gestureActive],
   );
 
   useEffect(() => {

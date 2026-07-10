@@ -3,11 +3,14 @@ import { createEmptyDesign, type Design, pipeSpec, type Vec3 } from '../schema';
 import {
   bom,
   bomToCsv,
+  type CutItem,
   cutSourceSummary,
   EYE_BOLT_TAKEOFF_M,
   endCapAllowanceM,
   fittingTakeoffDetail,
   fittingTakeoffM,
+  STOCK_LENGTH_M,
+  stockNeeds,
   wrapAllowanceM,
 } from './bom';
 import { addFormedMember, appendPipe, setJoinMode, startPath } from './docOps';
@@ -248,5 +251,44 @@ describe('bomToCsv', () => {
     const freeCsv = bomToCsv(withFree);
     expect(freeCsv).toContain('estimate: PVC Builder estimate');
     expect(freeCsv).toContain('free-pivot eye bolt');
+  });
+});
+
+describe('stockNeeds (10-ft purchase list)', () => {
+  const cut = (cutLengthM: number, size: '1/2"' | '3/4"' = '1/2"') =>
+    ({ size, cutLengthM }) as CutItem;
+
+  it('packs cuts into sticks first-fit-decreasing', () => {
+    // three 1.6 m cuts: no two fit one 3.048 m stick → 3 sticks
+    const [need] = stockNeeds([cut(1.6), cut(1.6), cut(1.6)]);
+    expect(need?.sticks).toBe(3);
+    // 1.6 + 1.4 DO share a stick → 2 sticks for 1.6/1.6/1.4/1.4
+    expect(stockNeeds([cut(1.6), cut(1.4), cut(1.6), cut(1.4)])[0]?.sticks).toBe(2);
+  });
+
+  it('separates sizes and reports waste', () => {
+    const needs = stockNeeds([cut(1.0, '1/2"'), cut(1.0, '3/4"')]);
+    expect(needs).toHaveLength(2);
+    for (const n of needs) {
+      expect(n.sticks).toBe(1);
+      expect(n.wasteM).toBeCloseTo(STOCK_LENGTH_M - 1.0, 9);
+    }
+  });
+
+  it('a cut longer than one stick buys whole sticks and packs the remainder', () => {
+    // 7 m = 2 whole sticks + 0.904 m remainder → 3 sticks total
+    expect(stockNeeds([cut(7)])[0]?.sticks).toBe(3);
+    // remainder shares a stick with another short cut
+    const [need] = stockNeeds([cut(7), cut(2.0)]);
+    expect(need?.sticks).toBe(3);
+  });
+
+  it('is included in bom() and the CSV', () => {
+    const start = startPath(createEmptyDesign('d', 's'), { x: 0, y: 0, z: 0 });
+    const design = appendPipe(start.design, start.nodeId, { x: 1, y: 0, z: 0 }, '1/2"').design;
+    const b = bom(design);
+    expect(b.stock).toHaveLength(1);
+    expect(b.stock[0]?.sticks).toBe(1);
+    expect(bomToCsv(design)).toContain('Stock to buy');
   });
 });

@@ -430,7 +430,9 @@ export function JointLayer() {
               e.stopPropagation();
               swapJointReceiver(selectedJoint.id);
             }}
-            style={{ transform: 'translate(20px, -20px)' }}
+            // down-right of the node: the joint label pill renders ABOVE it,
+            // and up-right parked this button on top of the label text
+            style={{ transform: 'translate(22px, 24px)' }}
             className="flex h-6 w-6 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-md hover:bg-accent"
           >
             <ArrowLeftRight size={13} />

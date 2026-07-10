@@ -11,6 +11,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.5',
+    date: '2026-07-09',
+    changes: [
+      'Fabricate now tells you what to buy: a "Stock to buy" list packs your cuts into 10-ft sections per size (with the spare left over), in the panel and the CSV.',
+      'Selecting many pipes shows one summary — a single popup with count, sizes, and total length in the viewport, and a size-by-size breakdown with totals in the Design tab — instead of a popup on every pipe.',
+      'The Views menu got direction glyphs: each preset shows where the camera sits in plan view. Simulate is tidier — Body/Debug/Reset on top, damping below, and the confusing static labels ("pipe collisions off", "body is static") moved into Help where they read as facts, not switches.',
+      'Hover popups stay out of the way while dragging, the Saved/warnings chips sit beside the document panel instead of inside it, Play lives at the far right of the workflow tabs, the pipe inspector reads "1/2″ Pipe" and fits the panel, group colours are much stronger, and the joint swap button no longer covers the joint label.',
+    ],
+  },
+  {
     version: '0.3.4',
     date: '2026-07-09',
     changes: [

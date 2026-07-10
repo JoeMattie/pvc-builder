@@ -69,6 +69,39 @@ function useCompactChrome() {
   return compact;
 }
 
+/** Autosave + warnings chips, positioned just right of the pinned document
+ * island (outside its card). The island is `draggable={false}`, so only its
+ * SIZE changes (name edits, breakpoints) — tracked with a ResizeObserver. */
+function DocumentSideChips() {
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  useEffect(() => {
+    const el = document.querySelector<HTMLElement>('[data-floating-island="document-controls"]');
+    if (!el) return;
+    const update = () => {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0) setPos({ left: r.right + 10, top: r.top + r.height / 2 });
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    window.addEventListener('resize', update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, []);
+  if (!pos) return null;
+  return (
+    <div
+      className="-translate-y-1/2 pointer-events-auto absolute z-30"
+      style={{ left: pos.left, top: pos.top }}
+      data-viewport-occluder
+    >
+      <EditorStatusChips />
+    </div>
+  );
+}
+
 /** The rubber-band selection rectangle (screen overlay). Blue solid when
  * dragging left→right (window / contained), green dashed right→left (crossing /
  * touching) — CAD convention. */
@@ -397,7 +430,6 @@ export function EditorShell() {
               <RefreshCcw size={16} />
             </button>
           </div>
-          <EditorStatusChips />
           <input
             ref={fileInputRef}
             type="file"
@@ -407,6 +439,10 @@ export function EditorShell() {
           />
         </div>
       </FloatingIsland>
+
+      {/* autosave + warnings chips float free, directly right of the pinned
+          document panel (not inside its box) */}
+      <DocumentSideChips />
 
       <FloatingIsland
         id="object-tree"
@@ -536,7 +572,7 @@ export function EditorShell() {
         title="View"
         titleLayout="inline"
       >
-        <div className="flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-1 px-1.5 py-1.5">
+        <div className="flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-1">
           <button
             type="button"
             onClick={undo}

@@ -175,6 +175,27 @@ export function BomPanel({
                 <span className="tabular-nums">{fmt(total ?? 0)}</span>
               </div>
             ))}
+
+            {b.stock.length > 0 && (
+              <>
+                <div className="mt-3 mb-1 font-medium text-muted-foreground uppercase text-[10.5px] tracking-wide">
+                  Stock to buy
+                </div>
+                {b.stock.map((s) => (
+                  <div key={s.size} className="flex justify-between">
+                    <span className="font-medium">
+                      {s.sticks}× 10&#8202;ft — {s.size}
+                    </span>
+                    <span
+                      className="text-muted-foreground tabular-nums"
+                      title="Leftover across the purchased sections (no kerf allowance)"
+                    >
+                      {fmt(s.wasteM)} spare
+                    </span>
+                  </div>
+                ))}
+              </>
+            )}
             {b.conflicts > 0 && (
               <div className="mt-2 text-destructive">
                 {b.conflicts} joint conflict{b.conflicts === 1 ? '' : 's'}

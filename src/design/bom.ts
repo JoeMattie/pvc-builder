@@ -200,6 +200,56 @@ export interface Bom {
   warnings: BomWarning[];
   /** total pipe to buy per size (sum of cut lengths), m */
   totalBySize: Partial<Record<NominalSize, number>>;
+  /** shopping list: 10-ft stock sticks to purchase per size */
+  stock: StockNeed[];
+}
+
+/** Retail PVC stock stick length: 10 ft. */
+export const STOCK_LENGTH_M = 3.048;
+
+export interface StockNeed {
+  size: NominalSize;
+  /** stock sticks to purchase */
+  sticks: number;
+  /** total cut length packed into them, m */
+  totalCutM: number;
+  /** leftover across all purchased sticks, m */
+  wasteM: number;
+}
+
+/** First-fit-decreasing pack of the cut list into stock sticks per size — the
+ * shopping list ("buy N × 10 ft of 1/2\""). No kerf allowance. A cut longer
+ * than one stick buys its whole sticks and packs the remainder (it needs a
+ * splice regardless). */
+export function stockNeeds(cuts: CutItem[], stickM = STOCK_LENGTH_M): StockNeed[] {
+  const bySize = new Map<NominalSize, number[]>();
+  for (const c of cuts) {
+    if (c.cutLengthM <= EPS) continue;
+    const list = bySize.get(c.size) ?? [];
+    list.push(c.cutLengthM);
+    bySize.set(c.size, list);
+  }
+  const out: StockNeed[] = [];
+  for (const [size, lens] of bySize) {
+    const remain: number[] = []; // leftover length per opened stick
+    let wholeSticks = 0;
+    for (const len of [...lens].sort((a, b) => b - a)) {
+      let rest = len;
+      if (rest > stickM + EPS) {
+        const whole = Math.floor(rest / stickM);
+        wholeSticks += whole;
+        rest -= whole * stickM;
+        if (rest <= EPS) continue;
+      }
+      const i = remain.findIndex((r) => r >= rest - EPS);
+      if (i >= 0) remain[i] = (remain[i] ?? 0) - rest;
+      else remain.push(stickM - rest);
+    }
+    const sticks = remain.length + wholeSticks;
+    const totalCutM = lens.reduce((sum, l) => sum + l, 0);
+    out.push({ size, sticks, totalCutM, wasteM: sticks * stickM - totalCutM });
+  }
+  return out.sort((a, b) => a.size.localeCompare(b.size));
 }
 
 export function bom(design: Design): Bom {
@@ -402,6 +452,7 @@ export function bom(design: Design): Bom {
     conflicts: conflicts.length,
     warnings: bomWarnings(cuts),
     totalBySize,
+    stock: stockNeeds(cuts),
   };
 }
 
@@ -559,6 +610,12 @@ export function bomToCsv(design: Design): string {
   line('Total pipe by size');
   for (const [size, total] of Object.entries(b.totalBySize)) {
     line(size, formatLengthDisplay(total ?? 0, disp));
+  }
+  if (b.stock.length) {
+    line('');
+    line('Stock to buy (10 ft sections)');
+    line('Size', 'Sections', 'Waste');
+    for (const s of b.stock) line(s.size, s.sticks, formatLengthDisplay(s.wasteM, disp));
   }
   if (b.conflicts > 0) {
     line('');

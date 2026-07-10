@@ -105,7 +105,7 @@ const CONCEPTS: { title: string; body: string }[] = [
   },
   {
     title: 'Simulate (Play)',
-    body: 'Toggle the Drag lock in the tool bar to hold every member length, then pose wrapped pivots with the sliders or drag free hubs directly. Press Play (Ctrl+Space) to run rigid-body physics; the bug icon overlays the live bodies + constraints. The BOM / cut list gives take-offs, allowances, and a CSV export.',
+    body: 'Toggle the Drag lock in the tool bar to hold every member length, then pose wrapped pivots with the sliders or drag free hubs directly. Press Play (Ctrl+Space) to run rigid-body physics; the bug icon overlays the live bodies + constraints. During a run: pivots constrain motion, elastic bands pull, the mannequin body is static (an immovable surface to rest on), and pipes do not collide with each other. The BOM / cut list gives take-offs, allowances, and a CSV export.',
   },
 ];
 

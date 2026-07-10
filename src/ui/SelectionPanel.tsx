@@ -160,9 +160,11 @@ function JointInspector({ design, joint }: { design: Design; joint: Joint }) {
         : '0°';
 
   return (
-    <div className="w-[min(94vw,760px)] rounded-lg border border-border bg-card px-3 py-2 shadow-sm">
-      <div className="flex flex-wrap items-start gap-3">
-        <div className="flex min-w-32 items-center gap-2">
+    // stacked to fit the workflow panel's ~22rem body (this used to be a wide
+    // top-center bar)
+    <div className="w-full rounded-lg border border-border bg-card px-3 py-2 shadow-sm">
+      <div className="flex flex-col gap-2.5">
+        <div className="flex items-center gap-2">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-accent text-accent-foreground">
             {joint.mode === 'wrapped' ? (
               <Rotate3d size={16} />
@@ -185,7 +187,7 @@ function JointInspector({ design, joint }: { design: Design; joint: Joint }) {
           </div>
         </div>
 
-        <div className="grid min-w-64 flex-1 grid-cols-2 gap-x-4 gap-y-1 text-xs">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
           <div>
             <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
               Receiver
@@ -214,7 +216,7 @@ function JointInspector({ design, joint }: { design: Design; joint: Joint }) {
           </div>
         </div>
 
-        <div className="flex min-w-56 flex-1 flex-col gap-1.5 text-xs">
+        <div className="flex flex-col gap-1.5 text-xs">
           <div className="flex items-start gap-1.5 text-muted-foreground">
             <Info size={13} className="mt-0.5 shrink-0" />
             <span>
@@ -228,7 +230,7 @@ function JointInspector({ design, joint }: { design: Design; joint: Joint }) {
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 text-xs">
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
           <div className="flex items-center gap-0.5 rounded-md border border-border p-0.5">
             <ModeButton
               active={joint.mode === 'anchor'}
@@ -294,6 +296,57 @@ function JointInspector({ design, joint }: { design: Design; joint: Joint }) {
   );
 }
 
+/** Multi-selection: a summary + breakdown by size/kind with total length —
+ * per-object rows would just repeat the scene labels. */
+function MultiSelectionSummary({ design, ids }: { design: Design; ids: string[] }) {
+  const display = design.lengthDisplay;
+  const members = ids.map((id) => memberById(design, id)).filter((m): m is Member => !!m);
+  const groups = new Map<string, { count: number; totalM: number }>();
+  let totalM = 0;
+  for (const m of members) {
+    const len = memberLengthM(design, m);
+    totalM += len;
+    const key = `${m.size} ${m.kind === 'formed' ? 'Curve' : 'Pipe'}`;
+    const g = groups.get(key) ?? { count: 0, totalM: 0 };
+    g.count += 1;
+    g.totalM += len;
+    groups.set(key, g);
+  }
+  return (
+    <div className="w-full rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-sm">
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="font-medium text-sm">{members.length} objects selected</span>
+        <button
+          type="button"
+          aria-label="Delete selected objects"
+          title="Delete selected objects"
+          onClick={() => {
+            deleteMembers(ids);
+            clearSelection();
+          }}
+          className="rounded-md p-1.5 text-muted-foreground hover:text-destructive"
+        >
+          <Trash2 size={15} />
+        </button>
+      </div>
+      <div className="flex flex-col gap-1">
+        {[...groups.entries()].map(([label, g]) => (
+          <div key={label} className="flex items-center justify-between">
+            <span className="text-muted-foreground">
+              {g.count}× {label}
+            </span>
+            <span className="tabular-nums">{formatLengthDisplay(g.totalM, display)}</span>
+          </div>
+        ))}
+        <div className="mt-1 flex items-center justify-between border-border/70 border-t pt-1 font-medium">
+          <span>Total length</span>
+          <span className="tabular-nums">{formatLengthDisplay(totalM, display)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Inspector for the current selection: selected joints get connection/BOM
  * details; selected members get size, length or bend details, and delete. */
 export function SelectionPanel() {
@@ -319,6 +372,7 @@ export function SelectionPanel() {
     ? design.joints.find((joint) => joint.id === selectedJointId)
     : undefined;
   if (selectedJoint) return <JointInspector design={design} joint={selectedJoint} />;
+  if (selectedIds.length > 1) return <MultiSelectionSummary design={design} ids={selectedIds} />;
   if (!member) return null;
 
   const commit = (e: FormEvent) => {
@@ -334,8 +388,10 @@ export function SelectionPanel() {
   const canFree = !!joint; // free applies end-to-end and on-body (saddle eye bolt)
 
   return (
-    <div className="flex max-w-[calc(100vw-2rem)] flex-wrap items-center justify-center gap-3 rounded-lg border border-border bg-card px-3 py-2 shadow-sm">
-      <span className="text-xs font-medium text-muted-foreground tabular-nums">{member.size}</span>
+    <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-card px-3 py-2 shadow-sm">
+      <span className="text-xs font-medium text-foreground tabular-nums">
+        {member.size} {member.kind === 'formed' ? 'Curve' : 'Pipe'}
+      </span>
       <div className="h-5 w-px bg-border" />
 
       {member.kind === 'straight' ? (
@@ -439,7 +495,6 @@ export function SelectionPanel() {
         </>
       )}
 
-      <div className="h-5 w-px bg-border" />
       <button
         type="button"
         aria-label="Delete pipe"

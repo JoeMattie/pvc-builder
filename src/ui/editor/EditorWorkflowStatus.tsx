@@ -85,14 +85,13 @@ export function EditorWorkflowStatus({
           </button>
         );
       })}
-      <div className="mx-0.5 h-5 w-px bg-border" />
       <button
         type="button"
         onClick={() => setSimulating(!simulating)}
         aria-pressed={simulating}
         aria-label={simulating ? 'Stop simulation' : 'Play simulation'}
         title={simulating ? 'Stop simulation (Ctrl+Space)' : 'Play simulation (Ctrl+Space)'}
-        className={`flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium ${
+        className={`ml-auto flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium ${
           simulating
             ? 'bg-primary text-primary-foreground'
             : 'bg-accent text-accent-foreground hover:bg-accent/80'

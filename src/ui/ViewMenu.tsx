@@ -26,6 +26,42 @@ const GROUPS: { label: string; views: { name: ViewName; label: string }[] }[] = 
   },
 ];
 
+// Plan-view camera position for the direction glyph, matching VIEW_PRESETS
+// (+z = N/up-glyph, +x = E/right-glyph); `top` looks straight down (center).
+const GLYPH_DOT: Record<ViewName, [number, number]> = {
+  'iso-ne': [10.5, 3.5],
+  'iso-nw': [3.5, 3.5],
+  'iso-se': [10.5, 10.5],
+  'iso-sw': [3.5, 10.5],
+  top: [7, 7],
+  front: [7, 2.5],
+  back: [7, 11.5],
+  right: [11.5, 7],
+  left: [2.5, 7],
+};
+
+/** Tiny plan-view compass: the outline is the model, the dot is where the
+ * camera sits (center dot = Top, looking straight down). */
+function ViewGlyph({ name }: { name: ViewName }) {
+  const [cx, cy] = GLYPH_DOT[name];
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
+      <rect
+        x="3.5"
+        y="3.5"
+        width="7"
+        height="7"
+        rx="1.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1"
+        opacity="0.4"
+      />
+      <circle cx={cx} cy={cy} r="2" fill="currentColor" />
+    </svg>
+  );
+}
+
 /** A compact portal-backed "Views" dropdown in the top-right toolbar. */
 export function ViewMenu() {
   return (
@@ -55,8 +91,9 @@ export function ViewMenu() {
                   <DropdownMenu.Item
                     key={v.name}
                     onSelect={() => setView(v.name)}
-                    className="cursor-pointer rounded-md border border-border px-2 py-1 text-xs text-foreground outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground"
+                    className="flex cursor-pointer items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs text-foreground outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground"
                   >
+                    <ViewGlyph name={v.name} />
                     {v.label}
                   </DropdownMenu.Item>
                 ))}

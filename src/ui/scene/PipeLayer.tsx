@@ -93,10 +93,11 @@ function InstancedPipes() {
     const base = new Color(color);
     const sel = new Color(SELECT_BLUE);
     const faded = new Color(color).lerp(new Color(scenePalette(night).viewport), 0.82);
-    // memberId → subtle tint of its group's colour (base lerped 32% toward it)
+    // memberId → its group's colour cast (base lerped 60% toward it — strong
+    // enough to tell groups apart at a glance)
     const tint = new Map<string, Color>();
     for (const g of design.groups) {
-      const gc = new Color(color).lerp(new Color(groupColorOf(design, g.id)), 0.32);
+      const gc = new Color(color).lerp(new Color(groupColorOf(design, g.id)), 0.6);
       for (const id of g.memberIds) tint.set(id, gc);
     }
     for (let i = 0; i < structural.cylinders.length; i++) {
