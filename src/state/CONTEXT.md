@@ -60,6 +60,11 @@ Scene diagnostics: `sceneStats`, `getCameraPos`, `getCameraTarget`, `screenOf`, 
   back every OTHER wrapped joint's resolved angle so closed loops stay closed.
 - **`segmentsOf` gives only straight members a `memberId`** — an on-pipe hit on a straight can
   split into a tee; formed members snap to the chord but never split.
+- **`endGesture` records an entry only when the doc REFERENCE changed** since `beginGesture` —
+  cancel paths (e.g. the rotate tool's typed-angle Escape in `ui/scene/SelectionHandles.tsx`)
+  restore the captured pre-gesture doc verbatim via `updateCurrent(() => preDoc)` so the gesture
+  closes with NO history entry. Rotating back by the inverse angle would NOT achieve this (new
+  reference + FP drift).
 - **`animStore`'s eased map is module-global** (not in the store) — tests use unique node ids.
 - **snap persists across tests** — `editorActions.test.ts`/`editorStore` re-set it in `beforeEach`.
 

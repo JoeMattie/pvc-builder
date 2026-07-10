@@ -11,6 +11,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.8',
+    date: '2026-07-09',
+    changes: [
+      'Type exact rotations: with the Rotate tool, click a gizmo ring to pick the axis and a small input appears on the ring — type an angle in degrees (negative and decimals allowed), watch the selection preview live, and press Enter to apply as a single undo step. Escape (or clicking away) puts everything back exactly.',
+    ],
+  },
+  {
     version: '0.3.7',
     date: '2026-07-09',
     changes: [

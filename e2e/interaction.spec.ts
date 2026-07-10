@@ -190,6 +190,119 @@ test('right-drag orbit keeps an in-progress draw path alive; plain right-click e
   expect(errors).toEqual([]);
 });
 
+/** Draw one straight pipe along X, select it, and switch to the rotate tool.
+ * Returns the pipe's node positions plus a screen point ON the Y ring (a point
+ * unique to the Y ring: the X ring lives at x=0, the Z ring at z=0). */
+async function setupRotateSelection(page: Page) {
+  await page.evaluate(() => {
+    const p = (window as any).__pvc;
+    p.setTool('draw');
+    p.draw({ x: -0.3, y: 0, z: 0 });
+    p.draw({ x: 0.3, y: 0, z: 0 });
+    p.finishPath();
+    p.setTool('select');
+    p.setSelection([p.getMembers()[0].id]);
+  });
+  await page.waitForFunction(() => (window as any).__pvc.getMembers().length === 1);
+  await page.keyboard.press('R');
+  await page.waitForFunction(() => (window as any).__pvc.getEditor().tool === 'rotate');
+
+  const nodes = await memberNodePositions(page);
+  // mirror RotateGizmo's ring sizing: centre + extent of the selection
+  const cx = (nodes.a.x + nodes.b.x) / 2;
+  const cz = (nodes.a.z + nodes.b.z) / 2;
+  const extent = Math.hypot(nodes.b.x - nodes.a.x, nodes.b.z - nodes.a.z) / 2;
+  const ringR = Math.max(0.08, Math.min(0.28, Math.max(extent * 1.1, 0.06)));
+  const ringPoint = await screenOf(page, {
+    x: cx + ringR * Math.SQRT1_2,
+    y: 0,
+    z: cz + ringR * Math.SQRT1_2,
+  });
+  return { nodes, ringPoint };
+}
+
+async function memberNodePositions(page: Page) {
+  return page.evaluate(() => {
+    const doc = (window as any).__pvc.getDoc();
+    const m = doc.members[0];
+    const at = (id: string) => doc.nodes.find((n: any) => n.id === id).position;
+    return { a: at(m.nodeA), b: at(m.nodeB) };
+  });
+}
+
+function yawDeg(n: { a: { x: number; z: number }; b: { x: number; z: number } }): number {
+  return (Math.atan2(n.b.z - n.a.z, n.b.x - n.a.x) * 180) / Math.PI;
+}
+
+function angleBetweenDeg(before: Awaited<ReturnType<typeof memberNodePositions>>, after: Awaited<ReturnType<typeof memberNodePositions>>): number {
+  let d = Math.abs(yawDeg(after) - yawDeg(before));
+  if (d > 180) d = 360 - d;
+  return d;
+}
+
+/** Plain-CLICK the ring until the typed-angle input opens (the gizmo can lag
+ * the tool switch by a frame or two; a missed click is harmless — it neither
+ * clears the selection nor edits the doc). */
+async function openTypedAngle(page: Page, ringPoint: { x: number; y: number }) {
+  const input = page.getByLabel('Rotation angle');
+  await expect(async () => {
+    await page.mouse.click(ringPoint.x, ringPoint.y);
+    await expect(input).toBeVisible({ timeout: 500 });
+  }).toPass({ timeout: 10_000 });
+  return input;
+}
+
+test('rotate tool: ring click opens a typed-angle input; Enter applies one undo entry', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await openNewDesign(page, 'Interaction typed rotate');
+  const { nodes: before, ringPoint } = await setupRotateSelection(page);
+
+  // a plain CLICK (no drag) on the Y ring opens the angle input for that axis
+  const input = await openTypedAngle(page, ringPoint);
+
+  // typing live-previews the rotation before Enter
+  await input.pressSequentially('45');
+  await expect
+    .poll(async () => angleBetweenDeg(before, await memberNodePositions(page)))
+    .toBeCloseTo(45, 1);
+
+  await input.press('Enter');
+  await expect(input).toBeHidden();
+  const after = await memberNodePositions(page);
+  expect(angleBetweenDeg(before, after)).toBeCloseTo(45, 5);
+  // rigid rotation: the pipe's length is preserved
+  const lenOf = (n: typeof before) => Math.hypot(n.b.x - n.a.x, n.b.y - n.a.y, n.b.z - n.a.z);
+  expect(lenOf(after)).toBeCloseTo(lenOf(before), 5);
+
+  // the whole typed interaction is ONE undo entry
+  await page.keyboard.press('Control+z');
+  await expect
+    .poll(async () => angleBetweenDeg(before, await memberNodePositions(page)))
+    .toBeCloseTo(0, 5);
+  expect(errors).toEqual([]);
+});
+
+test('rotate tool: Escape reverts a typed angle preview exactly', async ({ page }) => {
+  const errors = collectErrors(page);
+  await openNewDesign(page, 'Interaction typed rotate escape');
+  const { nodes: before, ringPoint } = await setupRotateSelection(page);
+
+  const input = await openTypedAngle(page, ringPoint);
+  await input.pressSequentially('30');
+  await expect
+    .poll(async () => angleBetweenDeg(before, await memberNodePositions(page)))
+    .toBeCloseTo(30, 1);
+
+  await input.press('Escape');
+  await expect(input).toBeHidden();
+  // the pre-typed doc is restored verbatim — positions match EXACTLY
+  const after = await memberNodePositions(page);
+  expect(after).toEqual(before);
+  expect(errors).toEqual([]);
+});
+
 test('opens the join menu with a real right-click and creates a wrapped pivot', async ({ page }) => {
   const errors = collectErrors(page);
   await openNewDesign(page, 'Interaction right-click join');

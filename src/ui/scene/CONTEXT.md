@@ -41,7 +41,7 @@ glide on snaps — never raw doc positions.
 | `IntersectionLayer.tsx` | Red overlap shells | `intersectingMembers`; cap 200 |
 | `interactions.ts` | Shared scene pointer-drag lifecycle + ground/view-plane drag hook | used by DrawController, Bend tool, endpoint/transform handles |
 | `DrawController.tsx` | Draw/formed preview + pointer target + marquee | window-listener drag; screen-space pipe/node snap (`pipePick`); Shift locks to a world axis line (incl. Y) |
-| `SelectionHandles.tsx` | Endpoint drag handles + `MoveGizmo` + `RotateGizmo` | `useGroundDrag` window-listener hook wraps `beginGesture`/`endGesture`; endpoint handles are **single-select only** (a group/multi selection shows none — Move/Rotate the group as a unit or enter it) |
+| `SelectionHandles.tsx` | Endpoint drag handles + `MoveGizmo` + `RotateGizmo` | `useGroundDrag` window-listener hook wraps `beginGesture`/`endGesture`; endpoint handles are **single-select only** (a group/multi selection shows none — Move/Rotate the group as a unit or enter it). A rotate-ring CLICK (≤ `CLICK_SLOP_PX`, no drag) opens a typed-angle input (degrees, drei `Html`, `data-viewport-occluder`) anchored to that ring: typing live-previews via the SAME `rotateMembersBy` action/pivot/axis a ring drag uses inside one open gesture — Enter commits (ONE undo entry); Escape / blur / clicking elsewhere / leaving the tool restores the pre-typed doc verbatim (no history entry) |
 | `WireframeLayer.tsx` | Wireframe view (`W`) — pipes as 5px fat lines (drei `<Segments>`=Line2, one draw call) + junctions as 14px round `Points` dots | replaces the solid pipe/fitting/joint layers while `editorStore.wireframe` |
 | `ExtendLayer.tsx` | Extend tool (`P`) push-cylinder gizmos on pipe ends (from `design/extend.extendDirections`); pointer-down on a stub → `startExtend` (axis-locked draw) | gated on `tool === 'extend'` ONLY (no `drawingFromNodeId` guard) so stubs stay mounted during an active push; a click-drag places the axis-locked point on release (window drag — live preview comes from DrawController's ground-plane pointermove); caps to selected-member ends on big models |
 | `GuideLayer.tsx` | Placed guide lines (`Q`) — long dashed axis-coloured lines, always visible as snap aids | reads `editorStore.guides`; the in-progress draft preview lives in `DrawController` |
@@ -112,6 +112,11 @@ tubes (`FormedLayer`, unique curves), rigid-pin wraps + on-body free + anchor te
   (poses snap instantly, no per-frame easing).
 - **`GeometryAnimator`** (in Scene) drives positions: physics step when simulating, else solver
   `pose` when `lengthsLocked`, else doc positions.
+- **No CONTROLLED `<input>`s inside drei `Html`.** Html renders its children into a separate React
+  DOM root; a `value=` bound to state in the r3f tree can't flush synchronously across the two
+  roots, so React DOM restores the stale value between keystrokes (typing "30" degrades to "0").
+  Keep such inputs uncontrolled (`defaultValue` + parse `e.target.value`) — see
+  `RotateAngleInput` in `SelectionHandles.tsx`.
 
 ## Tests
 `pipeModel.test.ts`, `fittingMesh.test.ts`, `wrapMesh.test.ts`, `ground.test.ts` (pure modules only).

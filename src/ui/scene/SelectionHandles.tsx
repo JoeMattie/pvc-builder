@@ -1,11 +1,11 @@
 import { Html } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
 import { useThree } from '@react-three/fiber';
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Ray } from 'three';
 import { memberById, nodeById } from '../../design/docOps';
 import { closestAxisPointToRay } from '../../design/dragMath';
-import { cross, dot, length, normalize, scale, sub } from '../../geometry/math3';
+import { add, cross, dot, length, normalize, scale, sub } from '../../geometry/math3';
 import { type Design, type LengthDisplay, pipeSpec, type Vec3 } from '../../schema';
 import { easedPos, useAnim } from '../../state/animStore';
 import { useAppStore } from '../../state/appStore';
@@ -24,7 +24,7 @@ import { useThemeStore } from '../../state/themeStore';
 import { formatLengthDisplay } from '../units';
 import { orientY, orientZ } from './axis';
 import { rayToPlane } from './ground';
-import { useGroundDrag } from './interactions';
+import { CLICK_SLOP_PX, useGroundDrag } from './interactions';
 import { pickSnapPoint, SNAP_PX, snapDebug } from './pipePick';
 
 /** A small floating "↥ height above ground" pill, shown while a point is being
@@ -402,19 +402,29 @@ export function MoveGizmo() {
   );
 }
 
+/** The ring plane's reference direction for `axis` (also where the typed-angle
+ * input anchors on the ring). Same basis the drag's angle tracking uses. */
+function ringPlaneU(axis: Vec3): Vec3 {
+  const ref = Math.abs(axis.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 };
+  return normalize(cross(axis, ref));
+}
+
 /** One rotate ring of the rotate gizmo: dragging it turns the whole member about
  * `axisKey` through the member's midpoint, tracking the cursor's angle in the
- * ring's plane (so the drag reads as free rotation). */
+ * ring's plane (so the drag reads as free rotation). A plain CLICK (pointerup
+ * within the click slop) opens the typed-angle input for this axis instead. */
 function RotateRing({
   memberIds,
   pivot,
   axisKey,
   ringR,
+  onTypedOpen,
 }: {
   memberIds: string[];
   pivot: Vec3;
   axisKey: 'x' | 'y' | 'z';
   ringR: number;
+  onTypedOpen: (axisKey: 'x' | 'y' | 'z') => void;
 }) {
   const axis = AXIS_DIRS[axisKey];
   const pivotRef = useRef<Vec3>(pivot);
@@ -442,12 +452,33 @@ function RotateRing({
   );
   const onDown = (e: ThreeEvent<PointerEvent>) => {
     pivotRef.current = pivot;
-    const ref = Math.abs(axis.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 };
-    uRef.current = normalize(cross(axis, ref));
+    uRef.current = ringPlaneU(axis);
     vRef.current = cross(axis, uRef.current);
     const g = rayToPlane(e.ray, pivot, axis);
     lastAngle.current = g ? angleAt(g) : 0;
     start(e);
+    // Click detection: register AFTER start(e) so on pointerup the drag's own
+    // finish (endGesture — a no-move click changes nothing, so no history
+    // entry) runs first, THEN a slop-bounded click opens the typed input's
+    // fresh gesture.
+    const downX = e.nativeEvent.clientX;
+    const downY = e.nativeEvent.clientY;
+    let moved = false;
+    const onMove = (ev: PointerEvent) => {
+      if (Math.hypot(ev.clientX - downX, ev.clientY - downY) > CLICK_SLOP_PX) moved = true;
+    };
+    const cleanup = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', cleanup);
+    };
+    const onUp = () => {
+      cleanup();
+      if (!moved) onTypedOpen(axisKey);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', cleanup);
   };
   return (
     <mesh position={[pivot.x, pivot.y, pivot.z]} quaternion={orientZ(axis)} onPointerDown={onDown}>
@@ -457,15 +488,155 @@ function RotateRing({
   );
 }
 
+/** State of an open typed-angle entry: everything frozen at the ring click so
+ * the preview pivot/axis can't drift while the selection rotates. */
+interface TypedRotate {
+  axisKey: 'x' | 'y' | 'z';
+  pivot: Vec3;
+  anchor: Vec3;
+  memberIds: string[];
+  /** the doc as it was when the input opened — restored verbatim on cancel */
+  preDoc: Design;
+}
+
+/** Typed-angle input for the rotate tool: a ring CLICK opens this small degree
+ * field anchored to that ring. Typing live-previews the rotation through the
+ * SAME `rotateMembersBy` action a ring drag uses (same pivot/axis basis), all
+ * inside one open gesture — Enter commits it as ONE undo entry; Escape, blur,
+ * clicking elsewhere, or leaving the tool restores the pre-typed pose exactly
+ * (`preDoc`, so `endGesture` sees no change and records nothing). */
+function RotateAngleInput({
+  axisKey,
+  pivot,
+  anchor,
+  memberIds,
+  preDoc,
+  night,
+  onClose,
+}: TypedRotate & { night: boolean; onClose: () => void }) {
+  const lastRad = useRef(0);
+  const done = useRef(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const axis = AXIS_DIRS[axisKey];
+  const color = AXIS_COLORS[axisKey];
+
+  const finish = (commit: boolean) => {
+    if (done.current) return;
+    done.current = true;
+    // cancel — or a commit with no net rotation — restores the exact pre-typed
+    // doc, so endGesture sees final === gestureStart and records NO entry
+    if (!commit || lastRad.current === 0) useAppStore.getState().updateCurrent(() => preDoc);
+    useAppStore.getState().endGesture();
+    onClose();
+  };
+  const finishRef = useRef(finish);
+  finishRef.current = finish;
+
+  // live preview: apply the DELTA from the last previewed angle via the same
+  // rotate action a ring drag uses; invalid/empty input previews back to 0°
+  const apply = (raw: string) => {
+    const deg = Number.parseFloat(raw);
+    const rad = Number.isFinite(deg) ? (deg * Math.PI) / 180 : 0;
+    const delta = rad - lastRad.current;
+    if (delta !== 0) {
+      rotateMembersBy(memberIds, axis, delta, pivot);
+      lastRad.current = rad;
+    }
+  };
+
+  // clicking anywhere outside the input reverts-and-closes. Capture phase, so
+  // it runs BEFORE a canvas pointer-down (e.g. another ring grab) opens its
+  // own gesture on top of this one.
+  useEffect(() => {
+    const onDown = (ev: PointerEvent) => {
+      if (boxRef.current && ev.target instanceof Node && boxRef.current.contains(ev.target)) return;
+      finishRef.current(false);
+    };
+    window.addEventListener('pointerdown', onDown, true);
+    return () => window.removeEventListener('pointerdown', onDown, true);
+  }, []);
+  // unmount (tool change / selection cleared) = revert-and-close too
+  useEffect(() => () => finishRef.current(false), []);
+
+  return (
+    <Html position={[anchor.x, anchor.y, anchor.z]} center zIndexRange={[100, 0]}>
+      <div
+        ref={boxRef}
+        data-viewport-occluder
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          padding: '2px 6px',
+          borderRadius: 6,
+          font: "500 12px 'IBM Plex Mono', monospace",
+          background: night ? '#1e2128' : '#fff',
+          color: night ? '#e8eaf0' : '#1a1d24',
+          border: `1px solid ${color}`,
+          boxShadow: `0 0 0 2px ${color}59`,
+          whiteSpace: 'nowrap',
+          transform: 'translateY(-16px)',
+        }}
+      >
+        <span style={{ color, fontWeight: 700 }}>{axisKey.toUpperCase()}</span>
+        <input
+          // biome-ignore lint/a11y/noAutofocus: the input exists to be typed into the moment it opens
+          autoFocus
+          aria-label="Rotation angle"
+          // UNCONTROLLED on purpose: this component renders in the r3f tree,
+          // but the <input> lives in drei Html's separate React DOM root — a
+          // controlled value= can't flush synchronously across the two roots,
+          // so React DOM would keep restoring the stale value between
+          // keystrokes. The DOM owns the text; we only parse it on change.
+          defaultValue=""
+          placeholder="0"
+          size={6}
+          inputMode="decimal"
+          onChange={(e) => apply(e.target.value)}
+          onKeyDown={(e) => {
+            // never let keystrokes reach the global hotkey handler (tool keys,
+            // undo/redo) while the gesture is open
+            e.stopPropagation();
+            if (e.key === 'Enter') finish(true);
+            else if (e.key === 'Escape') finish(false);
+          }}
+          onBlur={() => finish(false)}
+          style={{
+            width: 56,
+            background: 'transparent',
+            border: 'none',
+            outline: 'none',
+            font: 'inherit',
+            color: 'inherit',
+          }}
+        />
+        <span style={{ opacity: 0.7 }}>°</span>
+      </div>
+    </Html>
+  );
+}
+
 /** The rotate tool's 3-axis ring gizmo, centred on the whole selection. */
 export function RotateGizmo() {
   useAnim((s) => s.v);
   const design = useAppStore((s) => s.current);
   const selectedIds = useEditorStore((s) => s.selectedIds);
+  const night = useThemeStore((s) => s.night);
+  const [typed, setTyped] = useState<TypedRotate | null>(null);
   if (!design) return null;
   const frame = selectionFrame(design, selectedIds);
   if (!frame) return null;
   const ringR = Math.max(0.08, Math.min(0.28, Math.max(frame.extent * 1.1, 0.06)));
+  // ring click → freeze pivot/axis (the SAME frame a drag would use) and open
+  // the typed input inside a fresh gesture (the click's own drag gesture has
+  // already ended empty by the time this runs — see RotateRing.onDown)
+  const openTyped = (axisKey: 'x' | 'y' | 'z') => {
+    const cur = useAppStore.getState().current;
+    if (!cur || typed) return;
+    const anchor = add(frame.centre, scale(ringPlaneU(AXIS_DIRS[axisKey]), ringR));
+    useAppStore.getState().beginGesture();
+    setTyped({ axisKey, pivot: frame.centre, anchor, memberIds: frame.memberIds, preDoc: cur });
+  };
   return (
     <group>
       {(['x', 'y', 'z'] as const).map((k) => (
@@ -475,8 +646,10 @@ export function RotateGizmo() {
           pivot={frame.centre}
           axisKey={k}
           ringR={ringR}
+          onTypedOpen={openTyped}
         />
       ))}
+      {typed && <RotateAngleInput {...typed} night={night} onClose={() => setTyped(null)} />}
     </group>
   );
 }
