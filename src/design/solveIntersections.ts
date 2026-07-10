@@ -331,7 +331,9 @@ function mergeCornerIntoBend(design: Design, nodeId: string): Design | null {
   const len1 = length(sub(near1, nPos));
   const len2 = length(sub(near2, nPos));
   if (len1 <= 0 || len2 <= 0) return null;
-  const hug = Math.min(pipeSpec(m1.size).odM, 0.35 * len1, 0.35 * len2);
+  // hug distance sets the visual fold radius (the spline turns within ~hug):
+  // 1 OD read too sharp, the old 3-OD fillet too round — 2 OD sits right
+  const hug = Math.min(2 * pipeSpec(m1.size).odM, 0.35 * len1, 0.35 * len2);
   const hugPt = (toward: Vec3, legLen: number): Vec3 =>
     add(nPos, scale(sub(toward, nPos), hug / legLen));
   const fold: Vec3[] = [hugPt(near1, len1), { ...nPos }, hugPt(near2, len2)];

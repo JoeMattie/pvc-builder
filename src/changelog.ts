@@ -11,6 +11,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.12',
+    date: '2026-07-09',
+    changes: [
+      'Fold radius tuned: solved corners now turn within about two pipe diameters — visibly a deliberate heat-fold, without the razor crease of 0.3.11.',
+    ],
+  },
+  {
     version: '0.3.11',
     date: '2026-07-09',
     changes: [
