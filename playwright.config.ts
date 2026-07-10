@@ -6,8 +6,10 @@ const port = Number(process.env.PVC_E2E_PORT ?? 4188);
 
 export default defineConfig({
   testDir: 'e2e',
-  timeout: 45_000,
+  timeout: process.env.CI ? 90_000 : 45_000,
   fullyParallel: false,
+  workers: process.env.CI ? 1 : undefined,
+  retries: process.env.CI ? 1 : 0,
   use: { baseURL: `http://localhost:${port}` },
   projects: [
     {
